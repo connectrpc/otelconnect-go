@@ -3,6 +3,10 @@ run:
 linters-settings:
   errcheck:
     check-type-assertions: true
+  exhaustruct:
+    include:
+      # No zero values for View structs.
+      - 'go\.opencensus\.io/stats/view.View'
   forbidigo:
     forbid:
       - '^fmt\.Print'
