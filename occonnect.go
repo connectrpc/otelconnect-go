@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package occonnect is a Go implementation of OpenCensus as a Connect interceptor.
 package occonnect
 
 import (
@@ -22,7 +23,7 @@ import (
 	"go.opencensus.io/tag"
 )
 
-// The following client Connect measures are supported for use in custom views.
+// The following Connect client metrics are supported for use in custom views.
 var (
 	ClientSentMessagesPerRPC = stats.Int64(
 		"connect.build/client/sent_messages_per_rpc",
@@ -36,7 +37,7 @@ var (
 	)
 )
 
-// The following server Connect measures are supported for use in custom views.
+// The following Connect server metrics are supported for use in custom views.
 var (
 	ServerSentMessagesPerRPC = stats.Int64(
 		"connect.build/server/sent_messages_per_rpc",
@@ -68,7 +69,7 @@ var (
 	KeyClientStatus = tag.MustNewKey("connect_client_status")
 )
 
-// Package occonnect provides some convenience views for client measures.
+// Package occonnect provides some convenient view for client metrics.
 // You still need to register these views for data to actually be collected.
 var (
 	ClientRoundtripLatencyDistribution = &view.View{
@@ -104,7 +105,7 @@ var (
 	}
 )
 
-// Package occonnect provides some convenience views for server measures.
+// Package occonnect provides some convenient view for server metrics.
 // You still need to register these views for data to actually be collected.
 var (
 	ServerLatencyView = &view.View{
