@@ -53,14 +53,15 @@ func (s *senderTracker) Close(err error) error {
 }
 
 func finishSenderTracking(ctx context.Context, isClient bool, procedure string, sentCount int64) {
-	var tags []tag.Mutator
+	tags := []tag.Mutator{
+		tag.Upsert(ochttp.KeyServerRoute, procedure),
+	}
 	var measurements []stats.Measurement
 	if isClient {
-		// TODO
-	} else {
-		tags = []tag.Mutator{
-			tag.Upsert(ochttp.KeyServerRoute, procedure),
+		measurements = []stats.Measurement{
+			ClientSentMessagesPerRPC.M(sentCount),
 		}
+	} else {
 		measurements = []stats.Measurement{
 			ServerSentMessagesPerRPC.M(sentCount),
 		}
