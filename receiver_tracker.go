@@ -18,25 +18,57 @@ import (
 	"context"
 
 	"github.com/bufbuild/connect-go"
+	"go.opencensus.io/plugin/ochttp"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/tag"
 )
 
 type receiverTracker struct {
 	connect.Receiver
+
+	isClient      bool
+	procedure     string
+	receivedCount int64
 }
 
 func newReceiverTracker(ctx context.Context, receiver connect.Receiver) *receiverTracker {
-	// TODO: add tags to ctx
+	ochttp.SetRoute(ctx, receiver.Spec().Procedure)
 	return &receiverTracker{
-		Receiver: receiver,
+		Receiver:  receiver,
+		isClient:  receiver.Spec().IsClient,
+		procedure: receiver.Spec().Procedure,
 	}
 }
 
 func (s *receiverTracker) Receive(message any) error {
-	// TODO: tracking
+	defer func() {
+		s.receivedCount++
+	}()
 	return s.Receiver.Receive(message)
 }
 
 func (s *receiverTracker) Close() error {
-	// TODO: tracking
+	defer finishReceiverTracking(context.Background(), s.isClient, s.procedure, s.receivedCount)
 	return s.Receiver.Close()
+}
+
+func finishReceiverTracking(ctx context.Context, isClient bool, procedure string, receivedCount int64) {
+	tags := []tag.Mutator{
+		tag.Upsert(ochttp.KeyServerRoute, procedure),
+	}
+	var measurements []stats.Measurement
+	if isClient {
+		measurements = []stats.Measurement{
+			ClientReceivedMessagesPerRPC.M(receivedCount),
+		}
+	} else {
+		measurements = []stats.Measurement{
+			ServerReceivedMessagesPerRPC.M(receivedCount),
+		}
+	}
+	_ = stats.RecordWithOptions(
+		ctx,
+		stats.WithTags(tags...),
+		stats.WithMeasurements(measurements...),
+	)
 }

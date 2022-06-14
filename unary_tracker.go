@@ -18,11 +18,38 @@ import (
 	"context"
 
 	"github.com/bufbuild/connect-go"
+	"go.opencensus.io/plugin/ochttp"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/tag"
 )
 
 func newUnaryTracker(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
-		// TODO: tracking
+		ochttp.SetRoute(ctx, request.Spec().Procedure)
+		defer finishUnaryTracking(ctx, request.Spec().IsClient, request.Spec().Procedure)
 		return unaryFunc(ctx, request)
 	}
+}
+
+func finishUnaryTracking(ctx context.Context, isClient bool, procedure string) {
+	tags := []tag.Mutator{
+		tag.Upsert(ochttp.KeyServerRoute, procedure),
+	}
+	var measurements []stats.Measurement
+	if isClient {
+		measurements = []stats.Measurement{
+			ClientSentMessagesPerRPC.M(1),
+			ClientReceivedMessagesPerRPC.M(1),
+		}
+	} else {
+		measurements = []stats.Measurement{
+			ServerSentMessagesPerRPC.M(1),
+			ServerReceivedMessagesPerRPC.M(1),
+		}
+	}
+	_ = stats.RecordWithOptions(
+		ctx,
+		stats.WithTags(tags...),
+		stats.WithMeasurements(measurements...),
+	)
 }
