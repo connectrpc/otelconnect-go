@@ -72,19 +72,19 @@ var (
 // Package occonnect provides some convenient view for client metrics.
 // You still need to register these views for data to actually be collected.
 var (
-	ClientRoundtripLatencyDistribution = &view.View{
+	ClientRoundtripLatencyView = &view.View{
 		Name:        "connectrpc.com/http/client/roundtrip_latency",
 		Measure:     ochttp.ClientRoundtripLatency,
 		Aggregation: DefaultLatencyDistribution,
-		Description: "End-to-end latency, by Connect method and status.",
-		TagKeys:     []tag.Key{KeyClientMethod, KeyClientStatus},
+		Description: "End-to-end latency, by method.",
+		TagKeys:     []tag.Key{ochttp.KeyServerRoute},
 	}
 
 	ClientCompletedRPCsView = &view.View{
 		Measure:     ochttp.ClientRoundtripLatency,
 		Name:        "connectrpc.com/client/completed_rpcs",
-		Description: "Count of RPCs by Connect method and status.",
-		TagKeys:     []tag.Key{KeyClientMethod, KeyClientStatus},
+		Description: "Count of RPCs by method and status.",
+		TagKeys:     []tag.Key{ochttp.KeyServerRoute, KeyClientStatus},
 		Aggregation: view.Count(),
 	}
 
@@ -92,7 +92,7 @@ var (
 		Measure:     ClientSentMessagesPerRPC,
 		Name:        "connectrpc.com/client/sent_messages_per_rpc",
 		Description: "Distribution of sent messages count per RPC, by method.",
-		TagKeys:     []tag.Key{KeyClientMethod},
+		TagKeys:     []tag.Key{ochttp.KeyServerRoute},
 		Aggregation: DefaultMessageCountDistribution,
 	}
 
@@ -100,7 +100,7 @@ var (
 		Measure:     ClientReceivedMessagesPerRPC,
 		Name:        "connectrpc.com/client/received_messages_per_rpc",
 		Description: "Distribution of received messages count per RPC, by method.",
-		TagKeys:     []tag.Key{KeyClientMethod},
+		TagKeys:     []tag.Key{ochttp.KeyServerRoute},
 		Aggregation: DefaultMessageCountDistribution,
 	}
 )
@@ -111,7 +111,7 @@ var (
 	ServerLatencyView = &view.View{
 		Name:        "connectrpc.com/server/server_latency",
 		Description: "Distribution of server latency in milliseconds, by method.",
-		TagKeys:     []tag.Key{KeyServerMethod},
+		TagKeys:     []tag.Key{ochttp.KeyServerRoute},
 		Measure:     ochttp.ServerLatency,
 		Aggregation: DefaultMillisecondsDistribution,
 	}
@@ -119,7 +119,7 @@ var (
 	ServerCompletedRPCsView = &view.View{
 		Name:        "connectrpc.com/server/completed_rpcs",
 		Description: "Count of RPCs by method and status.",
-		TagKeys:     []tag.Key{KeyServerMethod, KeyServerStatus},
+		TagKeys:     []tag.Key{ochttp.KeyServerRoute, KeyServerStatus},
 		Measure:     ochttp.ServerLatency,
 		Aggregation: view.Count(),
 	}
@@ -127,7 +127,7 @@ var (
 	ServerSentMessagesPerRPCView = &view.View{
 		Name:        "connectrpc.com/server/sent_messages_per_rpc",
 		Description: "Distribution of messages sent count per RPC, by method.",
-		TagKeys:     []tag.Key{KeyServerMethod},
+		TagKeys:     []tag.Key{ochttp.KeyServerRoute},
 		Measure:     ServerSentMessagesPerRPC,
 		Aggregation: DefaultMessageCountDistribution,
 	}
@@ -135,7 +135,7 @@ var (
 	ServerReceivedMessagesPerRPCView = &view.View{
 		Name:        "connectrpc.com/server/received_messages_per_rpc",
 		Description: "Distribution of messages received count per RPC, by method.",
-		TagKeys:     []tag.Key{KeyServerMethod},
+		TagKeys:     []tag.Key{ochttp.KeyServerRoute},
 		Measure:     ServerReceivedMessagesPerRPC,
 		Aggregation: DefaultMessageCountDistribution,
 	}

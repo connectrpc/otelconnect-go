@@ -18,25 +18,57 @@ import (
 	"context"
 
 	"connectrpc.com/connect"
+	"go.opencensus.io/plugin/ochttp"
+	"go.opencensus.io/stats"
+	"go.opencensus.io/tag"
 )
 
 type senderTracker struct {
 	connect.Sender
+
+	isClient  bool
+	procedure string
+	sentCount int64
 }
 
 func newSenderTracker(ctx context.Context, sender connect.Sender) *senderTracker {
-	// TODO: add tags to ctx
+	ochttp.SetRoute(ctx, sender.Spec().Procedure)
 	return &senderTracker{
-		Sender: sender,
+		Sender:    sender,
+		isClient:  sender.Spec().IsClient,
+		procedure: sender.Spec().Procedure,
 	}
 }
 
 func (s *senderTracker) Send(message any) error {
-	// TODO: tracking
+	defer func() {
+		s.sentCount++
+	}()
 	return s.Sender.Send(message)
 }
 
 func (s *senderTracker) Close(err error) error {
-	// TODO: tracking
+	defer finishSenderTracking(context.Background(), s.isClient, s.procedure, s.sentCount)
 	return s.Sender.Close(err)
+}
+
+func finishSenderTracking(ctx context.Context, isClient bool, procedure string, sentCount int64) {
+	tags := []tag.Mutator{
+		tag.Upsert(ochttp.KeyServerRoute, procedure),
+	}
+	var measurements []stats.Measurement
+	if isClient {
+		measurements = []stats.Measurement{
+			ClientSentMessagesPerRPC.M(sentCount),
+		}
+	} else {
+		measurements = []stats.Measurement{
+			ServerSentMessagesPerRPC.M(sentCount),
+		}
+	}
+	_ = stats.RecordWithOptions(
+		ctx,
+		stats.WithTags(tags...),
+		stats.WithMeasurements(measurements...),
+	)
 }
