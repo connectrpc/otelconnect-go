@@ -83,7 +83,7 @@ var (
 	ClientCompletedRPCsView = &view.View{
 		Measure:     ochttp.ClientRoundtripLatency,
 		Name:        "connect.build/client/completed_rpcs",
-		Description: "Count of RPCs by Connect method and status.",
+		Description: "Count of RPCs by method and status.",
 		TagKeys:     []tag.Key{ochttp.KeyServerRoute, KeyClientStatus},
 		Aggregation: view.Count(),
 	}
