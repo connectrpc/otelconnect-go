@@ -32,16 +32,20 @@ func newUnaryTracker(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
 }
 
 func finishUnaryTracking(ctx context.Context, isClient bool, procedure string) {
-	tags := []tag.Mutator{
-		tag.Upsert(ochttp.KeyServerRoute, procedure),
-	}
+	var tags []tag.Mutator
 	var measurements []stats.Measurement
 	if isClient {
+		tags = []tag.Mutator{
+			tag.Upsert(ochttp.KeyClientPath, procedure),
+		}
 		measurements = []stats.Measurement{
 			ClientSentMessagesPerRPC.M(1),
 			ClientReceivedMessagesPerRPC.M(1),
 		}
 	} else {
+		tags = []tag.Mutator{
+			tag.Upsert(ochttp.KeyServerRoute, procedure),
+		}
 		measurements = []stats.Measurement{
 			ServerSentMessagesPerRPC.M(1),
 			ServerReceivedMessagesPerRPC.M(1),
