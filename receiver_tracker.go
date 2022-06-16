@@ -53,15 +53,19 @@ func (s *receiverTracker) Close() error {
 }
 
 func finishReceiverTracking(ctx context.Context, isClient bool, procedure string, receivedCount int64) {
-	tags := []tag.Mutator{
-		tag.Upsert(ochttp.KeyServerRoute, procedure),
-	}
+	var tags []tag.Mutator
 	var measurements []stats.Measurement
 	if isClient {
+		tags = []tag.Mutator{
+			tag.Upsert(ochttp.KeyClientPath, procedure),
+		}
 		measurements = []stats.Measurement{
 			ClientReceivedMessagesPerRPC.M(receivedCount),
 		}
 	} else {
+		tags = []tag.Mutator{
+			tag.Upsert(ochttp.KeyServerRoute, procedure),
+		}
 		measurements = []stats.Measurement{
 			ServerReceivedMessagesPerRPC.M(receivedCount),
 		}
