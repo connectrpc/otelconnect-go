@@ -40,9 +40,9 @@ func newSenderTracker(ctx context.Context, sender connect.Sender) *senderTracker
 	}
 }
 
-func (s *senderTracker) Send(message any) (err error) { // nolint:nonamedreturns
+func (s *senderTracker) Send(message any) (retErr error) { // nolint:nonamedreturns
 	defer func() {
-		if err == nil {
+		if retErr == nil {
 			s.sentCount++
 		}
 	}()

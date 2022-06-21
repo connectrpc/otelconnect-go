@@ -40,9 +40,9 @@ func newReceiverTracker(ctx context.Context, receiver connect.Receiver) *receive
 	}
 }
 
-func (s *receiverTracker) Receive(message any) (err error) { // nolint:nonamedreturns
+func (s *receiverTracker) Receive(message any) (retErr error) { // nolint:nonamedreturns
 	defer func() {
-		if err == nil {
+		if retErr == nil {
 			s.receivedCount++
 		}
 	}()
