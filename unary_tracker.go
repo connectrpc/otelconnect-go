@@ -34,7 +34,7 @@ func newUnaryTracker(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
 }
 
 func finishUnaryTracking(ctx context.Context, isClient bool, procedure string, retErr error) {
-	status := "ok"
+	status := statusOK
 	if retErr != nil {
 		status = connect.CodeOf(retErr).String()
 	}

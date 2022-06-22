@@ -50,11 +50,11 @@ func (s *senderTracker) Send(message any) (retErr error) { // nolint:nonamedretu
 }
 
 func (s *senderTracker) Close(err error) error {
-	defer finishSenderTracking(context.Background(), s.isClient, s.procedure, s.sentCount)
+	defer finishSenderTracking(context.Background(), s.isClient, s.procedure, s.sentCount, err)
 	return s.Sender.Close(err)
 }
 
-func finishSenderTracking(ctx context.Context, isClient bool, procedure string, sentCount int64) {
+func finishSenderTracking(ctx context.Context, isClient bool, procedure string, sentCount int64, sentErr error) {
 	var tags []tag.Mutator
 	var measurements []stats.Measurement
 	if isClient {
@@ -65,8 +65,13 @@ func finishSenderTracking(ctx context.Context, isClient bool, procedure string, 
 			ClientSentMessagesPerRPC.M(sentCount),
 		}
 	} else {
+		status := statusOK
+		if sentErr != nil {
+			status = connect.CodeOf(sentErr).String()
+		}
 		tags = []tag.Mutator{
 			tag.Upsert(ochttp.KeyServerRoute, procedure),
+			tag.Upsert(KeyServerStatus, status),
 		}
 		measurements = []stats.Measurement{
 			ServerSentMessagesPerRPC.M(sentCount),
