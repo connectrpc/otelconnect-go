@@ -39,9 +39,11 @@ build: generate ## Build all packages
 	$(GO) build ./...
 
 .PHONY: lint
-lint: $(BIN)/golangci-lint ## Lint Go
+lint: $(BIN)/golangci-lint $(BIN)/buf ## Lint Go and protobuf
+	test -z "$$($(BIN)/buf format -d . | tee /dev/stderr)"
 	$(GO) vet ./...
 	$(BIN)/golangci-lint run
+	$(BIN)/buf lint
 
 .PHONY: lintfix
 lintfix: $(BIN)/golangci-lint $(BIN)/buf ## Automatically fix some lint errors
@@ -49,7 +51,9 @@ lintfix: $(BIN)/golangci-lint $(BIN)/buf ## Automatically fix some lint errors
 	$(BIN)/buf format -w .
 
 .PHONY: generate
-generate: $(BIN)/license-header ## Regenerate licenses
+generate: $(BIN)/buf $(BIN)/protoc-gen-go $(BIN)/protoc-gen-connect-go $(BIN)/license-header ## Regenerate code and licenses
+	rm -rf internal/gen
+	PATH=$(BIN) $(BIN)/buf generate
 	@# We want to operate on a list of modified and new files, excluding
 	@# deleted and ignored files. git-ls-files can't do this alone. comm -23 takes
 	@# two files and prints the union, dropping lines common to both (-3) and
@@ -73,11 +77,24 @@ checkgenerate:
 	@# Used in CI to verify that `make generate` doesn't produce a diff.
 	test -z "$$(git status --porcelain | tee /dev/stderr)"
 
+$(BIN)/protoc-gen-connect-go: Makefile go.mod
+	@mkdir -p $(@D)
+	@# The version of protoc-gen-connect-go is determined by the version in go.mod
+	GOBIN=$(abspath $(@D)) $(GO) install connectrpc.com/connect/cmd/protoc-gen-connect-go
+
+$(BIN)/buf: Makefile
+	@mkdir -p $(@D)
+	GOBIN=$(abspath $(@D)) $(GO) install github.com/bufbuild/buf/cmd/buf@v1.5.0
+
 $(BIN)/license-header: Makefile
 	@mkdir -p $(@D)
 	GOBIN=$(abspath $(@D)) $(GO) install \
-		  github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v1.4.0
+		  github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v1.5.0
 
 $(BIN)/golangci-lint: Makefile
 	@mkdir -p $(@D)
 	GOBIN=$(abspath $(@D)) $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.46.2
+
+$(BIN)/protoc-gen-go: Makefile
+	@mkdir -p $(@D)
+	GOBIN=$(abspath $(@D)) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.0
