@@ -61,7 +61,7 @@ func TestOCConnectInterceptor(t *testing.T) {
 	require.NoError(t, err)
 	defer view.Unregister(clientViews...)
 
-	client, done := newTestClient(t)
+	client, done := newTestClientAndServerCleanup(t)
 	defer done()
 
 	ctx := context.Background()
@@ -227,7 +227,7 @@ func assertDistributionData(
 	assert.Equal(t, expectedSum, sum)
 }
 
-func newTestClient(t *testing.T) (pingv1connect.PingServiceClient, func()) {
+func newTestClientAndServerCleanup(t *testing.T) (pingv1connect.PingServiceClient, func()) {
 	t.Helper()
 	// initialize server
 	mux := http.NewServeMux()
