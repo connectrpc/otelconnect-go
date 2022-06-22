@@ -23,6 +23,8 @@ import (
 	"go.opencensus.io/tag"
 )
 
+const statusOK = "ok"
+
 // The following Connect client metrics are supported for use in custom views.
 var (
 	ClientSentMessagesPerRPC = stats.Int64(
