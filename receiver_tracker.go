@@ -16,6 +16,8 @@ package occonnect
 
 import (
 	"context"
+	"errors"
+	"io"
 
 	"github.com/bufbuild/connect-go"
 	"go.opencensus.io/plugin/ochttp"
@@ -29,6 +31,7 @@ type receiverTracker struct {
 	isClient      bool
 	procedure     string
 	receivedCount int64
+	receivedError error
 }
 
 func newReceiverTracker(ctx context.Context, receiver connect.Receiver) *receiverTracker {
@@ -44,22 +47,31 @@ func (s *receiverTracker) Receive(message any) (retErr error) { // nolint:noname
 	defer func() {
 		if retErr == nil {
 			s.receivedCount++
+			return
+		}
+		if !errors.Is(retErr, io.EOF) {
+			s.receivedError = retErr
 		}
 	}()
 	return s.Receiver.Receive(message)
 }
 
 func (s *receiverTracker) Close() error {
-	defer finishReceiverTracking(context.Background(), s.isClient, s.procedure, s.receivedCount)
+	defer finishReceiverTracking(context.Background(), s.isClient, s.procedure, s.receivedCount, s.receivedError)
 	return s.Receiver.Close()
 }
 
-func finishReceiverTracking(ctx context.Context, isClient bool, procedure string, receivedCount int64) {
+func finishReceiverTracking(ctx context.Context, isClient bool, procedure string, receivedCount int64, receivedError error) {
 	var tags []tag.Mutator
 	var measurements []stats.Measurement
 	if isClient {
+		status := statusOK
+		if receivedError != nil {
+			status = connect.CodeOf(receivedError).String()
+		}
 		tags = []tag.Mutator{
 			tag.Upsert(ochttp.KeyClientPath, procedure),
+			tag.Upsert(KeyClientStatus, status),
 		}
 		measurements = []stats.Measurement{
 			ClientReceivedMessagesPerRPC.M(receivedCount),
