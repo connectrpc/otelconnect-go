@@ -149,7 +149,13 @@ func TestOCConnectInterceptor(t *testing.T) {
 	)
 }
 
-func assertViewData(t *testing.T, length int, expectedCount int64, serverSentCount float64, clientSentCount float64) {
+func assertViewData(
+	t *testing.T,
+	length int,
+	expectedCount int64,
+	serverSentCount float64,
+	clientSentCount float64,
+) {
 	t.Helper()
 	// assert server view data
 	assertCount(t, occonnect.ServerLatencyView.Name, length, expectedCount)
@@ -164,7 +170,12 @@ func assertViewData(t *testing.T, length int, expectedCount int64, serverSentCou
 	assertDistributionData(t, occonnect.ClientReceivedMessagesPerRPCView.Name, length, expectedCount, serverSentCount)
 }
 
-func assertCount(t *testing.T, viewName string, length int, expectedCount int64) {
+func assertCount(
+	t *testing.T,
+	viewName string,
+	length int,
+	expectedCount int64,
+) {
 	t.Helper()
 	v := view.Find(viewName)
 	if v == nil {
@@ -188,7 +199,13 @@ func assertCount(t *testing.T, viewName string, length int, expectedCount int64)
 	assert.Equal(t, expectedCount, count)
 }
 
-func assertDistributionData(t *testing.T, viewName string, length int, expectedCount int64, expectedSum float64) {
+func assertDistributionData(
+	t *testing.T,
+	viewName string,
+	length int,
+	expectedCount int64,
+	expectedSum float64,
+) {
 	t.Helper()
 	v := view.Find(viewName)
 	if v == nil {
