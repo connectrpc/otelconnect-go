@@ -83,7 +83,7 @@ var (
 		Name:        "connectrpc.com/client/completed_rpcs",
 		Description: "Count of RPCs by method and status.",
 		TagKeys:     []tag.Key{ochttp.KeyClientPath, KeyClientStatus},
-		Measure:     ochttp.ClientRoundtripLatency,
+		Measure:     ClientReceivedMessagesPerRPC,
 		Aggregation: view.Count(),
 	}
 
@@ -119,7 +119,7 @@ var (
 		Name:        "connectrpc.com/server/completed_rpcs",
 		Description: "Count of RPCs by method and status.",
 		TagKeys:     []tag.Key{ochttp.KeyServerRoute, KeyServerStatus},
-		Measure:     ochttp.ServerLatency,
+		Measure:     ServerSentMessagesPerRPC,
 		Aggregation: view.Count(),
 	}
 
