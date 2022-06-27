@@ -117,16 +117,7 @@ func main() {
 		"http://localhost:8080/",
 	)
 	// use the client.
-	for {
-		client.Say(
-			context.Background(),
-			connect.NewRequest(
-				&elizav1.SayRequest{
-					Sentence: "hello",
-				},
-			),
-		)
-	}
+	_ = client
 }
 ```
 
