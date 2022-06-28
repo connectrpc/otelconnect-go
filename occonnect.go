@@ -74,7 +74,7 @@ var (
 // You still need to register these views for data to actually be collected.
 var (
 	ClientRoundtripLatencyView = &view.View{
-		Name:        "connectrpc.com/http/client/roundtrip_latency",
+		Name:        "connectrpc.com/client/roundtrip_latency",
 		Description: "End-to-end latency, by method.",
 		TagKeys:     []tag.Key{ochttp.KeyClientPath},
 		Measure:     ochttp.ClientRoundtripLatency,
