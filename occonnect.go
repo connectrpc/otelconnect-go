@@ -91,7 +91,7 @@ var (
 		Aggregation: DefaultLatencyDistribution,
 	}
 	// ClientCompletedRPCsView is the counting view of the completed RPC in the client side by RPC method and status.
-	// Purposely reuses the count from ClientReceivedMessagesPerRPC (note that this is the count of collected record,
+	// Purposely reuses the count from ClientReceivedMessagesPerRPC (note that this is the count of collected records,
 	// not the underlying received messages count).
 	ClientCompletedRPCsView = &view.View{
 		Name:        "connect.build/client/completed_rpcs",
@@ -131,7 +131,7 @@ var (
 		Aggregation: DefaultLatencyDistribution,
 	}
 	// ServerCompletedRPCsView is the counting view of the completed RPC in the server side by RPC method and status.
-	// Purposely reuses the count from ServerSentMessagesPerRPC (note that this is the count of collected record,
+	// Purposely reuses the count from ServerSentMessagesPerRPC (note that this is the count of collected records,
 	// not the underlying sent messages count).
 	ServerCompletedRPCsView = &view.View{
 		Name:        "connect.build/server/completed_rpcs",
