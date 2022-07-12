@@ -136,9 +136,9 @@ func TestOCConnectInterceptor(t *testing.T) {
 		_, err = cumSumStream.Receive()
 		require.NoError(t, err)
 	}
-	err = cumSumStream.CloseSend()
+	err = cumSumStream.CloseRequest()
 	require.NoError(t, err)
-	err = cumSumStream.CloseReceive()
+	err = cumSumStream.CloseResponse()
 	require.NoError(t, err)
 	assertViewData(
 		t,

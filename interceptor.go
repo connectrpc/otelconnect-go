@@ -15,8 +15,6 @@
 package occonnect
 
 import (
-	"context"
-
 	"github.com/bufbuild/connect-go"
 )
 
@@ -32,14 +30,10 @@ func (i *interceptor) WrapUnary(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
 	return newUnaryTracker(unaryFunc)
 }
 
-func (i *interceptor) WrapStreamContext(ctx context.Context) context.Context {
-	return ctx
+func (i *interceptor) WrapStreamingClient(clientConnFunc connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return newStreamingClientTracker(clientConnFunc)
 }
 
-func (i *interceptor) WrapStreamSender(ctx context.Context, sender connect.Sender) connect.Sender {
-	return newSenderTracker(ctx, sender)
-}
-
-func (i *interceptor) WrapStreamReceiver(ctx context.Context, receiver connect.Receiver) connect.Receiver {
-	return newReceiverTracker(ctx, receiver)
+func (i *interceptor) WrapStreamingHandler(handlerConnFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return newStreamingHandlerTracker(handlerConnFunc)
 }
