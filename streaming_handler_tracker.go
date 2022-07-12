@@ -24,7 +24,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-type handlerConnTracker struct {
+type streamingHandlerConnTracker struct {
 	connect.StreamingHandlerConn
 
 	procedure string
@@ -36,7 +36,7 @@ type handlerConnTracker struct {
 func newStreamingHandlerTracker(handlerConnFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, handlerConn connect.StreamingHandlerConn) (retErr error) { // nolint:nonamedreturns
 		ochttp.SetRoute(ctx, handlerConn.Spec().Procedure)
-		tracker := &handlerConnTracker{
+		tracker := &streamingHandlerConnTracker{
 			StreamingHandlerConn: handlerConn,
 			procedure:            handlerConn.Spec().Procedure,
 		}
@@ -47,7 +47,7 @@ func newStreamingHandlerTracker(handlerConnFunc connect.StreamingHandlerFunc) co
 	}
 }
 
-func (t *handlerConnTracker) Send(message any) (retErr error) { // nolint:nonamedreturns
+func (t *streamingHandlerConnTracker) Send(message any) (retErr error) { // nolint:nonamedreturns
 	defer func() {
 		if retErr == nil {
 			t.sentCount.Inc()
@@ -56,7 +56,7 @@ func (t *handlerConnTracker) Send(message any) (retErr error) { // nolint:noname
 	return t.StreamingHandlerConn.Send(message)
 }
 
-func (t *handlerConnTracker) Receive(message any) (retErr error) { // nolint:nonamedreturns
+func (t *streamingHandlerConnTracker) Receive(message any) (retErr error) { // nolint:nonamedreturns
 	defer func() {
 		if retErr == nil {
 			t.receivedCount.Inc()
@@ -66,7 +66,7 @@ func (t *handlerConnTracker) Receive(message any) (retErr error) { // nolint:non
 	return t.StreamingHandlerConn.Receive(message)
 }
 
-func (t *handlerConnTracker) finishStreamingHandlerTracking(ctx context.Context, retErr error) {
+func (t *streamingHandlerConnTracker) finishStreamingHandlerTracking(ctx context.Context, retErr error) {
 	status := statusOK
 	if retErr != nil {
 		status = connect.CodeOf(retErr).String()

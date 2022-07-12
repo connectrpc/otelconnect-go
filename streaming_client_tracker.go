@@ -26,7 +26,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-type clientConnTracker struct {
+type streamingClientConnTracker struct {
 	connect.StreamingClientConn
 
 	procedure string
@@ -40,14 +40,14 @@ type clientConnTracker struct {
 func newStreamingClientTracker(clientConnFunc connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		ochttp.SetRoute(ctx, spec.Procedure)
-		return &clientConnTracker{
+		return &streamingClientConnTracker{
 			StreamingClientConn: clientConnFunc(ctx, spec),
 			procedure:           spec.Procedure,
 		}
 	}
 }
 
-func (t *clientConnTracker) Send(message any) (retErr error) { // nolint:nonamedreturns
+func (t *streamingClientConnTracker) Send(message any) (retErr error) { // nolint:nonamedreturns
 	defer func() {
 		if retErr == nil {
 			t.sentCount.Inc()
@@ -56,7 +56,7 @@ func (t *clientConnTracker) Send(message any) (retErr error) { // nolint:nonamed
 	return t.StreamingClientConn.Send(message)
 }
 
-func (t *clientConnTracker) CloseRequest() error {
+func (t *streamingClientConnTracker) CloseRequest() error {
 	defer func() {
 		if t.closedCount.Inc() == 2 {
 			t.finishStreamingClientTracking(context.Background())
@@ -65,7 +65,7 @@ func (t *clientConnTracker) CloseRequest() error {
 	return t.StreamingClientConn.CloseRequest()
 }
 
-func (t *clientConnTracker) Receive(message any) (retErr error) { // nolint:nonamedreturns
+func (t *streamingClientConnTracker) Receive(message any) (retErr error) { // nolint:nonamedreturns
 	defer func() {
 		if retErr == nil {
 			t.receivedCount.Inc()
@@ -78,7 +78,7 @@ func (t *clientConnTracker) Receive(message any) (retErr error) { // nolint:nona
 	return t.StreamingClientConn.Receive(message)
 }
 
-func (t *clientConnTracker) CloseResponse() error {
+func (t *streamingClientConnTracker) CloseResponse() error {
 	defer func() {
 		if t.closedCount.Inc() == 2 {
 			t.finishStreamingClientTracking(context.Background())
@@ -87,7 +87,7 @@ func (t *clientConnTracker) CloseResponse() error {
 	return t.StreamingClientConn.CloseResponse()
 }
 
-func (t *clientConnTracker) finishStreamingClientTracking(ctx context.Context) {
+func (t *streamingClientConnTracker) finishStreamingClientTracking(ctx context.Context) {
 	status := statusOK
 	if err := t.receivedError.Load(); err != nil {
 		status = connect.CodeOf(err).String()
