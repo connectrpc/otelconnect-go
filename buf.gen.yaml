@@ -2,7 +2,7 @@ version: v1
 managed:
   enabled: true
   go_package_prefix:
-    default: github.com/bufbuild/connect-opencensus-go/internal/gen
+    default: github.com/bufbuild/connect-opentelemetry-go/internal/gen
 plugins:
   - name: go
     out: internal/gen
