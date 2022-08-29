@@ -22,6 +22,7 @@ linters-settings:
     ignore-decls:
       - T any
       - i int
+      - wg sync.WaitGroup
 linters:
   enable-all: true
   disable:
@@ -32,12 +33,14 @@ linters:
     - gofumpt           # prefer standard gofmt
     - golint            # deprecated by Go team
     - gomnd             # some unnamed constants are okay
+    - ifshort           # deprecated by author
     - interfacer        # deprecated by author
     - ireturn           # "accept interfaces, return structs" isn't ironclad
     - lll               # don't want hard limits for line length
     - maintidx          # covered by gocyclo
     - maligned          # readability trumps efficient struct packing
     - nlreturn          # generous whitespace violates house style
+    - nosnakecase       # deprecated in https://github.com/golangci/golangci-lint/pull/3065
     - scopelint         # deprecated by author
     - testpackage       # internal tests are fine
     - wrapcheck         # don't _always_ need to wrap errors
@@ -47,8 +50,3 @@ issues:
     # Don't ban use of fmt.Errorf to create new errors, but the remaining
     # checks from err113 are useful.
     - "err113: do not define dynamic errors.*"
-
-  exclude-rules:
-    # We do want to global and export these tracking stats, distribution, tags, and views.
-    - linters: [gochecknoglobals]
-      path: occonnect.go
