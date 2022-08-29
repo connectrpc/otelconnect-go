@@ -21,102 +21,13 @@ quickstart][otel-go-quickstart].
 ### Server
 
 ```go
-package main
-
-import (
-	"example/internal/gen/buf/connect/demo/eliza/v1/elizav1connect"
-	"log"
-	"net/http"
-
-	"github.com/bufbuild/connect-go"
-	occonnect "github.com/bufbuild/connect-opencensus-go"
-	"go.opencensus.io/plugin/ochttp"
-	"go.opencensus.io/stats/view"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
-)
-
-type elizaServer struct {
-	elizav1connect.UnimplementedElizaServiceHandler
-}
-
-func main() {
-	// register server views from occonnect, you can also register those from ochttp.
-	if err := view.Register(
-		occonnect.ServerLatencyView,
-		occonnect.ServerCompletedRPCsView,
-		occonnect.ServerSentMessagesPerRPCView,
-		occonnect.ServerReceivedMessagesPerRPCView,
-	); err != nil {
-		log.Fatalf("Failed to register server views for connect metrics: %v", err)
-	}
-	// start your exporter and enable observability to extract and examine stats,
-	// see: https://opencensus.io/guides/http/go/net_http/server/
-	enableObservabilityAndExporters()
-
-	// your own connect handler.
-	mux := http.NewServeMux()
-	mux.Handle(elizav1connect.NewElizaServiceHandler(
-		&elizaServer{},
-		connect.WithInterceptors(
-			occonnect.NewInterceptor(),
-		),
-	))
-	// use ochttp.Handler to wrap your original handler.
-	handler := &ochttp.Handler{Handler: mux}
-	// If you don't need to support HTTP/2 without TLS (h2c), you can drop
-	// x/net/http2 and use http.ListenAndServeTLS instead.
-	http.ListenAndServe(
-		":8080",
-		h2c.NewHandler(handler, &http2.Server{}),
-	)
-}
+// TODO
 ```
 
 ### Client
 
 ```go
-package main
-
-import (
-	"context"
-	elizav1 "example/internal/gen/buf/connect/demo/eliza/v1"
-	"example/internal/gen/buf/connect/demo/eliza/v1/elizav1connect"
-	"log"
-	"net/http"
-
-	"github.com/bufbuild/connect-go"
-	occonnect "github.com/bufbuild/connect-opencensus-go"
-	"go.opencensus.io/plugin/ochttp"
-	"go.opencensus.io/stats/view"
-)
-
-func main() {
-	// register client views from occonnect, you can also register those from ochttp.
-	if err := view.Register(
-		occonnect.ClientRoundtripLatencyView,
-		occonnect.ClientCompletedRPCsView,
-		occonnect.ClientSentMessagesPerRPCView,
-		occonnect.ClientReceivedMessagesPerRPCView,
-	); err != nil {
-		log.Fatalf("Failed to register client views for connect metrics: %v", err)
-	}
-	// start your exporter and enable observability to extract and examine stats,
-	// see: https://opencensus.io/guides/http/go/net_http/client/
-	enableObservabilityAndExporters()
-
-	// use ochttp.Transport to wrap your original transport.
-	transport := &ochttp.Transport{
-		Base: http.DefaultTransport,
-	}
-	// create the client with the wrapped transport
-	client := elizav1connect.NewElizaServiceClient(
-		&http.Client{Transport: transport},
-		"http://localhost:8080/",
-	)
-	// use the client.
-	_ = client
-}
+// TODO
 ```
 
 ## Status
