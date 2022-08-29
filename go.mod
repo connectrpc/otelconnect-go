@@ -1,4 +1,4 @@
-module github.com/bufbuild/connect-opencensus-go
+module github.com/bufbuild/connect-opentelemetry-go
 
 go 1.18
 
