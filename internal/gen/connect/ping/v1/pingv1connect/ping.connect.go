@@ -8,7 +8,7 @@ import (
 	context "context"
 	errors "errors"
 	connect_go "connectrpc.com/connect"
-	v1 "github.com/bufbuild/connect-opencensus-go/internal/gen/connect/ping/v1"
+	v1 "connectrpc.com/otelconnect/internal/gen/connect/ping/v1"
 	http "net/http"
 	strings "strings"
 )

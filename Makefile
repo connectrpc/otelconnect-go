@@ -6,7 +6,7 @@ SHELL := bash
 MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --no-print-directory
-BIN := .tmp/bin
+BIN := $(abspath .tmp/bin)
 COPYRIGHT_YEARS := 2022
 LICENSE_IGNORE := -e /gen/
 # Set to use a different compiler. For example, `GO=go1.18rc1 make test`.
@@ -29,10 +29,6 @@ clean: ## Delete intermediate build artifacts
 .PHONY: test
 test: build ## Run unit tests
 	$(GO) test -vet=off -race -cover ./...
-
-.PHONY: shorttest
-shorttest: build ## Run unit tests
-	$(GO) test -test.short -vet=off -race -cover ./...
 
 .PHONY: build
 build: generate ## Build all packages
@@ -77,24 +73,26 @@ checkgenerate:
 	@# Used in CI to verify that `make generate` doesn't produce a diff.
 	test -z "$$(git status --porcelain | tee /dev/stderr)"
 
-$(BIN)/protoc-gen-connect-go: Makefile go.mod
+$(BIN)/protoc-gen-connect-go: go.mod
 	@mkdir -p $(@D)
 	@# The version of protoc-gen-connect-go is determined by the version in go.mod
 	GOBIN=$(abspath $(@D)) $(GO) install connectrpc.com/connect/cmd/protoc-gen-connect-go
 
 $(BIN)/buf: Makefile
 	@mkdir -p $(@D)
-	GOBIN=$(abspath $(@D)) $(GO) install github.com/bufbuild/buf/cmd/buf@v1.5.0
+	GOBIN=$(abspath $(@D)) $(GO) install github.com/bufbuild/buf/cmd/buf@v1.7.0
 
 $(BIN)/license-header: Makefile
 	@mkdir -p $(@D)
 	GOBIN=$(abspath $(@D)) $(GO) install \
-		  github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v1.5.0
+		  github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v1.7.0
 
 $(BIN)/golangci-lint: Makefile
 	@mkdir -p $(@D)
-	GOBIN=$(abspath $(@D)) $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.46.2
+	GOBIN=$(abspath $(@D)) $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.49.0
 
 $(BIN)/protoc-gen-go: Makefile
 	@mkdir -p $(@D)
-	GOBIN=$(abspath $(@D)) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28.0
+	@# The version of protoc-gen-go is determined by the version in go.mod
+	GOBIN=$(abspath $(@D)) $(GO) install google.golang.org/protobuf/cmd/protoc-gen-go
+
