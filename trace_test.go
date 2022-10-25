@@ -16,6 +16,11 @@ package otelconnect
 
 import (
 	"context"
+	"math/rand"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
 	"github.com/bufbuild/connect-go"
 	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/connect/ping/v1"
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/connect/ping/v1/pingv1connect"
@@ -27,10 +32,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	"log"
-	"net/http"
-	"net/http/httptest"
-	"testing"
 )
 
 // Semantic conventions for attribute keys for gRPC.
@@ -58,20 +59,25 @@ func doCalls(req *connect.Request[pingv1.PingRequest], handlerOption ...connect.
 	return client.Ping(context.Background(), req)
 }
 
-func randombytes(size int) string {
-	body := make([]byte, size)
-	return string(body)
+func RequestOfSize(n, dataSize int64) *connect.Request[pingv1.PingRequest] {
+	body := make([]byte, dataSize)
+	for i := range body {
+		body[i] = byte(rand.Intn(128))
+	}
+	return connect.NewRequest(&pingv1.PingRequest{Number: n, Data: body})
 }
 
 func TestInterceptors(t *testing.T) {
+	const largeMessageSize = 1000
+
 	clientUnarySR := tracetest.NewSpanRecorder()
 	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
-	_, err := doCalls(connect.NewRequest(&pingv1.PingRequest{Number: 42}), WithTelemetry(WithTracerProvider(clientUnaryTP)))
+	_, err := doCalls(RequestOfSize(1, 0), WithTelemetry(WithTracerProvider(clientUnaryTP)))
 	if err != nil {
 		t.Errorf(err.Error())
 	}
 
-	_, err = doCalls(connect.NewRequest(&pingv1.PingRequest{Text: randombytes(10)}), WithTelemetry(WithTracerProvider(clientUnaryTP)))
+	_, err = doCalls(RequestOfSize(2, largeMessageSize), WithTelemetry(WithTracerProvider(clientUnaryTP)))
 	if err != nil {
 		t.Errorf(err.Error())
 	}
@@ -114,7 +120,7 @@ func TestInterceptors(t *testing.T) {
 					Attributes: []attribute.KeyValue{
 						RPCMessageTypeKey.String("RECEIVED"),
 						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(12),
+						RPCMessageUncompressedSizeKey.Int(1005),
 					},
 				},
 				{
@@ -122,7 +128,7 @@ func TestInterceptors(t *testing.T) {
 					Attributes: []attribute.KeyValue{
 						RPCMessageTypeKey.String("SENT"),
 						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(0),
+						RPCMessageUncompressedSizeKey.Int(1005),
 					},
 				},
 			},
@@ -136,22 +142,16 @@ func TestInterceptors(t *testing.T) {
 			},
 		},
 	})
-
 }
 
 func (ps *PingServer) Ping(
-	ctx context.Context,
+	_ context.Context,
 	req *connect.Request[pingv1.PingRequest],
 ) (*connect.Response[pingv1.PingResponse], error) {
-	// connect.Request and connect.Response give you direct access to headers and
-	// trailers. No context-based nonsense!
-	log.Println(req.Header().Get("Some-Header"))
 	res := connect.NewResponse(&pingv1.PingResponse{
-		// req.Msg is a strongly-typed *pingv1.PingRequest, so we can access its
-		// fields without type assertions.
 		Number: req.Msg.Number,
+		Data:   req.Msg.Data,
 	})
-	res.Header().Set("Some-Other-Header", "hello!")
 	return res, nil
 }
 
@@ -166,9 +166,6 @@ type asserts struct {
 }
 
 func checkUnaryClientSpans(t *testing.T, spans []trace.ReadOnlySpan, want []asserts) {
-	comparer := cmp.Comparer(func(x, y attribute.KeyValue) bool {
-		return x.Value == x.Value && y.Key == y.Key
-	})
 	for i, span := range spans {
 		wantEvents := want[i].events
 		wantAttributes := want[i].attrs
@@ -187,7 +184,9 @@ func checkUnaryClientSpans(t *testing.T, spans []trace.ReadOnlySpan, want []asse
 				t.Error("names do not match")
 			}
 
-			diff := cmp.Diff(e.Attributes, gotEvents[i].Attributes, comparer)
+			diff := cmp.Diff(e.Attributes, gotEvents[i].Attributes, cmp.Comparer(func(x, y attribute.KeyValue) bool {
+				return x.Value == y.Value && x.Key == y.Key
+			}))
 			if diff != "" {
 				t.Error(diff)
 			}
