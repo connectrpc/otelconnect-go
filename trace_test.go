@@ -81,7 +81,7 @@ func TestInterceptors(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 
-	checkUnaryClientSpans(t, clientUnarySR.Ended(), []asserts{
+	checkUnaryClientSpans(t, clientUnarySR.Ended(), []wantTraces{
 		{
 			spanName: "connect.ping.v1.PingService/Ping",
 			events: []trace.Event{
@@ -158,13 +158,13 @@ type PingServer struct {
 	pingv1connect.UnimplementedPingServiceHandler
 }
 
-type asserts struct {
+type wantTraces struct {
 	spanName string
 	events   []trace.Event
 	attrs    []attribute.KeyValue
 }
 
-func checkUnaryClientSpans(t *testing.T, spans []trace.ReadOnlySpan, want []asserts) {
+func checkUnaryClientSpans(t *testing.T, spans []trace.ReadOnlySpan, want []wantTraces) {
 	t.Helper()
 	for i, span := range spans {
 		wantEvents := want[i].events
