@@ -19,8 +19,8 @@ import (
 	"github.com/bufbuild/connect-go"
 	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/connect/ping/v1"
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/connect/ping/v1/pingv1connect"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -58,30 +58,84 @@ func doCalls(req *connect.Request[pingv1.PingRequest], handlerOption ...connect.
 	return client.Ping(context.Background(), req)
 }
 
-func assertEvents(t *testing.T, expected, actual []trace.Event) bool {
-	if !assert.Len(t, actual, len(expected)) {
-		return false
-	}
-
-	var failed bool
-	for i, e := range expected {
-		if !assert.Equal(t, e.Name, actual[i].Name, "names do not match") {
-			failed = true
-		}
-		if !assert.ElementsMatch(t, e.Attributes, actual[i].Attributes, "attributes do not match: %s", e.Name) {
-			failed = true
-		}
-	}
-
-	return !failed
+func randombytes(size int) string {
+	body := make([]byte, size)
+	return string(body)
 }
 
 func TestInterceptors(t *testing.T) {
 	clientUnarySR := tracetest.NewSpanRecorder()
 	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
 	_, err := doCalls(connect.NewRequest(&pingv1.PingRequest{Number: 42}), WithTelemetry(WithTracerProvider(clientUnaryTP)))
-	require.NoError(t, err)
-	checkUnaryClientSpans(t, clientUnarySR.Ended())
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+
+	_, err = doCalls(connect.NewRequest(&pingv1.PingRequest{Text: randombytes(10)}), WithTelemetry(WithTracerProvider(clientUnaryTP)))
+	if err != nil {
+		t.Errorf(err.Error())
+	}
+
+	checkUnaryClientSpans(t, clientUnarySR.Ended(), []asserts{
+		{
+			spanName: "connect.ping.v1.PingService/Ping",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						RPCMessageTypeKey.String("RECEIVED"),
+						RPCMessageIDKey.Int(1),
+						RPCMessageUncompressedSizeKey.Int(2),
+					},
+				},
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						RPCMessageTypeKey.String("SENT"),
+						RPCMessageIDKey.Int(1),
+						RPCMessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("Ping"),
+				semconv.NetPeerNameKey.String("127.0.0.1"),
+				semconv.NetPeerPortKey.String(""),
+				attribute.Key("rpc.connect.status_code").String("success"),
+			},
+		},
+		{
+			spanName: "connect.ping.v1.PingService/Ping",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						RPCMessageTypeKey.String("RECEIVED"),
+						RPCMessageIDKey.Int(1),
+						RPCMessageUncompressedSizeKey.Int(12),
+					},
+				},
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						RPCMessageTypeKey.String("SENT"),
+						RPCMessageIDKey.Int(1),
+						RPCMessageUncompressedSizeKey.Int(0),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("Ping"),
+				semconv.NetPeerNameKey.String("127.0.0.1"),
+				semconv.NetPeerPortKey.String(""),
+				attribute.Key("rpc.connect.status_code").String("success"),
+			},
+		},
+	})
 
 }
 
@@ -105,41 +159,50 @@ type PingServer struct {
 	pingv1connect.UnimplementedPingServiceHandler // returns errors from all methods
 }
 
-func checkUnaryClientSpans(t *testing.T, spans []trace.ReadOnlySpan) {
-	require.Len(t, spans, 1)
-	assert.False(t, spans[0].EndTime().IsZero())
-	assert.Equal(t, "connect.ping.v1.PingService/Ping", spans[0].Name())
+type asserts struct {
+	spanName string
+	events   []trace.Event
+	attrs    []attribute.KeyValue
+}
 
-	gotEvents := spans[0].Events()
-	wantEvents := []trace.Event{
-		{
-			Name: "message",
-			Attributes: []attribute.KeyValue{
-				RPCMessageTypeKey.String("RECEIVED"),
-				RPCMessageIDKey.Int(1),
-				RPCMessageUncompressedSizeKey.Int(2),
+func checkUnaryClientSpans(t *testing.T, spans []trace.ReadOnlySpan, want []asserts) {
+	comparer := cmp.Comparer(func(x, y attribute.KeyValue) bool {
+		return x.Value == x.Value && y.Key == y.Key
+	})
+	for i, span := range spans {
+		wantEvents := want[i].events
+		wantAttributes := want[i].attrs
+		if span.EndTime().IsZero() {
+			t.Fail()
+		}
+		if span.Name() != want[i].spanName {
+			t.Errorf("span name not %s", want[i].spanName)
+		}
+		gotEvents := span.Events()
+		if len(wantEvents) != len(gotEvents) {
+			t.Error("event lengths do not match")
+		}
+		for i, e := range wantEvents {
+			if e.Name != gotEvents[i].Name {
+				t.Error("names do not match")
+			}
+
+			diff := cmp.Diff(e.Attributes, gotEvents[i].Attributes, comparer)
+			if diff != "" {
+				t.Error(diff)
+			}
+		}
+		diff := cmp.Diff(span.Attributes(), wantAttributes,
+			cmpopts.IgnoreUnexported(attribute.Value{}),
+			cmp.Comparer(func(x, y attribute.KeyValue) bool {
+				if x.Key == semconv.NetPeerPortKey && y.Key == semconv.NetPeerPortKey {
+					return true
+				}
+				return x.Key == y.Key && x.Value == y.Value
 			},
-		},
-		{
-
-			Name: "message",
-			Attributes: []attribute.KeyValue{
-				RPCMessageTypeKey.String("SENT"),
-				RPCMessageIDKey.Int(1),
-				RPCMessageUncompressedSizeKey.Int(2),
-			},
-		},
+			))
+		if diff != "" {
+			t.Error(diff)
+		}
 	}
-	assertEvents(t, wantEvents, gotEvents)
-	gotAtts := spans[0].Attributes()
-
-	wantAtts := []attribute.KeyValue{
-		semconv.RPCSystemKey.String("connect"),
-		semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
-		semconv.RPCMethodKey.String("Ping"),
-		semconv.NetPeerNameKey.String("127.0.0.1"),
-		attribute.Key("rpc.connect.status_code").String("success"),
-	}
-
-	assert.Subset(t, gotAtts, wantAtts)
 }
