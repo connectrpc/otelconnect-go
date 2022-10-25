@@ -17,12 +17,12 @@ syntax = "proto3";
 package connect.ping.v1;
 
 message PingRequest {
-  int64 number = 1;
+  int64 id = 1;
   bytes data = 2;
 }
 
 message PingResponse {
-  int64 number = 1;
+  int64 id = 1;
   bytes data = 2;
 }
 

@@ -34,7 +34,6 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-// Semantic conventions for attribute keys for gRPC.
 const (
 	// Type of message transmitted or received.
 	RPCMessageTypeKey = attribute.Key("message.type")
@@ -59,17 +58,17 @@ func doCalls(req *connect.Request[pingv1.PingRequest], handlerOption ...connect.
 	return client.Ping(context.Background(), req)
 }
 
-func RequestOfSize(n, dataSize int64) *connect.Request[pingv1.PingRequest] {
+func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 	body := make([]byte, dataSize)
 	for i := range body {
-		body[i] = byte(rand.Intn(128))
+		body[i] = byte(rand.Intn(128)) //nolint: gosec
 	}
-	return connect.NewRequest(&pingv1.PingRequest{Number: n, Data: body})
+	return connect.NewRequest(&pingv1.PingRequest{Id: id, Data: body})
 }
 
 func TestInterceptors(t *testing.T) {
+	t.Parallel()
 	const largeMessageSize = 1000
-
 	clientUnarySR := tracetest.NewSpanRecorder()
 	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
 	_, err := doCalls(RequestOfSize(1, 0), WithTelemetry(WithTracerProvider(clientUnaryTP)))
@@ -149,14 +148,14 @@ func (ps *PingServer) Ping(
 	req *connect.Request[pingv1.PingRequest],
 ) (*connect.Response[pingv1.PingResponse], error) {
 	res := connect.NewResponse(&pingv1.PingResponse{
-		Number: req.Msg.Number,
-		Data:   req.Msg.Data,
+		Id:   req.Msg.Id,
+		Data: req.Msg.Data,
 	})
 	return res, nil
 }
 
 type PingServer struct {
-	pingv1connect.UnimplementedPingServiceHandler // returns errors from all methods
+	pingv1connect.UnimplementedPingServiceHandler
 }
 
 type asserts struct {
@@ -166,6 +165,7 @@ type asserts struct {
 }
 
 func checkUnaryClientSpans(t *testing.T, spans []trace.ReadOnlySpan, want []asserts) {
+	t.Helper()
 	for i, span := range spans {
 		wantEvents := want[i].events
 		wantAttributes := want[i].attrs
@@ -183,7 +183,6 @@ func checkUnaryClientSpans(t *testing.T, spans []trace.ReadOnlySpan, want []asse
 			if e.Name != gotEvents[i].Name {
 				t.Error("names do not match")
 			}
-
 			diff := cmp.Diff(e.Attributes, gotEvents[i].Attributes, cmp.Comparer(func(x, y attribute.KeyValue) bool {
 				return x.Value == y.Value && x.Key == y.Key
 			}))
