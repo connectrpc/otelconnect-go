@@ -181,7 +181,6 @@ func TestHandlerFailCall(t *testing.T) {
 			},
 		},
 	}, clientSpanRecorder.Ended())
-
 }
 
 func TestClientHandlerOpts(t *testing.T) {
@@ -414,7 +413,9 @@ func TestInterceptors(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
-func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption) (pingv1connect.PingServiceClient, string, string) {
+func startServer(
+	handlerOpts []connect.HandlerOption,
+	clientOpts []connect.ClientOption) (pingv1connect.PingServiceClient, string, string) {
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, handlerOpts...))
 	server := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
@@ -425,15 +426,11 @@ func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.Clien
 	return pingClient, host, port
 }
 
-func (ps *PingServer) Ping(
-	_ context.Context,
-	req *connect.Request[pingv1.PingRequest],
-) (*connect.Response[pingv1.PingResponse], error) {
-	res := connect.NewResponse(&pingv1.PingResponse{
+func (*PingServer) Ping(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+	return connect.NewResponse(&pingv1.PingResponse{
 		Id:   req.Msg.Id,
 		Data: req.Msg.Data,
-	})
-	return res, nil
+	}), nil
 }
 
 type PingServer struct {
@@ -468,9 +465,10 @@ func checkUnarySpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 			if e.Name != gotEvents[i].Name {
 				t.Error("names do not match")
 			}
-			diff := cmp.Diff(e.Attributes, gotEvents[i].Attributes, cmp.Comparer(func(x, y attribute.KeyValue) bool {
-				return x.Value == y.Value && x.Key == y.Key
-			}))
+			diff := cmp.Diff(e.Attributes, gotEvents[i].Attributes,
+				cmp.Comparer(func(x, y attribute.KeyValue) bool {
+					return x.Value == y.Value && x.Key == y.Key
+				}))
 			if diff != "" {
 				t.Error(diff)
 			}
