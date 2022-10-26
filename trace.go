@@ -22,7 +22,6 @@ import (
 
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
@@ -92,12 +91,8 @@ func (i *traceInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			)
 			i.config.Propagator.Inject(ctx, carrier)
 		} else {
-			// TODO: surely we don't _really_ need to allocate all these contexts?
-			// otelgrpc does, but it seems absurd.
 			ctx = i.config.Propagator.Extract(ctx, carrier)
-			bags := baggage.FromContext(ctx)
 			spanCtx := trace.SpanContextFromContext(ctx)
-			ctx = baggage.ContextWithBaggage(ctx, bags)
 			ctx, span = tracer.Start(
 				trace.ContextWithRemoteSpanContext(ctx, spanCtx),
 				name,
