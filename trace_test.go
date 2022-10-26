@@ -55,6 +55,26 @@ func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 	return connect.NewRequest(&pingv1.PingRequest{Id: id, Data: body})
 }
 
+func TestWithoutTracing(t *testing.T) {
+	t.Parallel()
+
+	clientUnarySR := tracetest.NewSpanRecorder()
+	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
+
+	pingClient, _, _ := startServer(
+		WithTelemetry(
+			WithoutTracing(),
+			WithTracerProvider(clientUnaryTP),
+		),
+	)
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+		t.Errorf(err.Error())
+	}
+	if len(clientUnarySR.Ended()) != 0 {
+		t.Error("unexpected spans recorded")
+	}
+}
+
 func TestBasicFilter(t *testing.T) {
 	t.Parallel()
 
