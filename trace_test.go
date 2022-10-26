@@ -58,19 +58,22 @@ func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 func TestWithoutTracing(t *testing.T) {
 	t.Parallel()
 
-	clientUnarySR := tracetest.NewSpanRecorder()
-	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 
 	pingClient, _, _ := startServer(
-		WithTelemetry(
-			WithoutTracing(),
-			WithTracerProvider(clientUnaryTP),
-		),
+		[]connect.HandlerOption{ /* handlerOpts */
+			WithTelemetry(
+				WithoutTracing(),
+				WithTracerProvider(traceProvider),
+			),
+		},
+		nil, /* clientOpts */
 	)
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	if len(clientUnarySR.Ended()) != 0 {
+	if len(spanRecorder.Ended()) != 0 {
 		t.Error("unexpected spans recorded")
 	}
 }
@@ -78,16 +81,27 @@ func TestWithoutTracing(t *testing.T) {
 func TestBasicFilter(t *testing.T) {
 	t.Parallel()
 
-	clientUnarySR := tracetest.NewSpanRecorder()
-	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer(
-		WithTelemetry(
-			WithTracerProvider(clientUnaryTP),
-			WithFilter(func(ctx context.Context, request *Request) bool {
-				return false
-			}),
-		),
+		[]connect.HandlerOption{ /* clientOpts */
+			WithTelemetry(
+				WithTracerProvider(traceProvider),
+				WithFilter(func(ctx context.Context, request *Request) bool {
+					return false
+				}),
+			),
+		},
+		[]connect.ClientOption{ /* clientOpts */
+			WithTelemetry(
+				WithTracerProvider(traceProvider),
+				WithFilter(func(ctx context.Context, request *Request) bool {
+					return false
+				}),
+			),
+		}, /* clientOpts */
 	)
+
 	req := RequestOfSize(1, 0)
 	req.Header().Set("Some-Header", "foobar")
 	if _, err := pingClient.Ping(context.Background(), req); err != nil {
@@ -97,10 +111,10 @@ func TestBasicFilter(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	if len(clientUnarySR.Ended()) != 0 {
+	if len(spanRecorder.Ended()) != 0 {
 		t.Error("unexpected spans recorded")
 	}
-	checkUnaryClientSpans(t, clientUnarySR.Ended(),
+	checkUnaryClientSpans(t, spanRecorder.Ended(),
 		[]wantTraces{
 			{
 				spanName: "connect.ping.v1.PingService/Ping",
@@ -137,16 +151,19 @@ func TestBasicFilter(t *testing.T) {
 func TestFilterHeader(t *testing.T) {
 	t.Parallel()
 
-	clientUnarySR := tracetest.NewSpanRecorder()
-	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 
 	pingClient, host, port := startServer(
-		WithTelemetry(
-			WithTracerProvider(clientUnaryTP),
-			WithFilter(func(ctx context.Context, request *Request) bool {
-				return request.Header.Get("Some-Header") == "foobar"
-			}),
-		),
+		[]connect.HandlerOption{ /* clientOpts */
+			WithTelemetry(
+				WithTracerProvider(traceProvider),
+				WithFilter(func(ctx context.Context, request *Request) bool {
+					return request.Header.Get("Some-Header") == "foobar"
+				}),
+			),
+		},
+		nil, /* clientOpts */
 	)
 	req := RequestOfSize(1, 0)
 	req.Header().Set("Some-Header", "foobar")
@@ -158,7 +175,7 @@ func TestFilterHeader(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 
-	checkUnaryClientSpans(t, clientUnarySR.Ended(),
+	checkUnaryClientSpans(t, spanRecorder.Ended(),
 		[]wantTraces{
 			{
 				spanName: "connect.ping.v1.PingService/Ping",
@@ -196,17 +213,21 @@ func TestInterceptors(t *testing.T) {
 	t.Parallel()
 	const largeMessageSize = 1000
 
-	clientUnarySR := tracetest.NewSpanRecorder()
-	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
-	pingClient, host, port := startServer(WithTelemetry(WithTracerProvider(clientUnaryTP)))
-
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer(
+		[]connect.HandlerOption{ /* clientOpts */
+			WithTelemetry(WithTracerProvider(traceProvider)),
+		},
+		nil, /* clientOpts */
+	)
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(2, largeMessageSize)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnaryClientSpans(t, clientUnarySR.Ended(),
+	checkUnaryClientSpans(t, spanRecorder.Ended(),
 		[]wantTraces{
 			{
 				spanName: "connect.ping.v1.PingService/Ping",
@@ -269,11 +290,11 @@ func TestInterceptors(t *testing.T) {
 		})
 }
 
-func startServer(opts ...connect.HandlerOption) (pingv1connect.PingServiceClient, string, string) {
+func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption) (pingv1connect.PingServiceClient, string, string) {
 	mux := http.NewServeMux()
-	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, opts...))
+	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, handlerOpts...))
 	server := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
-	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL)
+	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
 	serverurl := strings.ReplaceAll(server.URL, "http://", "")
 	spl := strings.Split(serverurl, ":")
 	host, port := spl[0], spl[1]
