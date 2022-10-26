@@ -78,6 +78,112 @@ func TestWithoutTracing(t *testing.T) {
 	}
 }
 
+func TestClientSimple(t *testing.T) {
+	t.Parallel()
+
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+
+	pingClient, host, port := startServer(
+		nil, /* handlerOpts */
+		[]connect.ClientOption{
+			WithTelemetry(
+				WithTracerProvider(clientTraceProvider),
+			),
+		},
+	)
+
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+		t.Errorf(err.Error())
+	}
+
+	checkUnarySpans(t, []wantSpans{
+		{
+			spanName: "connect.ping.v1.PingService/Ping",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						RPCMessageTypeKey.String("SENT"),
+						RPCMessageIDKey.Int(1),
+						RPCMessageUncompressedSizeKey.Int(2),
+					},
+				},
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						RPCMessageTypeKey.String("RECEIVED"),
+						RPCMessageIDKey.Int(1),
+						RPCMessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("Ping"),
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
+				attribute.Key("rpc.connect.status_code").String("success"),
+			},
+		},
+	}, clientSpanRecorder.Ended())
+}
+
+func TestHandlerFailCall(t *testing.T) {
+	t.Parallel()
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+
+	pingClient, host, port := startServer(
+		nil,
+		[]connect.ClientOption{
+			WithTelemetry(
+				WithTracerProvider(clientTraceProvider),
+			),
+		},
+	)
+
+	_, err := pingClient.Fail(
+		context.Background(),
+		connect.NewRequest(&pingv1.FailRequest{Code: int32(connect.CodeInternal)}),
+	)
+	if err == nil {
+		t.Error("expecting error, got nil")
+	}
+	checkUnarySpans(t, []wantSpans{
+		{
+			spanName: "connect.ping.v1.PingService/Fail",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						RPCMessageTypeKey.String("SENT"),
+						RPCMessageIDKey.Int(1),
+						RPCMessageUncompressedSizeKey.Int(2),
+					},
+				},
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						RPCMessageTypeKey.String("RECEIVED"),
+						RPCMessageIDKey.Int(1),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("Fail"),
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
+				attribute.Key("rpc.connect.status_code").String("unimplemented"),
+			},
+		},
+	}, clientSpanRecorder.Ended())
+
+}
+
 func TestClientHandlerOpts(t *testing.T) {
 	t.Parallel()
 	serverSpanRecorder := tracetest.NewSpanRecorder()
