@@ -19,6 +19,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/bufbuild/connect-go"
@@ -46,18 +47,6 @@ const (
 	RPCMessageUncompressedSizeKey = attribute.Key("message.uncompressed_size")
 )
 
-func doCalls(req *connect.Request[pingv1.PingRequest], handlerOption ...connect.HandlerOption) (*connect.Response[pingv1.PingResponse], error) {
-	mux := http.NewServeMux()
-	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, handlerOption...))
-	server := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
-	httpclient := server.Client()
-	client := pingv1connect.NewPingServiceClient(
-		httpclient,
-		server.URL,
-	)
-	return client.Ping(context.Background(), req)
-}
-
 func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 	body := make([]byte, dataSize)
 	for i := range body {
@@ -66,81 +55,209 @@ func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 	return connect.NewRequest(&pingv1.PingRequest{Id: id, Data: body})
 }
 
+func TestBasicFilter(t *testing.T) {
+	t.Parallel()
+
+	clientUnarySR := tracetest.NewSpanRecorder()
+	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
+	pingClient, host, port := startServer(
+		WithTelemetry(
+			WithTracerProvider(clientUnaryTP),
+			WithFilter(func(ctx context.Context, request *Request) bool {
+				return false
+			}),
+		),
+	)
+	req := RequestOfSize(1, 0)
+	req.Header().Set("Some-Header", "foobar")
+	if _, err := pingClient.Ping(context.Background(), req); err != nil {
+		t.Errorf(err.Error())
+	}
+
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+		t.Errorf(err.Error())
+	}
+	if len(clientUnarySR.Ended()) != 0 {
+		t.Error("unexpected spans recorded")
+	}
+	checkUnaryClientSpans(t, clientUnarySR.Ended(),
+		[]wantTraces{
+			{
+				spanName: "connect.ping.v1.PingService/Ping",
+				events: []trace.Event{
+					{
+						Name: "message",
+						Attributes: []attribute.KeyValue{
+							RPCMessageTypeKey.String("RECEIVED"),
+							RPCMessageIDKey.Int(1),
+							RPCMessageUncompressedSizeKey.Int(2),
+						},
+					},
+					{
+						Name: "message",
+						Attributes: []attribute.KeyValue{
+							RPCMessageTypeKey.String("SENT"),
+							RPCMessageIDKey.Int(1),
+							RPCMessageUncompressedSizeKey.Int(2),
+						},
+					},
+				},
+				attrs: []attribute.KeyValue{
+					semconv.RPCSystemKey.String("connect"),
+					semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+					semconv.RPCMethodKey.String("Ping"),
+					semconv.NetPeerNameKey.String(host),
+					semconv.NetPeerPortKey.String(port),
+					attribute.Key("rpc.connect.status_code").String("success"),
+				},
+			},
+		})
+}
+
+func TestFilterHeader(t *testing.T) {
+	t.Parallel()
+
+	clientUnarySR := tracetest.NewSpanRecorder()
+	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
+
+	pingClient, host, port := startServer(
+		WithTelemetry(
+			WithTracerProvider(clientUnaryTP),
+			WithFilter(func(ctx context.Context, request *Request) bool {
+				return request.Header.Get("Some-Header") == "foobar"
+			}),
+		),
+	)
+	req := RequestOfSize(1, 0)
+	req.Header().Set("Some-Header", "foobar")
+	if _, err := pingClient.Ping(context.Background(), req); err != nil {
+		t.Errorf(err.Error())
+	}
+
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+		t.Errorf(err.Error())
+	}
+
+	checkUnaryClientSpans(t, clientUnarySR.Ended(),
+		[]wantTraces{
+			{
+				spanName: "connect.ping.v1.PingService/Ping",
+				events: []trace.Event{
+					{
+						Name: "message",
+						Attributes: []attribute.KeyValue{
+							RPCMessageTypeKey.String("RECEIVED"),
+							RPCMessageIDKey.Int(1),
+							RPCMessageUncompressedSizeKey.Int(2),
+						},
+					},
+					{
+						Name: "message",
+						Attributes: []attribute.KeyValue{
+							RPCMessageTypeKey.String("SENT"),
+							RPCMessageIDKey.Int(1),
+							RPCMessageUncompressedSizeKey.Int(2),
+						},
+					},
+				},
+				attrs: []attribute.KeyValue{
+					semconv.RPCSystemKey.String("connect"),
+					semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+					semconv.RPCMethodKey.String("Ping"),
+					semconv.NetPeerNameKey.String(host),
+					semconv.NetPeerPortKey.String(port),
+					attribute.Key("rpc.connect.status_code").String("success"),
+				},
+			},
+		})
+}
+
 func TestInterceptors(t *testing.T) {
 	t.Parallel()
 	const largeMessageSize = 1000
+
 	clientUnarySR := tracetest.NewSpanRecorder()
 	clientUnaryTP := trace.NewTracerProvider(trace.WithSpanProcessor(clientUnarySR))
-	_, err := doCalls(RequestOfSize(1, 0), WithTelemetry(WithTracerProvider(clientUnaryTP)))
-	if err != nil {
+	pingClient, host, port := startServer(WithTelemetry(WithTracerProvider(clientUnaryTP)))
+
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-
-	_, err = doCalls(RequestOfSize(2, largeMessageSize), WithTelemetry(WithTracerProvider(clientUnaryTP)))
-	if err != nil {
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(2, largeMessageSize)); err != nil {
 		t.Errorf(err.Error())
 	}
+	checkUnaryClientSpans(t, clientUnarySR.Ended(),
+		[]wantTraces{
+			{
+				spanName: "connect.ping.v1.PingService/Ping",
+				events: []trace.Event{
+					{
+						Name: "message",
+						Attributes: []attribute.KeyValue{
+							RPCMessageTypeKey.String("RECEIVED"),
+							RPCMessageIDKey.Int(1),
+							RPCMessageUncompressedSizeKey.Int(2),
+						},
+					},
+					{
+						Name: "message",
+						Attributes: []attribute.KeyValue{
+							RPCMessageTypeKey.String("SENT"),
+							RPCMessageIDKey.Int(1),
+							RPCMessageUncompressedSizeKey.Int(2),
+						},
+					},
+				},
+				attrs: []attribute.KeyValue{
+					semconv.RPCSystemKey.String("connect"),
+					semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+					semconv.RPCMethodKey.String("Ping"),
+					semconv.NetPeerNameKey.String(host),
+					semconv.NetPeerPortKey.String(port),
+					attribute.Key("rpc.connect.status_code").String("success"),
+				},
+			},
+			{
+				spanName: "connect.ping.v1.PingService/Ping",
+				events: []trace.Event{
+					{
+						Name: "message",
+						Attributes: []attribute.KeyValue{
+							RPCMessageTypeKey.String("RECEIVED"),
+							RPCMessageIDKey.Int(1),
+							RPCMessageUncompressedSizeKey.Int(1005),
+						},
+					},
+					{
+						Name: "message",
+						Attributes: []attribute.KeyValue{
+							RPCMessageTypeKey.String("SENT"),
+							RPCMessageIDKey.Int(1),
+							RPCMessageUncompressedSizeKey.Int(1005),
+						},
+					},
+				},
+				attrs: []attribute.KeyValue{
+					semconv.RPCSystemKey.String("connect"),
+					semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+					semconv.RPCMethodKey.String("Ping"),
+					semconv.NetPeerNameKey.String(host),
+					semconv.NetPeerPortKey.String(port), /* This gets ignored later */
+					attribute.Key("rpc.connect.status_code").String("success"),
+				},
+			},
+		})
+}
 
-	checkUnaryClientSpans(t, clientUnarySR.Ended(), []wantTraces{
-		{
-			spanName: "connect.ping.v1.PingService/Ping",
-			events: []trace.Event{
-				{
-					Name: "message",
-					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("RECEIVED"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
-					},
-				},
-				{
-					Name: "message",
-					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("SENT"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
-					},
-				},
-			},
-			attrs: []attribute.KeyValue{
-				semconv.RPCSystemKey.String("connect"),
-				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
-				semconv.RPCMethodKey.String("Ping"),
-				semconv.NetPeerNameKey.String("127.0.0.1"),
-				semconv.NetPeerPortKey.String(""),
-				attribute.Key("rpc.connect.status_code").String("success"),
-			},
-		},
-		{
-			spanName: "connect.ping.v1.PingService/Ping",
-			events: []trace.Event{
-				{
-					Name: "message",
-					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("RECEIVED"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(1005),
-					},
-				},
-				{
-					Name: "message",
-					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("SENT"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(1005),
-					},
-				},
-			},
-			attrs: []attribute.KeyValue{
-				semconv.RPCSystemKey.String("connect"),
-				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
-				semconv.RPCMethodKey.String("Ping"),
-				semconv.NetPeerNameKey.String("127.0.0.1"),
-				semconv.NetPeerPortKey.String(""),
-				attribute.Key("rpc.connect.status_code").String("success"),
-			},
-		},
-	})
+func startServer(opts ...connect.HandlerOption) (pingv1connect.PingServiceClient, string, string) {
+	mux := http.NewServeMux()
+	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, opts...))
+	server := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
+	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL)
+	serverurl := strings.ReplaceAll(server.URL, "http://", "")
+	spl := strings.Split(serverurl, ":")
+	host, port := spl[0], spl[1]
+	return pingClient, host, port
 }
 
 func (ps *PingServer) Ping(
