@@ -122,7 +122,7 @@ func TestHandlerFailCall(t *testing.T) {
 		connect.NewRequest(&pingv1.FailRequest{Code: int32(connect.CodeInternal)}),
 	)
 	if err == nil {
-		t.Error("expecting error, got nil")
+		t.Fatal("expecting error, got nil")
 	}
 	checkUnarySpans(t, []wantSpans{
 		{
