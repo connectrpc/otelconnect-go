@@ -5,8 +5,8 @@ connect-opentelemetry-go
 [![Report Card](https://goreportcard.com/badge/github.com/bufbuild/connect-opentelemetry-go)](https://goreportcard.com/report/github.com/bufbuild/connect-opentelemetry-go)
 [![GoDoc](https://pkg.go.dev/badge/github.com/bufbuild/connect-opentelemetry-go.svg)](https://pkg.go.dev/github.com/bufbuild/connect-opentelemetry-go)
 
-`connect-opentelemetry-go` adds support for [OpenTelemetry] tracing and metrics
-collection to [Connect][connect-go] servers and clients.
+`connect-opentelemetry-go` adds support for [OpenTelemetry][opentelemetry.io]
+tracing and metrics collection to [Connect][connect-go] servers and clients.
 
 For more on Connect, see the [announcement blog post][blog], the documentation
 on [connect.build][docs] (especially the [Getting Started] guide), the
