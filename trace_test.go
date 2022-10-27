@@ -406,7 +406,7 @@ func TestInterceptors(t *testing.T) {
 				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
 				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port), /* This gets ignored later */
+				semconv.NetPeerPortKey.String(port),
 				attribute.Key("rpc.connect.status_code").String("success"),
 			},
 		},
