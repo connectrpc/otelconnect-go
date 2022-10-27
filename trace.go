@@ -113,7 +113,7 @@ func (i *traceInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		span.AddEvent("message", trace.WithAttributes(reqSpanAttrs...))
 		response, err := next(ctx, request)
 		resSpanAttrs := []attribute.KeyValue{resSpanType, semconv.MessageIDKey.Int(1)}
-		if response != nil {
+		if err == nil {
 			if msg, ok := response.Any().(proto.Message); ok {
 				size := proto.Size(msg)
 				resSpanAttrs = append(resSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
