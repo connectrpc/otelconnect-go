@@ -24,8 +24,8 @@ import (
 	"testing"
 
 	"github.com/bufbuild/connect-go"
-	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/connect/ping/v1"
-	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/connect/ping/v1/pingv1connect"
+	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
+	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"go.opentelemetry.io/otel/attribute"
@@ -74,7 +74,7 @@ func TestClientSimple(t *testing.T) {
 	}
 	checkUnarySpans(t, []wantSpans{
 		{
-			spanName: "connect.ping.v1.PingService/Ping",
+			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
 				{
 					Name: "message",
@@ -95,7 +95,7 @@ func TestClientSimple(t *testing.T) {
 			},
 			attrs: []attribute.KeyValue{
 				semconv.RPCSystemKey.String("connect"),
-				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.String(port),
@@ -126,7 +126,7 @@ func TestHandlerFailCall(t *testing.T) {
 	}
 	checkUnarySpans(t, []wantSpans{
 		{
-			spanName: "connect.ping.v1.PingService/Fail",
+			spanName: "observability.ping.v1.PingService/Fail",
 			events: []trace.Event{
 				{
 					Name: "message",
@@ -146,7 +146,7 @@ func TestHandlerFailCall(t *testing.T) {
 			},
 			attrs: []attribute.KeyValue{
 				semconv.RPCSystemKey.String("connect"),
-				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Fail"),
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.String(port),
@@ -183,7 +183,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	checkUnarySpans(t, []wantSpans{}, serverSpanRecorder.Ended())
 	checkUnarySpans(t, []wantSpans{
 		{
-			spanName: "connect.ping.v1.PingService/Ping",
+			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
 				{
 					Name: "message",
@@ -204,7 +204,7 @@ func TestClientHandlerOpts(t *testing.T) {
 			},
 			attrs: []attribute.KeyValue{
 				semconv.RPCSystemKey.String("connect"),
-				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.String(port),
@@ -265,7 +265,7 @@ func TestFilterHeader(t *testing.T) {
 	}
 	checkUnarySpans(t, []wantSpans{
 		{
-			spanName: "connect.ping.v1.PingService/Ping",
+			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
 				{
 					Name: "message",
@@ -286,7 +286,7 @@ func TestFilterHeader(t *testing.T) {
 			},
 			attrs: []attribute.KeyValue{
 				semconv.RPCSystemKey.String("connect"),
-				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.String(port),
@@ -315,7 +315,7 @@ func TestInterceptors(t *testing.T) {
 	}
 	checkUnarySpans(t, []wantSpans{
 		{
-			spanName: "connect.ping.v1.PingService/Ping",
+			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
 				{
 					Name: "message",
@@ -336,7 +336,7 @@ func TestInterceptors(t *testing.T) {
 			},
 			attrs: []attribute.KeyValue{
 				semconv.RPCSystemKey.String("connect"),
-				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.String(port),
@@ -344,7 +344,7 @@ func TestInterceptors(t *testing.T) {
 			},
 		},
 		{
-			spanName: "connect.ping.v1.PingService/Ping",
+			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
 				{
 					Name: "message",
@@ -365,7 +365,7 @@ func TestInterceptors(t *testing.T) {
 			},
 			attrs: []attribute.KeyValue{
 				semconv.RPCSystemKey.String("connect"),
-				semconv.RPCServiceKey.String("connect.ping.v1.PingService"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.String(port),
