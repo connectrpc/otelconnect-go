@@ -35,6 +35,12 @@ const (
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
 // and tracing to Connect clients and handlers.
 func WithTelemetry(options ...Option) connect.Option {
+	return connect.WithInterceptors(NewOtelInterceptors(options...)...)
+}
+
+// NewOtelInterceptors constructs and returns OpenTelemetry Interceptors for metrics
+// and tracing.
+func NewOtelInterceptors(options ...Option) []connect.Interceptor {
 	cfg := config{
 		Trace: traceConfig{
 			Provider:   otel.GetTracerProvider(),
@@ -52,7 +58,7 @@ func WithTelemetry(options ...Option) connect.Option {
 	if !cfg.DisableTrace {
 		interceptors = append(interceptors, &traceInterceptor{cfg.Trace})
 	}
-	return connect.WithInterceptors(interceptors...)
+	return interceptors
 }
 
 // Request is the information about each RPC available to filter functions. It
