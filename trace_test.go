@@ -36,14 +36,6 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
-	body := make([]byte, dataSize)
-	for i := range body {
-		body[i] = byte(rand.Intn(128)) //nolint: gosec
-	}
-	return connect.NewRequest(&pingv1.PingRequest{Id: id, Data: body})
-}
-
 func TestWithoutTracing(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
@@ -454,4 +446,12 @@ func checkUnarySpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 			t.Error(diff)
 		}
 	}
+}
+
+func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
+	body := make([]byte, dataSize)
+	for i := range body {
+		body[i] = byte(rand.Intn(128)) //nolint: gosec
+	}
+	return connect.NewRequest(&pingv1.PingRequest{Id: id, Data: body})
 }
