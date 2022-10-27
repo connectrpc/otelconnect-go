@@ -5,8 +5,8 @@ connect-opentelemetry-go
 [![Report Card](https://goreportcard.com/badge/connectrpc.com/otelconnect)](https://goreportcard.com/report/connectrpc.com/otelconnect)
 [![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect.svg)](https://pkg.go.dev/connectrpc.com/otelconnect)
 
-`connect-opentelemetry-go` adds support for [OpenTelemetry] tracing and metrics
-collection to [Connect][connect-go] servers and clients.
+`connect-opentelemetry-go` adds support for [OpenTelemetry][opentelemetry.io]
+tracing and metrics collection to [Connect][connect-go] servers and clients.
 
 For more on Connect, see the [announcement blog post][blog], the documentation
 on [connectrpc.com][docs] (especially the [Getting Started] guide), the
