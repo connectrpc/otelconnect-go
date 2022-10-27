@@ -32,8 +32,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 func TestWithoutTracing(t *testing.T) {
@@ -380,7 +378,7 @@ func startServer(
 	clientOpts []connect.ClientOption) (pingv1connect.PingServiceClient, string, string) {
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, handlerOpts...))
-	server := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
+	server := httptest.NewServer(mux)
 	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
 	host, port, _ := net.SplitHostPort(strings.ReplaceAll(server.URL, "http://", ""))
 	return pingClient, host, port
