@@ -58,7 +58,7 @@ func NewOtelInterceptors(options ...Option) []connect.Interceptor {
 	if !cfg.DisableTrace {
 		interceptors = append(interceptors, &traceInterceptor{cfg.Trace})
 	}
-	return connect.WithInterceptors(interceptors...)
+	return interceptors
 }
 
 // Request is the information about each RPC available to filter functions. It
