@@ -17,6 +17,7 @@ package otelconnect
 import (
 	"context"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,18 +36,6 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-const (
-	// Type of message transmitted or received.
-	RPCMessageTypeKey = attribute.Key("message.type")
-
-	// Identifier of message transmitted or received.
-	RPCMessageIDKey = attribute.Key("message.id")
-
-	// The uncompressed size of the message transmitted or received in
-	// bytes.
-	RPCMessageUncompressedSizeKey = attribute.Key("message.uncompressed_size")
-)
-
 func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 	body := make([]byte, dataSize)
 	for i := range body {
@@ -57,10 +46,8 @@ func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 
 func TestWithoutTracing(t *testing.T) {
 	t.Parallel()
-
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-
 	pingClient, _, _ := startServer(
 		[]connect.HandlerOption{
 			WithTelemetry(
@@ -80,10 +67,8 @@ func TestWithoutTracing(t *testing.T) {
 
 func TestClientSimple(t *testing.T) {
 	t.Parallel()
-
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
-
 	pingClient, host, port := startServer(
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
@@ -92,11 +77,9 @@ func TestClientSimple(t *testing.T) {
 			),
 		},
 	)
-
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-
 	checkUnarySpans(t, []wantSpans{
 		{
 			spanName: "connect.ping.v1.PingService/Ping",
@@ -104,17 +87,17 @@ func TestClientSimple(t *testing.T) {
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("SENT"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("RECEIVED"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 			},
@@ -134,7 +117,6 @@ func TestHandlerFailCall(t *testing.T) {
 	t.Parallel()
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
-
 	pingClient, host, port := startServer(
 		nil,
 		[]connect.ClientOption{
@@ -143,7 +125,6 @@ func TestHandlerFailCall(t *testing.T) {
 			),
 		},
 	)
-
 	_, err := pingClient.Fail(
 		context.Background(),
 		connect.NewRequest(&pingv1.FailRequest{Code: int32(connect.CodeInternal)}),
@@ -158,16 +139,16 @@ func TestHandlerFailCall(t *testing.T) {
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("SENT"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("RECEIVED"),
-						RPCMessageIDKey.Int(1),
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
 					},
 				},
 			},
@@ -187,10 +168,8 @@ func TestClientHandlerOpts(t *testing.T) {
 	t.Parallel()
 	serverSpanRecorder := tracetest.NewSpanRecorder()
 	serverTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(serverSpanRecorder))
-
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
-
 	pingClient, host, port := startServer(
 		[]connect.HandlerOption{
 			WithTelemetry(
@@ -206,11 +185,9 @@ func TestClientHandlerOpts(t *testing.T) {
 			),
 		},
 	)
-
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-
 	checkUnarySpans(t, []wantSpans{}, serverSpanRecorder.Ended())
 	checkUnarySpans(t, []wantSpans{
 		{
@@ -219,17 +196,17 @@ func TestClientHandlerOpts(t *testing.T) {
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("SENT"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("RECEIVED"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 			},
@@ -247,7 +224,6 @@ func TestClientHandlerOpts(t *testing.T) {
 
 func TestBasicFilter(t *testing.T) {
 	t.Parallel()
-
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, _, _ := startServer(
@@ -261,7 +237,6 @@ func TestBasicFilter(t *testing.T) {
 		},
 		nil, /* clientOpts */
 	)
-
 	req := RequestOfSize(1, 0)
 	req.Header().Set("Some-Header", "foobar")
 	if _, err := pingClient.Ping(context.Background(), req); err != nil {
@@ -275,10 +250,8 @@ func TestBasicFilter(t *testing.T) {
 
 func TestFilterHeader(t *testing.T) {
 	t.Parallel()
-
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-
 	pingClient, host, port := startServer(
 		[]connect.HandlerOption{
 			WithTelemetry(
@@ -295,11 +268,9 @@ func TestFilterHeader(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), req); err != nil {
 		t.Errorf(err.Error())
 	}
-
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-
 	checkUnarySpans(t, []wantSpans{
 		{
 			spanName: "connect.ping.v1.PingService/Ping",
@@ -307,17 +278,17 @@ func TestFilterHeader(t *testing.T) {
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("RECEIVED"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("SENT"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 			},
@@ -336,7 +307,6 @@ func TestFilterHeader(t *testing.T) {
 func TestInterceptors(t *testing.T) {
 	t.Parallel()
 	const largeMessageSize = 1000
-
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer(
@@ -358,17 +328,17 @@ func TestInterceptors(t *testing.T) {
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("RECEIVED"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("SENT"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(2),
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 			},
@@ -387,17 +357,17 @@ func TestInterceptors(t *testing.T) {
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("RECEIVED"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(1005),
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(1005),
 					},
 				},
 				{
 					Name: "message",
 					Attributes: []attribute.KeyValue{
-						RPCMessageTypeKey.String("SENT"),
-						RPCMessageIDKey.Int(1),
-						RPCMessageUncompressedSizeKey.Int(1005),
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(1005),
 					},
 				},
 			},
@@ -420,9 +390,7 @@ func startServer(
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, handlerOpts...))
 	server := httptest.NewServer(h2c.NewHandler(mux, &http2.Server{}))
 	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
-	serverurl := strings.ReplaceAll(server.URL, "http://", "")
-	spl := strings.Split(serverurl, ":")
-	host, port := spl[0], spl[1]
+	host, port, _ := net.SplitHostPort(strings.ReplaceAll(server.URL, "http://", ""))
 	return pingClient, host, port
 }
 
