@@ -17,6 +17,8 @@
 package otelconnect
 
 import (
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/global"
 	"net/http"
 	"strings"
 
@@ -46,14 +48,20 @@ func NewOtelInterceptors(options ...Option) []connect.Interceptor {
 			Provider:   otel.GetTracerProvider(),
 			Propagator: otel.GetTextMapPropagator(),
 		},
-		Metrics: metricsConfig{},
+		Metrics: metricsConfig{
+			Provider: global.MeterProvider(),
+			Meter: global.MeterProvider().Meter(
+				instrumentationName,
+				metric.WithInstrumentationVersion(semanticVersion),
+			),
+		},
 	}
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
 	var interceptors []connect.Interceptor
 	if !cfg.DisableMetrics {
-		interceptors = append(interceptors, &metricsInterceptor{cfg.Metrics})
+		interceptors = append(interceptors, newMetricsInterceptor(cfg.Metrics))
 	}
 	if !cfg.DisableTrace {
 		interceptors = append(interceptors, &traceInterceptor{cfg.Trace})
