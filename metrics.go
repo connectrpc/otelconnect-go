@@ -98,7 +98,6 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 		if err != nil {
 			return nil, err
 		}
-		//ctx = i.config.propagators.Extract(ctx, propagation.HeaderCarrier(request.Header()))
 		if err == nil {
 			if msg, ok := response.Any().(proto.Message); ok {
 				size := proto.Size(msg)
@@ -114,8 +113,6 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 			semconv.RPCSystemKey.String("connect"),
 			semconv.RPCServiceKey.String(serviceName),
 			semconv.RPCMethodKey.String(methodName),
-			semconv.RPCMethodKey.String(methodName),
-			//semconv.NetPeerNameKey.String(),
 		}
 		elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
 		i.rpcServerDuration.Record(ctx, elapsedTime, attrs...)
