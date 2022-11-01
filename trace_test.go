@@ -16,12 +16,17 @@ package otelconnect
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
+	metricsdk "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bufbuild/connect-go"
 	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
@@ -33,6 +38,170 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )
+
+func TestMetrics(t *testing.T) {
+	t.Parallel()
+	metricReader := metricsdk.NewManualReader()
+	meterProvider := metricsdk.NewMeterProvider(
+		metricsdk.WithReader(
+			metricReader,
+		),
+	)
+	pingClient, _, _ := startServer(
+		nil, /* handlerOpts */
+		[]connect.ClientOption{
+			WithTelemetry(
+				WithMeterProvider(meterProvider),
+			),
+		},
+	)
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+		t.Errorf(err.Error())
+	}
+	metrics, err := metricReader.Collect(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+	diff := cmp.Diff(metrics, metricdata.ResourceMetrics{
+		Resource: resource.NewWithAttributes("https://opentelemetry.io/schemas/1.12.0",
+			attribute.KeyValue{
+				Key:   "service.name",
+				Value: attribute.StringValue("unknown_service:___TestMetrics_in_github_com_bufbuild_connect_opentelemetry_go.test"),
+			},
+			attribute.KeyValue{
+				Key:   "telemetry.sdk.language",
+				Value: attribute.StringValue("go"),
+			},
+			attribute.KeyValue{
+				Key:   "telemetry.sdk.name",
+				Value: attribute.StringValue("opentelemetry"),
+			},
+			attribute.KeyValue{
+				Key:   "telemetry.sdk.version",
+				Value: attribute.StringValue("1.11.1"),
+			},
+		),
+		ScopeMetrics: []metricdata.ScopeMetrics{
+			{
+				Scope: instrumentation.Scope{
+					Name:    "github.com/bufbuild/connect-opentelemetry-go",
+					Version: "semver:0.0.1-dev",
+				},
+				Metrics: []metricdata.Metrics{
+					{
+						Name: "rpc.server.duration",
+						Unit: "ms",
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										attribute.String("net.peer.name", "127.0.0.1"),
+										attribute.String("net.peer.port", "49717"),
+										attribute.String("rpc.method", "Ping"),
+										attribute.String("rpc.service", "observability.ping.v1.PingService"),
+										attribute.String("rpc.service", "observability.ping.v1.PingService"),
+										attribute.String("rpc.system", "connect"),
+									),
+									Count: 1,
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.server.request.size",
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.Set{},
+									Count:      1,
+									Sum:        2,
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.server.response.size",
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										attribute.String("net.peer.name", "127.0.0.1"),
+										attribute.String("net.peer.port", "49717"),
+										attribute.String("rpc.method", "Ping"),
+										attribute.String("rpc.service", "observability.ping.v1.PingService"),
+										attribute.String("rpc.service", "observability.ping.v1.PingService"),
+										attribute.String("rpc.system", "connect"),
+									),
+									Count: 1,
+									Sum:   2,
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.server.requests_per_rpc",
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										attribute.String("net.peer.name", "127.0.0.1"),
+										attribute.String("net.peer.port", "49717"),
+										attribute.String("rpc.method", "Ping"),
+										attribute.String("rpc.service", "observability.ping.v1.PingService"),
+										attribute.String("rpc.service", "observability.ping.v1.PingService"),
+										attribute.String("rpc.system", "connect"),
+									),
+									StartTime: time.Date(2022, time.November, 1, 9, 54, 53, 152228000, time.Local),
+									Time:      time.Date(2022, time.November, 1, 9, 54, 53, 154112000, time.Local),
+									Count:     1,
+									Sum:       1,
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.server.responses_per_rpc",
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										attribute.String("net.peer.name", "127.0.0.1"),
+										attribute.String("net.peer.port", "49717"),
+										attribute.String("rpc.method", "Ping"),
+										attribute.String("rpc.service", "observability.ping.v1.PingService"),
+										attribute.String("rpc.service", "observability.ping.v1.PingService"),
+										attribute.String("rpc.system", "connect"),
+									),
+									StartTime: time.Date(2022, time.November, 1, 9, 54, 53, 152230000, time.Local),
+									Time:      time.Date(2022, time.November, 1, 9, 54, 53, 154112000, time.Local),
+									Count:     1,
+									Sum:       1,
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+				},
+			},
+		},
+	}, cmpopts.IgnoreUnexported(attribute.Set{}),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "StartTime"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Time"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Bounds"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "BucketCounts"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Min"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Max"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Sum"),
+		cmpopts.IgnoreFields(metricdata.ResourceMetrics{}, "Resource"),
+	)
+	if diff != "" {
+		t.Error(diff)
+	}
+}
 
 func TestWithoutTracing(t *testing.T) {
 	t.Parallel()
@@ -371,6 +540,7 @@ func TestInterceptors(t *testing.T) {
 			},
 		},
 	}, spanRecorder.Ended())
+
 }
 
 func startServer(

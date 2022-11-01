@@ -20,11 +20,14 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
 	"go.opentelemetry.io/otel/metric/instrument/syncint64"
+	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"google.golang.org/protobuf/proto"
+	"net"
 	"strings"
 	"time"
 )
@@ -53,22 +56,22 @@ type metricsConfig struct {
 type metricsInterceptor struct {
 	config                   metricsConfig
 	rpcServerDuration        syncfloat64.Histogram
-	rpcServerRequestSize     syncint64.Counter
-	rpcServerResponseSize    syncint64.Counter
-	rpcServerRequestsPerRPC  syncint64.Counter
-	rpcServerResponsesPerRPC syncint64.Counter
+	rpcServerRequestSize     syncint64.Histogram
+	rpcServerResponseSize    syncint64.Histogram
+	rpcServerRequestsPerRPC  syncint64.Histogram
+	rpcServerResponsesPerRPC syncint64.Histogram
 }
 
 func newMetricsInterceptor(cfg metricsConfig) *metricsInterceptor {
-	rpcServerDuration, err := cfg.Meter.SyncFloat64().Histogram(RPCServerDuration)
+	rpcServerDuration, err := cfg.Meter.SyncFloat64().Histogram(RPCServerDuration, instrument.WithUnit(unit.Milliseconds))
 	otel.Handle(err)
-	rpcServerRequestSize, err := cfg.Meter.SyncInt64().Counter(RPCServerRequestSize)
+	rpcServerRequestSize, err := cfg.Meter.SyncInt64().Histogram(RPCServerRequestSize)
 	otel.Handle(err)
-	rpcServerResponseSize, err := cfg.Meter.SyncInt64().Counter(RPCServerResponseSize)
+	rpcServerResponseSize, err := cfg.Meter.SyncInt64().Histogram(RPCServerResponseSize)
 	otel.Handle(err)
-	rpcServerRequestsPerRPC, err := cfg.Meter.SyncInt64().Counter(RPCServerRequestsPerRPC)
+	rpcServerRequestsPerRPC, err := cfg.Meter.SyncInt64().Histogram(RPCServerRequestsPerRPC)
 	otel.Handle(err)
-	rpcServerResponsesPerRPC, err := cfg.Meter.SyncInt64().Counter(RPCServerResponsesPerRPC)
+	rpcServerResponsesPerRPC, err := cfg.Meter.SyncInt64().Histogram(RPCServerResponsesPerRPC)
 	otel.Handle(err)
 	return &metricsInterceptor{
 		config:                   cfg,
@@ -101,22 +104,37 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 		if err == nil {
 			if msg, ok := response.Any().(proto.Message); ok {
 				size := proto.Size(msg)
-				i.rpcServerRequestSize.Add(ctx, int64(size))
+				i.rpcServerResponseSize.Record(ctx, int64(size))
 			}
 		}
+		if msg, ok := request.Any().(proto.Message); ok {
+			size := proto.Size(msg)
+			i.rpcServerRequestSize.Record(ctx, int64(size))
+		}
+
 		serviceMethod := strings.Split(strings.TrimLeft(request.Spec().Procedure, "/"), "/")
 		var serviceName, methodName string
 		if len(serviceMethod) == 2 {
 			serviceName, methodName = serviceMethod[0], serviceMethod[1]
 		}
+
 		attrs := []attribute.KeyValue{
 			semconv.RPCSystemKey.String("connect"),
 			semconv.RPCServiceKey.String(serviceName),
 			semconv.RPCMethodKey.String(methodName),
 		}
+		host, port, err := net.SplitHostPort(request.Peer().Addr)
+		if err == nil {
+			attrs = append(attrs,
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
+			)
+		}
+
 		elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
 		i.rpcServerDuration.Record(ctx, elapsedTime, attrs...)
-		i.rpcServerRequestsPerRPC.Add(ctx, 1, attrs...)
+		i.rpcServerRequestsPerRPC.Record(ctx, 1, attrs...)
+		i.rpcServerResponsesPerRPC.Record(ctx, 1, attrs...)
 		return response, err
 	})
 }

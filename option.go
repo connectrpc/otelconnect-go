@@ -16,6 +16,7 @@ package otelconnect
 
 import (
 	"context"
+	"go.opentelemetry.io/otel/metric"
 
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -31,6 +32,22 @@ type Option interface {
 // uses otel.GetTextMapPropagator().
 func WithPropagator(propagator propagation.TextMapPropagator) Option {
 	return &propagatorOption{propagator}
+}
+
+type meterProviderOption struct {
+	provider metric.MeterProvider
+}
+
+func (m meterProviderOption) apply(c *config) {
+	c.Metrics.Provider = m.provider
+	c.Metrics.Meter = c.Metrics.Provider.Meter(
+		instrumentationName,
+		metric.WithInstrumentationVersion(semanticVersion),
+	)
+}
+
+func WithMeterProvider(provider metric.MeterProvider) Option {
+	return &meterProviderOption{provider: provider}
 }
 
 // WithTracerProvider configures the instrumentation to use the supplied
