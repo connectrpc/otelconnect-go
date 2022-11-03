@@ -21,7 +21,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
 	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/propagation"
@@ -39,6 +38,11 @@ const (
 	RPCServerRequestsPerRPC  = "rpc.server.requests_per_rpc"
 	RPCServerResponsesPerRPC = "rpc.server.responses_per_rpc"
 
+	/* non otel specified metrics */
+	RPCServerFirstWriteDelay      = "rpc.server.first_write_delay"
+	RPCServerInterReceiveDuration = "rpc.server.inter_receive_duration"
+	RPCServerInterSendDuration    = "rpc.server.inter_send_duration"
+
 	RPCClientDuration        = "rpc.client.duration"
 	RPCClientRequestSize     = "rpc.client.request.size"
 	RPCClientResponseSize    = "rpc.client.response.size"
@@ -54,16 +58,19 @@ type metricsConfig struct {
 }
 
 type metricsInterceptor struct {
-	config                   metricsConfig
-	rpcServerDuration        syncfloat64.Histogram
-	rpcServerRequestSize     syncint64.Histogram
-	rpcServerResponseSize    syncint64.Histogram
-	rpcServerRequestsPerRPC  syncint64.Histogram
-	rpcServerResponsesPerRPC syncint64.Histogram
+	config                        metricsConfig
+	rpcServerDuration             syncint64.Histogram
+	rpcServerRequestSize          syncint64.Histogram
+	rpcServerResponseSize         syncint64.Histogram
+	rpcServerRequestsPerRPC       syncint64.Histogram
+	rpcServerResponsesPerRPC      syncint64.Histogram
+	rpcServerFirstWriteDelay      syncint64.Histogram
+	rpcServerInterReceiveDuration syncint64.Histogram
+	rpcServerInterSendDuration    syncint64.Histogram
 }
 
 func newMetricsInterceptor(cfg metricsConfig) *metricsInterceptor {
-	rpcServerDuration, err := cfg.Meter.SyncFloat64().Histogram(RPCServerDuration, instrument.WithUnit(unit.Milliseconds))
+	rpcServerDuration, err := cfg.Meter.SyncInt64().Histogram(RPCServerDuration, instrument.WithUnit(unit.Milliseconds))
 	otel.Handle(err)
 	rpcServerRequestSize, err := cfg.Meter.SyncInt64().Histogram(RPCServerRequestSize)
 	otel.Handle(err)
@@ -73,13 +80,22 @@ func newMetricsInterceptor(cfg metricsConfig) *metricsInterceptor {
 	otel.Handle(err)
 	rpcServerResponsesPerRPC, err := cfg.Meter.SyncInt64().Histogram(RPCServerResponsesPerRPC)
 	otel.Handle(err)
+	rpcServerFirstWriteDelay, err := cfg.Meter.SyncInt64().Histogram(RPCServerFirstWriteDelay)
+	otel.Handle(err)
+	rpcServerInterReceiveDuration, err := cfg.Meter.SyncInt64().Histogram(RPCServerInterReceiveDuration)
+	otel.Handle(err)
+	rpcServerInterSendDuration, err := cfg.Meter.SyncInt64().Histogram(RPCServerInterSendDuration)
+	otel.Handle(err)
 	return &metricsInterceptor{
-		config:                   cfg,
-		rpcServerDuration:        rpcServerDuration,
-		rpcServerRequestSize:     rpcServerRequestSize,
-		rpcServerResponseSize:    rpcServerResponseSize,
-		rpcServerRequestsPerRPC:  rpcServerRequestsPerRPC,
-		rpcServerResponsesPerRPC: rpcServerResponsesPerRPC,
+		config:                        cfg,
+		rpcServerDuration:             rpcServerDuration,
+		rpcServerRequestSize:          rpcServerRequestSize,
+		rpcServerResponseSize:         rpcServerResponseSize,
+		rpcServerRequestsPerRPC:       rpcServerRequestsPerRPC,
+		rpcServerResponsesPerRPC:      rpcServerResponsesPerRPC,
+		rpcServerFirstWriteDelay:      rpcServerFirstWriteDelay,
+		rpcServerInterReceiveDuration: rpcServerInterReceiveDuration,
+		rpcServerInterSendDuration:    rpcServerInterSendDuration,
 	}
 }
 
@@ -95,21 +111,6 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 			if !i.config.Filter(ctx, r) {
 				return next(ctx, request)
 			}
-		}
-
-		response, err := next(ctx, request)
-		if err != nil {
-			return nil, err
-		}
-		if err == nil {
-			if msg, ok := response.Any().(proto.Message); ok {
-				size := proto.Size(msg)
-				i.rpcServerResponseSize.Record(ctx, int64(size))
-			}
-		}
-		if msg, ok := request.Any().(proto.Message); ok {
-			size := proto.Size(msg)
-			i.rpcServerRequestSize.Record(ctx, int64(size))
 		}
 
 		serviceMethod := strings.Split(strings.TrimLeft(request.Spec().Procedure, "/"), "/")
@@ -131,10 +132,22 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 			)
 		}
 
-		elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
-		i.rpcServerDuration.Record(ctx, elapsedTime, attrs...)
-		i.rpcServerRequestsPerRPC.Record(ctx, 1, attrs...)
-		i.rpcServerResponsesPerRPC.Record(ctx, 1, attrs...)
+		response, err := next(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		if err == nil {
+			if msg, ok := response.Any().(proto.Message); ok {
+				size := proto.Size(msg)
+				i.rpcServerResponseSize.Record(ctx, int64(size), attrs...)
+			}
+		}
+		if msg, ok := request.Any().(proto.Message); ok {
+			size := proto.Size(msg)
+			i.rpcServerRequestSize.Record(ctx, int64(size))
+		}
+
+		i.rpcServerDuration.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
 		return response, err
 	})
 }
@@ -145,10 +158,61 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 	}
 }
 
+type payloadStreamInterceptor struct {
+	connect.StreamingHandlerConn
+	rpcServerResponseSize    func(int64)
+	rpcServerRequestSize     func(int64)
+	rpcServerRequestsPerRPC  func()
+	rpcServerResponsesPerRPC func()
+
+	rpcServerFirstWriteDelay      func(time.Duration)
+	rpcServerInterReceiveDuration func(time.Duration)
+	rpcServerInterSendDuration    func(time.Duration)
+
+	startTime   time.Time
+	lastSend    time.Time
+	lastReceive time.Time
+}
+
+func (p *payloadStreamInterceptor) Receive(msg any) error {
+	p.rpcServerRequestsPerRPC()
+	p.rpcServerResponsesPerRPC()
+	err := p.StreamingHandlerConn.Receive(msg)
+	if err != nil {
+		return err
+	}
+	if msg, ok := msg.(proto.Message); ok {
+		size := proto.Size(msg)
+		p.rpcServerRequestSize(int64(size))
+	}
+	p.rpcServerInterReceiveDuration(time.Since(p.lastReceive))
+	p.lastReceive = time.Now()
+	return nil
+}
+
+func (p *payloadStreamInterceptor) Send(msg any) error {
+	err := p.StreamingHandlerConn.Send(msg)
+
+	if p.startTime != (time.Time{}) {
+		p.rpcServerFirstWriteDelay(time.Since(p.startTime))
+		p.startTime = time.Time{}
+	}
+
+	if err != nil {
+		return err
+	}
+	if msg, ok := msg.(proto.Message); ok {
+		size := proto.Size(msg)
+		p.rpcServerResponseSize(int64(size))
+	}
+	p.rpcServerInterSendDuration(time.Since(p.lastReceive))
+	p.lastSend = time.Now()
+	return nil
+}
+
 func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		requestStartTime := time.Now()
-
 		if i.config.Filter != nil {
 			r := &Request{
 				Spec:   conn.Spec(),
@@ -179,10 +243,32 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 			)
 		}
 
-		elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
-		i.rpcServerDuration.Record(ctx, elapsedTime, attrs...)
-		i.rpcServerRequestsPerRPC.Record(ctx, 1, attrs...)
-		i.rpcServerResponsesPerRPC.Record(ctx, 1, attrs...)
-		return next(ctx, conn)
+		i.rpcServerDuration.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
+
+		return next(ctx, &payloadStreamInterceptor{
+			StreamingHandlerConn: conn,
+			startTime:            requestStartTime,
+			rpcServerRequestsPerRPC: func() {
+				i.rpcServerRequestsPerRPC.Record(ctx, 1, attrs...)
+			},
+			rpcServerResponsesPerRPC: func() {
+				i.rpcServerResponsesPerRPC.Record(ctx, 1, attrs...)
+			},
+			rpcServerResponseSize: func(size int64) {
+				i.rpcServerResponseSize.Record(ctx, int64(size), attrs...)
+			},
+			rpcServerRequestSize: func(size int64) {
+				i.rpcServerRequestSize.Record(ctx, int64(size), attrs...)
+			},
+			rpcServerFirstWriteDelay: func(t time.Duration) {
+				i.rpcServerFirstWriteDelay.Record(ctx, t.Milliseconds(), attrs...)
+			},
+			rpcServerInterReceiveDuration: func(t time.Duration) {
+				i.rpcServerInterReceiveDuration.Record(ctx, t.Milliseconds(), attrs...)
+			},
+			rpcServerInterSendDuration: func(t time.Duration) {
+				i.rpcServerInterSendDuration.Record(ctx, t.Milliseconds(), attrs...)
+			},
+		})
 	}
 }
