@@ -42,6 +42,7 @@ import (
 func TestMetrics(t *testing.T) {
 	t.Parallel()
 	metricReader := metricsdk.NewManualReader()
+
 	meterProvider := metricsdk.NewMeterProvider(
 		metricsdk.WithReader(
 			metricReader,
