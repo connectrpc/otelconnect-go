@@ -140,9 +140,49 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 }
 
 func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
-	return next // TODO
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		return next(ctx, spec)
+	}
 }
 
 func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return next // TODO
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		requestStartTime := time.Now()
+
+		if i.config.Filter != nil {
+			r := &Request{
+				Spec:   conn.Spec(),
+				Peer:   conn.Peer(),
+				Header: conn.RequestHeader(),
+			}
+			if !i.config.Filter(ctx, r) {
+				return next(ctx, conn)
+			}
+		}
+
+		serviceMethod := strings.Split(strings.TrimLeft(conn.Spec().Procedure, "/"), "/")
+		var serviceName, methodName string
+		if len(serviceMethod) == 2 {
+			serviceName, methodName = serviceMethod[0], serviceMethod[1]
+		}
+
+		attrs := []attribute.KeyValue{
+			semconv.RPCSystemKey.String("connect"),
+			semconv.RPCServiceKey.String(serviceName),
+			semconv.RPCMethodKey.String(methodName),
+		}
+		host, port, err := net.SplitHostPort(conn.Peer().Addr)
+		if err == nil {
+			attrs = append(attrs,
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
+			)
+		}
+
+		elapsedTime := float64(time.Since(requestStartTime)) / float64(time.Millisecond)
+		i.rpcServerDuration.Record(ctx, elapsedTime, attrs...)
+		i.rpcServerRequestsPerRPC.Record(ctx, 1, attrs...)
+		i.rpcServerResponsesPerRPC.Record(ctx, 1, attrs...)
+		return next(ctx, conn)
+	}
 }
