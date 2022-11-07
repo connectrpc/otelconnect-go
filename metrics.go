@@ -85,31 +85,31 @@ func newmetricsInterceptor(metricConfig metricsConfig) (*metricsInterceptor, err
 	if err != nil {
 		return nil, err
 	}
-	m.rpcServerRequestSize, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, RequestSize))
+	m.rpcServerRequestSize, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, RequestSize), instrument.WithUnit(unit.Bytes))
 	if err != nil {
 		return nil, err
 	}
-	m.rpcServerResponseSize, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, ResponseSize))
+	m.rpcServerResponseSize, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, ResponseSize), instrument.WithUnit(unit.Bytes))
 	if err != nil {
 		return nil, err
 	}
-	m.rpcServerRequestsPerRPC, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, RequestsPerRPC))
+	m.rpcServerRequestsPerRPC, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, RequestsPerRPC), instrument.WithUnit(unit.Dimensionless))
 	if err != nil {
 		return nil, err
 	}
-	m.rpcServerResponsesPerRPC, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, ResponsesPerRPC))
+	m.rpcServerResponsesPerRPC, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, ResponsesPerRPC), instrument.WithUnit(unit.Dimensionless))
 	if err != nil {
 		return nil, err
 	}
-	m.rpcServerFirstWriteDelay, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, FirstWriteDelay))
+	m.rpcServerFirstWriteDelay, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, FirstWriteDelay), instrument.WithUnit(unit.Milliseconds))
 	if err != nil {
 		return nil, err
 	}
-	m.rpcServerInterReceiveDuration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, InterReceiveDuration))
+	m.rpcServerInterReceiveDuration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, InterReceiveDuration), instrument.WithUnit(unit.Milliseconds))
 	if err != nil {
 		return nil, err
 	}
-	m.rpcServerInterSendDuration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, InterSendDuration))
+	m.rpcServerInterSendDuration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, InterSendDuration), instrument.WithUnit(unit.Milliseconds))
 	if err != nil {
 		return nil, err
 	}
@@ -118,9 +118,6 @@ func newmetricsInterceptor(metricConfig metricsConfig) (*metricsInterceptor, err
 
 func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return connect.UnaryFunc(func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
-		//if err := i.initInstruments(request.Spec().IsClient); err != nil {
-		//	return nil, err
-		//}
 		requestStartTime := time.Now()
 		if i.config.Filter != nil {
 			r := &Request{
@@ -170,9 +167,6 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 
 func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
-		//if err := i.initInstruments(spec.IsClient); err != nil {
-		//	return nil
-		//}
 		conn := next(ctx, spec)
 		requestStartTime := time.Now()
 		if i.config.Filter != nil {
@@ -232,114 +226,6 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 			},
 		}
 	}
-}
-
-type payloadStreamInterceptorClient struct {
-	connect.StreamingClientConn
-
-	rpcServerResponseSize    func(int64)
-	rpcServerRequestSize     func(int64)
-	rpcServerRequestsPerRPC  func()
-	rpcServerResponsesPerRPC func()
-
-	rpcServerFirstWriteDelay      func(time.Duration)
-	rpcServerInterReceiveDuration func(time.Duration)
-	rpcServerInterSendDuration    func(time.Duration)
-
-	startTime   time.Time
-	lastSend    time.Time
-	lastReceive time.Time
-}
-
-func (p *payloadStreamInterceptorClient) Receive(msg any) error {
-	p.rpcServerRequestsPerRPC()
-	p.rpcServerResponsesPerRPC()
-	err := p.StreamingClientConn.Receive(msg)
-	if err != nil {
-		return err
-	}
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		p.rpcServerRequestSize(int64(size))
-	}
-	p.rpcServerInterReceiveDuration(time.Since(p.lastReceive))
-	p.lastReceive = time.Now()
-
-	return nil
-}
-
-func (p *payloadStreamInterceptorClient) Send(msg any) error {
-	err := p.StreamingClientConn.Send(msg)
-
-	if p.startTime != (time.Time{}) {
-		p.rpcServerFirstWriteDelay(time.Since(p.startTime))
-		p.startTime = time.Time{}
-	}
-
-	if err != nil {
-		return err
-	}
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		p.rpcServerResponseSize(int64(size))
-	}
-	p.rpcServerInterSendDuration(time.Since(p.lastReceive))
-	p.lastSend = time.Now()
-	return nil
-}
-
-type payloadStreamInterceptorHandler struct {
-	connect.StreamingHandlerConn
-
-	rpcServerResponseSize    func(int64)
-	rpcServerRequestSize     func(int64)
-	rpcServerRequestsPerRPC  func()
-	rpcServerResponsesPerRPC func()
-
-	rpcServerFirstWriteDelay      func(time.Duration)
-	rpcServerInterReceiveDuration func(time.Duration)
-	rpcServerInterSendDuration    func(time.Duration)
-
-	startTime   time.Time
-	lastSend    time.Time
-	lastReceive time.Time
-}
-
-func (p *payloadStreamInterceptorHandler) Receive(msg any) error {
-	p.rpcServerRequestsPerRPC()
-	p.rpcServerResponsesPerRPC()
-	err := p.StreamingHandlerConn.Receive(msg)
-	if err != nil {
-		return err
-	}
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		p.rpcServerRequestSize(int64(size))
-	}
-	p.rpcServerInterReceiveDuration(time.Since(p.lastReceive))
-	p.lastReceive = time.Now()
-
-	return nil
-}
-
-func (p *payloadStreamInterceptorHandler) Send(msg any) error {
-	err := p.StreamingHandlerConn.Send(msg)
-
-	if p.startTime != (time.Time{}) {
-		p.rpcServerFirstWriteDelay(time.Since(p.startTime))
-		p.startTime = time.Time{}
-	}
-
-	if err != nil {
-		return err
-	}
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		p.rpcServerResponseSize(int64(size))
-	}
-	p.rpcServerInterSendDuration(time.Since(p.lastReceive))
-	p.lastSend = time.Now()
-	return nil
 }
 
 func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
