@@ -52,6 +52,7 @@ func TestMetrics(t *testing.T) {
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
 			WithTelemetry(
+				Client,
 				WithMeterProvider(meterProvider),
 			),
 		},
@@ -211,6 +212,7 @@ func TestWithoutTracing(t *testing.T) {
 	pingClient, _, _ := startServer(
 		[]connect.HandlerOption{
 			WithTelemetry(
+				Client,
 				WithoutTracing(),
 				WithTracerProvider(traceProvider),
 			),
@@ -233,6 +235,7 @@ func TestClientSimple(t *testing.T) {
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
 			WithTelemetry(
+				Client,
 				WithTracerProvider(clientTraceProvider),
 			),
 		},
@@ -281,6 +284,7 @@ func TestHandlerFailCall(t *testing.T) {
 		nil,
 		[]connect.ClientOption{
 			WithTelemetry(
+				Client,
 				WithTracerProvider(clientTraceProvider),
 			),
 		},
@@ -333,6 +337,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	pingClient, host, port := startServer(
 		[]connect.HandlerOption{
 			WithTelemetry(
+				Server,
 				WithTracerProvider(serverTraceProvider),
 				WithFilter(func(ctx context.Context, request *Request) bool {
 					return false
@@ -341,6 +346,7 @@ func TestClientHandlerOpts(t *testing.T) {
 		},
 		[]connect.ClientOption{
 			WithTelemetry(
+				Client,
 				WithTracerProvider(clientTraceProvider),
 			),
 		},
@@ -389,6 +395,7 @@ func TestBasicFilter(t *testing.T) {
 	pingClient, _, _ := startServer(
 		[]connect.HandlerOption{
 			WithTelemetry(
+				Client,
 				WithTracerProvider(traceProvider),
 				WithFilter(func(ctx context.Context, request *Request) bool {
 					return false
@@ -415,6 +422,7 @@ func TestFilterHeader(t *testing.T) {
 	pingClient, host, port := startServer(
 		[]connect.HandlerOption{
 			WithTelemetry(
+				Client,
 				WithTracerProvider(traceProvider),
 				WithFilter(func(ctx context.Context, request *Request) bool {
 					return request.Header.Get("Some-Header") == "foobar"
@@ -471,7 +479,7 @@ func TestInterceptors(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer(
 		[]connect.HandlerOption{
-			WithTelemetry(WithTracerProvider(traceProvider)),
+			WithTelemetry(Client, WithTracerProvider(traceProvider)),
 		},
 		nil, /* clientOpts */
 	)

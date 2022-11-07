@@ -9,14 +9,14 @@ import (
 type payloadStreamInterceptorClient struct {
 	connect.StreamingClientConn
 
-	rpcServerResponseSize    func(int64)
-	rpcServerRequestSize     func(int64)
-	rpcServerRequestsPerRPC  func()
-	rpcServerResponsesPerRPC func()
+	ResponseSize    func(int64)
+	RequestSize     func(int64)
+	RequestsPerRPC  func()
+	ResponsesPerRPC func()
 
-	rpcServerFirstWriteDelay      func(time.Duration)
-	rpcServerInterReceiveDuration func(time.Duration)
-	rpcServerInterSendDuration    func(time.Duration)
+	FirstWriteDelay      func(time.Duration)
+	InterReceiveDuration func(time.Duration)
+	InterSendDuration    func(time.Duration)
 
 	// need to put locks here
 	startTime   time.Time
@@ -25,17 +25,17 @@ type payloadStreamInterceptorClient struct {
 }
 
 func (p *payloadStreamInterceptorClient) Receive(msg any) error {
-	p.rpcServerRequestsPerRPC()
-	p.rpcServerResponsesPerRPC()
+	p.RequestsPerRPC()
+	p.ResponsesPerRPC()
 	err := p.StreamingClientConn.Receive(msg)
 	if err != nil {
 		return err
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		p.rpcServerRequestSize(int64(size))
+		p.RequestSize(int64(size))
 	}
-	p.rpcServerInterReceiveDuration(time.Since(p.lastReceive))
+	p.InterReceiveDuration(time.Since(p.lastReceive))
 	p.lastReceive = time.Now()
 
 	return nil
@@ -45,7 +45,7 @@ func (p *payloadStreamInterceptorClient) Send(msg any) error {
 	err := p.StreamingClientConn.Send(msg)
 
 	if p.startTime != (time.Time{}) {
-		p.rpcServerFirstWriteDelay(time.Since(p.startTime))
+		p.FirstWriteDelay(time.Since(p.startTime))
 		p.startTime = time.Time{}
 	}
 
@@ -54,9 +54,9 @@ func (p *payloadStreamInterceptorClient) Send(msg any) error {
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		p.rpcServerResponseSize(int64(size))
+		p.ResponseSize(int64(size))
 	}
-	p.rpcServerInterSendDuration(time.Since(p.lastReceive))
+	p.InterSendDuration(time.Since(p.lastReceive))
 	p.lastSend = time.Now()
 	return nil
 }
@@ -64,14 +64,14 @@ func (p *payloadStreamInterceptorClient) Send(msg any) error {
 type payloadStreamInterceptorHandler struct {
 	connect.StreamingHandlerConn
 
-	rpcServerResponseSize    func(int64)
-	rpcServerRequestSize     func(int64)
-	rpcServerRequestsPerRPC  func()
-	rpcServerResponsesPerRPC func()
+	ResponseSize    func(int64)
+	RequestSize     func(int64)
+	RequestsPerRPC  func()
+	ResponsesPerRPC func()
 
-	rpcServerFirstWriteDelay      func(time.Duration)
-	rpcServerInterReceiveDuration func(time.Duration)
-	rpcServerInterSendDuration    func(time.Duration)
+	FirstWriteDelay      func(time.Duration)
+	InterReceiveDuration func(time.Duration)
+	InterSendDuration    func(time.Duration)
 
 	// need to put locks here
 	startTime   time.Time
@@ -80,17 +80,17 @@ type payloadStreamInterceptorHandler struct {
 }
 
 func (p *payloadStreamInterceptorHandler) Receive(msg any) error {
-	p.rpcServerRequestsPerRPC()
-	p.rpcServerResponsesPerRPC()
+	p.RequestsPerRPC()
+	p.ResponsesPerRPC()
 	err := p.StreamingHandlerConn.Receive(msg)
 	if err != nil {
 		return err
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		p.rpcServerRequestSize(int64(size))
+		p.RequestSize(int64(size))
 	}
-	p.rpcServerInterReceiveDuration(time.Since(p.lastReceive))
+	p.InterReceiveDuration(time.Since(p.lastReceive))
 	p.lastReceive = time.Now()
 
 	return nil
@@ -100,7 +100,7 @@ func (p *payloadStreamInterceptorHandler) Send(msg any) error {
 	err := p.StreamingHandlerConn.Send(msg)
 
 	if p.startTime != (time.Time{}) {
-		p.rpcServerFirstWriteDelay(time.Since(p.startTime))
+		p.FirstWriteDelay(time.Since(p.startTime))
 		p.startTime = time.Time{}
 	}
 
@@ -109,9 +109,9 @@ func (p *payloadStreamInterceptorHandler) Send(msg any) error {
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		p.rpcServerResponseSize(int64(size))
+		p.ResponseSize(int64(size))
 	}
-	p.rpcServerInterSendDuration(time.Since(p.lastReceive))
+	p.InterSendDuration(time.Since(p.lastReceive))
 	p.lastSend = time.Now()
 	return nil
 }
