@@ -150,7 +150,9 @@ func (i *traceInterceptor) WrapStreamingClient(next connect.StreamingClientFunc)
 	// then using it in a struct that implements connect.StreamingClientConn. The
 	// StreamingClientConn should end the span once both CloseRequest and
 	// CloseResponse have been called.
-	return next
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		return next(ctx, spec)
+	}
 }
 
 func (i *traceInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {

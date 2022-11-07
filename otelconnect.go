@@ -36,20 +36,21 @@ const (
 
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
 // and tracing to Connect clients and handlers.
-func WithTelemetry(options ...Option) connect.Option {
-	return connect.WithInterceptors(NewOtelInterceptors(options...)...)
+func WithTelemetry(interceptorType InterceptorType, options ...Option) connect.Option {
+	return connect.WithInterceptors(NewOtelInterceptors(interceptorType, options...)...)
 }
 
 // NewOtelInterceptors constructs and returns OpenTelemetry Interceptors for metrics
 // and tracing.
-func NewOtelInterceptors(options ...Option) []connect.Interceptor {
+func NewOtelInterceptors(interceptorType InterceptorType, options ...Option) []connect.Interceptor {
 	cfg := config{
 		Trace: traceConfig{
 			Provider:   otel.GetTracerProvider(),
 			Propagator: otel.GetTextMapPropagator(),
 		},
 		Metrics: metricsConfig{
-			Provider: global.MeterProvider(),
+			interceptorType: interceptorType,
+			Provider:        global.MeterProvider(),
 			Meter: global.MeterProvider().Meter(
 				instrumentationName,
 				metric.WithInstrumentationVersion(semanticVersion),
@@ -61,7 +62,11 @@ func NewOtelInterceptors(options ...Option) []connect.Interceptor {
 	}
 	var interceptors []connect.Interceptor
 	if !cfg.DisableMetrics {
-		interceptors = append(interceptors, newMetricsInterceptor(cfg.Metrics))
+		interceptor, err := newmetricsInterceptor(cfg.Metrics)
+		if err != nil {
+			otel.Handle(err)
+		}
+		interceptors = append(interceptors, interceptor)
 	}
 	if !cfg.DisableTrace {
 		interceptors = append(interceptors, &traceInterceptor{cfg.Trace})
