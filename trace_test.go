@@ -44,6 +44,8 @@ import (
 	"testing"
 )
 
+const messagesPerRequest = 1
+
 func BenchmarkStreamingServerNoOptions(b *testing.B) {
 	testStreaming(b)
 }
@@ -64,31 +66,28 @@ func testStreaming(b *testing.B, options ...connect.HandlerOption) {
 		server.URL,
 	)
 	stream := connectClient.CumSum(context.Background())
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < b.N; i++ {
-			err := stream.Send(&pingv1.CumSumRequest{Number: 12})
-			if errors.Is(err, io.EOF) {
-				b.Error(err)
-			} else if err != nil {
-				b.Error(err)
-			}
+	for i := 0; i < b.N; i++ {
+		err := stream.Send(&pingv1.CumSumRequest{Number: 12})
+		if errors.Is(err, io.EOF) {
+			b.Error(err)
+		} else if err != nil {
+			b.Error(err)
 		}
-	}()
-	go func() {
-		defer wg.Done()
-		for i := 0; i < b.N; i++ {
-			_, err := stream.Receive()
-			if errors.Is(err, io.EOF) { //nolint: gocritic
-				b.Error(err)
-			} else if err != nil {
-				b.Error(err)
-			}
+		var wg sync.WaitGroup
+		for j := 0; j < messagesPerRequest; j++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := stream.Receive()
+				if errors.Is(err, io.EOF) { //nolint: gocritic
+					b.Error(err)
+				} else if err != nil {
+					b.Error(err)
+				}
+			}()
 		}
-	}()
-	wg.Wait()
+		wg.Wait()
+	}
 }
 
 func TestStreaming(t *testing.T) {
@@ -111,20 +110,13 @@ func TestStreaming(t *testing.T) {
 		t.Error(err)
 	}
 	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() {
-		defer wg.Done()
-		_, _ = stream.Receive()
-
-	}()
-	go func() {
-		defer wg.Done()
-		_, _ = stream.Receive()
-	}()
-	go func() {
-		defer wg.Done()
-		_, _ = stream.Receive()
-	}()
+	for i := 0; i < messagesPerRequest; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = stream.Receive()
+		}()
+	}
 	wg.Wait()
 }
 
@@ -679,17 +671,10 @@ func (*PingServer) CumSum(
 			return fmt.Errorf("receive request: %w", err)
 		}
 		// client
-		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
-			return fmt.Errorf("send response: %w", err)
-		}
-		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
-			return fmt.Errorf("send response: %w", err)
-		}
-		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
-			return fmt.Errorf("send response: %w", err)
-		}
-		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
-			return fmt.Errorf("send response: %w", err)
+		for i := 0; i < messagesPerRequest; i++ {
+			if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
+				return fmt.Errorf("send response: %w", err)
+			}
 		}
 	}
 }
