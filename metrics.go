@@ -150,6 +150,8 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 		}
 
 		i.duration.Record(ctx, i.now().Sub(requestStartTime).Milliseconds(), attrs...)
+		i.requestsPerRPC.Record(ctx, 1, attrs...)
+		i.responsesPerRPC.Record(ctx, 1, attrs...)
 		return response, err
 	}
 }

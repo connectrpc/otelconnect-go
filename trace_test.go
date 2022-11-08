@@ -135,7 +135,6 @@ func TestStreaming(t *testing.T) {
 func TestMetrics(t *testing.T) {
 	t.Parallel()
 	metricReader := metricsdk.NewManualReader()
-
 	meterProvider := metricsdk.NewMeterProvider(
 		metricsdk.WithReader(
 			metricReader,
@@ -146,6 +145,7 @@ func TestMetrics(t *testing.T) {
 		Provider:        meterProvider,
 		Meter:           meterProvider.Meter(t.Name()),
 	})
+
 	var now time.Time
 	metricInterceptor.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
 		now = now.Add(time.Second)
@@ -196,6 +196,8 @@ func TestMetrics(t *testing.T) {
 								{
 									Count: 1,
 									Sum:   float64(time.Second.Milliseconds()),
+									Min:   ptr(1000.0),
+									Max:   ptr(1000.0),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -209,6 +211,8 @@ func TestMetrics(t *testing.T) {
 								{
 									Count: 1,
 									Sum:   16,
+									Min:   ptr(16.0),
+									Max:   ptr(16.0),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -222,6 +226,8 @@ func TestMetrics(t *testing.T) {
 								{
 									Count: 1,
 									Sum:   16,
+									Min:   ptr(16.0),
+									Max:   ptr(16.0),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -231,6 +237,14 @@ func TestMetrics(t *testing.T) {
 						Name: "rpc.client.requests_per_rpc",
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Count: 1,
+									Sum:   1,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+							},
 							Temporality: metricdata.CumulativeTemporality,
 						},
 					},
@@ -238,6 +252,14 @@ func TestMetrics(t *testing.T) {
 						Name: "rpc.client.responses_per_rpc",
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Count: 1,
+									Sum:   1,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+							},
 							Temporality: metricdata.CumulativeTemporality,
 						},
 					},
@@ -270,9 +292,6 @@ func TestMetrics(t *testing.T) {
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Time"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Bounds"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "BucketCounts"),
-		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Min"),
-		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Max"),
-		//cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Sum"),
 		cmpopts.IgnoreFields(metricdata.ResourceMetrics{}, "Resource"),
 	)
 	if diff != "" {
@@ -727,4 +746,8 @@ func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 		body[i] = byte(rand.Intn(128)) //nolint: gosec
 	}
 	return connect.NewRequest(&pingv1.PingRequest{Id: id, Data: body})
+}
+
+func ptr[T any](val T) *T {
+	return &val
 }
