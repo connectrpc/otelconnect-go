@@ -24,6 +24,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -63,7 +64,6 @@ func TestStreaming(t *testing.T) {
 		server.URL,
 	)
 	stream := connectClient.CumSum(context.Background())
-	counter := 0
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -71,8 +71,6 @@ func TestStreaming(t *testing.T) {
 		time.Sleep(time.Second)
 		for i := 0; i < 10; i++ {
 			err := stream.Send(&pingv1.CumSumRequest{Number: 12})
-			counter++
-			t.Log("Send", counter)
 			if errors.Is(err, io.EOF) {
 				println(err)
 			} else if err != nil {
@@ -86,8 +84,6 @@ func TestStreaming(t *testing.T) {
 		received := 0
 		for i := 0; i < 10; i++ {
 			resp, err := stream.Receive()
-			counter++
-			t.Log("Receive", counter)
 			if errors.Is(err, io.EOF) {
 				println(err)
 			} else if err != nil {
@@ -109,8 +105,6 @@ func TestStreaming(t *testing.T) {
 		defer wg2.Done()
 		for i := 0; i < 2; i++ {
 			err := stream2.Send(&pingv1.CumSumRequest{Number: 12})
-			counter++
-			t.Log("Send2", counter)
 			if errors.Is(err, io.EOF) {
 				println(err)
 			} else if err != nil {
@@ -123,8 +117,6 @@ func TestStreaming(t *testing.T) {
 		received := 0
 		for i := 0; i < 2; i++ {
 			resp, err := stream2.Receive()
-			counter++
-			t.Log("Receive2", counter)
 			if errors.Is(err, io.EOF) {
 				println(err)
 			} else if err != nil {
@@ -140,7 +132,7 @@ func TestStreaming(t *testing.T) {
 	wg2.Wait()
 }
 
-func testMetrics(t *testing.T) {
+func TestMetrics(t *testing.T) {
 	t.Parallel()
 	metricReader := metricsdk.NewManualReader()
 
@@ -168,8 +160,7 @@ func testMetrics(t *testing.T) {
 	diff := cmp.Diff(metrics, metricdata.ResourceMetrics{
 		Resource: resource.NewWithAttributes("https://opentelemetry.io/schemas/1.12.0",
 			attribute.KeyValue{
-				Key:   "service.name",
-				Value: attribute.StringValue("unknown_service:___TestMetrics_in_github_com_bufbuild_connect_opentelemetry_go.test"),
+				Key: "service.name",
 			},
 			attribute.KeyValue{
 				Key:   "telemetry.sdk.language",
@@ -192,7 +183,7 @@ func testMetrics(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: "rpc.server.duration",
+						Name: "rpc.client.duration",
 						Unit: "ms",
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -212,79 +203,104 @@ func testMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.request.size",
+						Name: "rpc.client.request.size",
+						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
-									Attributes: attribute.Set{},
-									Count:      1,
-									Sum:        2,
-								},
-							},
-							Temporality: metricdata.CumulativeTemporality,
-						},
-					},
-					{
-						Name: "rpc.server.response.size",
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
-								{
-									Attributes: attribute.NewSet(
-										attribute.String("net.peer.name", "127.0.0.1"),
-										attribute.String("net.peer.port", "49717"),
-										attribute.String("rpc.method", "Ping"),
-										attribute.String("rpc.service", "observability.ping.v1.PingService"),
-										attribute.String("rpc.service", "observability.ping.v1.PingService"),
-										attribute.String("rpc.system", "connect"),
-									),
+									//			//Attributes: attribute.Set{},
 									Count: 1,
-									Sum:   2,
+									//			//Sum:        2,
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
 						},
 					},
 					{
-						Name: "rpc.server.requests_per_rpc",
+						Name: "rpc.client.response.size",
+						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
-									Attributes: attribute.NewSet(
-										attribute.String("net.peer.name", "127.0.0.1"),
-										attribute.String("net.peer.port", "49717"),
-										attribute.String("rpc.method", "Ping"),
-										attribute.String("rpc.service", "observability.ping.v1.PingService"),
-										attribute.String("rpc.service", "observability.ping.v1.PingService"),
-										attribute.String("rpc.system", "connect"),
-									),
-									StartTime: time.Date(2022, time.November, 1, 9, 54, 53, 152228000, time.Local),
-									Time:      time.Date(2022, time.November, 1, 9, 54, 53, 154112000, time.Local),
-									Count:     1,
-									Sum:       1,
+									//			//Attributes: attribute.NewSet(
+									//			//	attribute.String("net.peer.name", "127.0.0.1"),
+									//			//	attribute.String("net.peer.port", "49717"),
+									//			//	attribute.String("rpc.method", "Ping"),
+									//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
+									//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
+									//			//	attribute.String("rpc.system", "connect"),
+									//			//),
+									Count: 1,
+									//			//Sum:   2,
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
 						},
 					},
 					{
-						Name: "rpc.server.responses_per_rpc",
+						Name: "rpc.client.requests_per_rpc",
+						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
-								{
-									Attributes: attribute.NewSet(
-										attribute.String("net.peer.name", "127.0.0.1"),
-										attribute.String("net.peer.port", "49717"),
-										attribute.String("rpc.method", "Ping"),
-										attribute.String("rpc.service", "observability.ping.v1.PingService"),
-										attribute.String("rpc.service", "observability.ping.v1.PingService"),
-										attribute.String("rpc.system", "connect"),
-									),
-									StartTime: time.Date(2022, time.November, 1, 9, 54, 53, 152230000, time.Local),
-									Time:      time.Date(2022, time.November, 1, 9, 54, 53, 154112000, time.Local),
-									Count:     1,
-									Sum:       1,
-								},
-							},
+							//	DataPoints: []metricdata.HistogramDataPoint{
+							//		{
+							//			//Attributes: attribute.NewSet(
+							//			//	attribute.String("net.peer.name", "127.0.0.1"),
+							//			//	attribute.String("net.peer.port", "49717"),
+							//			//	attribute.String("rpc.method", "Ping"),
+							//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
+							//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
+							//			//	attribute.String("rpc.system", "connect"),
+							//			//),
+							//			StartTime: time.Date(2022, time.November, 1, 9, 54, 53, 152228000, time.Local),
+							//			Time:      time.Date(2022, time.November, 1, 9, 54, 53, 154112000, time.Local),
+							//			Count:     1,
+							//			Sum:       1,
+							//		},
+							//	},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.responses_per_rpc",
+						Unit: unit.Dimensionless,
+						Data: metricdata.Histogram{
+							//DataPoints: []metricdata.HistogramDataPoint{
+							//		{
+							//			//Attributes: attribute.NewSet(
+							//			//	attribute.String("net.peer.name", "127.0.0.1"),
+							//			//	attribute.String("net.peer.port", "49717"),
+							//			//	attribute.String("rpc.method", "Ping"),
+							//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
+							//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
+							//			//	attribute.String("rpc.system", "connect"),
+							//			//),
+							//			//StartTime: time.Date(2022, time.November, 1, 9, 54, 53, 152230000, time.Local),
+							//			//Time:      time.Date(2022, time.November, 1, 9, 54, 53, 154112000, time.Local),
+							//			//Count: 1,
+							//			//Sum:   1,
+							//		},
+							//	},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.first_write_delay",
+						Unit: "ms",
+						Data: metricdata.Histogram{
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.inter_receive_duration",
+						Unit: "ms",
+						Data: metricdata.Histogram{
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.inter_send_duration",
+						Unit: "ms",
+						Data: metricdata.Histogram{
 							Temporality: metricdata.CumulativeTemporality,
 						},
 					},
@@ -306,7 +322,7 @@ func testMetrics(t *testing.T) {
 	}
 }
 
-func testWithoutTracing(t *testing.T) {
+func TestWithoutTracing(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
@@ -328,7 +344,7 @@ func testWithoutTracing(t *testing.T) {
 	}
 }
 
-func testClientSimple(t *testing.T) {
+func TestClientSimple(t *testing.T) {
 	t.Parallel()
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
@@ -366,18 +382,18 @@ func testClientSimple(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
 				attribute.Key("rpc.connect.status_code").String("success"),
 			},
 		},
 	}, clientSpanRecorder.Ended())
 }
 
-func testHandlerFailCall(t *testing.T) {
+func TestHandlerFailCall(t *testing.T) {
 	t.Parallel()
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
@@ -418,18 +434,18 @@ func testHandlerFailCall(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Fail"),
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
 				attribute.Key("rpc.connect.status_code").String("unimplemented"),
 			},
 		},
 	}, clientSpanRecorder.Ended())
 }
 
-func testClientHandlerOpts(t *testing.T) {
+func TestClientHandlerOpts(t *testing.T) {
 	t.Parallel()
 	serverSpanRecorder := tracetest.NewSpanRecorder()
 	serverTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(serverSpanRecorder))
@@ -478,18 +494,18 @@ func testClientHandlerOpts(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
 				attribute.Key("rpc.connect.status_code").String("success"),
 			},
 		},
 	}, clientSpanRecorder.Ended())
 }
 
-func testBasicFilter(t *testing.T) {
+func TestBasicFilter(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
@@ -516,7 +532,7 @@ func testBasicFilter(t *testing.T) {
 	checkUnarySpans(t, []wantSpans{}, spanRecorder.Ended())
 }
 
-func testFilterHeader(t *testing.T) {
+func TestFilterHeader(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
@@ -562,18 +578,18 @@ func testFilterHeader(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
 				attribute.Key("rpc.connect.status_code").String("success"),
 			},
 		},
 	}, spanRecorder.Ended())
 }
 
-func testInterceptors(t *testing.T) {
+func TestInterceptors(t *testing.T) {
 	t.Parallel()
 	const largeMessageSize = 1000
 	spanRecorder := tracetest.NewSpanRecorder()
@@ -612,11 +628,11 @@ func testInterceptors(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
 				attribute.Key("rpc.connect.status_code").String("success"),
 			},
 		},
@@ -641,11 +657,11 @@ func testInterceptors(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
 				attribute.Key("rpc.connect.status_code").String("success"),
 			},
 		},
