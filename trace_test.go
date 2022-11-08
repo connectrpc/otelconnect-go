@@ -44,15 +44,16 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )
 
-func BenchmarkStreamingServerNoOptions(t *testing.B) {
-	testStreaming(t)
+func BenchmarkStreamingServerNoOptions(b *testing.B) {
+	testStreaming(b)
 }
 
-func BenchmarkStreamingServerOption(t *testing.B) {
-	testStreaming(t, WithTelemetry(Server))
+func BenchmarkStreamingServerOption(b *testing.B) {
+	testStreaming(b, WithTelemetry(Server))
 }
 
-func testStreaming(t *testing.B, options ...connect.HandlerOption) {
+func testStreaming(b *testing.B, options ...connect.HandlerOption) {
+	b.Helper()
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, options...))
 	server := httptest.NewUnstartedServer(mux)
@@ -67,24 +68,24 @@ func testStreaming(t *testing.B, options ...connect.HandlerOption) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < t.N; i++ {
+		for i := 0; i < b.N; i++ {
 			err := stream.Send(&pingv1.CumSumRequest{Number: 12})
 			if errors.Is(err, io.EOF) {
-				t.Error(err)
+				b.Error(err)
 			} else if err != nil {
-				t.Error(err)
+				b.Error(err)
 			}
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		received := 0
-		for i := 0; i < t.N; i++ {
+		for i := 0; i < b.N; i++ {
 			_, err := stream.Receive()
-			if errors.Is(err, io.EOF) {
-				t.Error(err)
+			if errors.Is(err, io.EOF) { //nolint: gocritic
+				b.Error(err)
 			} else if err != nil {
-				t.Error(err)
+				b.Error(err)
 			} else {
 				received++
 			}

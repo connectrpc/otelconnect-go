@@ -52,18 +52,18 @@ func (i *traceInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		// indirection that makes the logic difficult for me to follow.) Once we
 		// have tests verifying that this is correct, we can factor out code that
 		// ought to be shared with WrapStreamingClient and WrapStreamingHandler.
-		r := &Request{
+		req := &Request{
 			Spec:   request.Spec(),
 			Peer:   request.Peer(),
 			Header: request.Header(),
 		}
 		if i.config.Filter != nil {
-			if !i.config.Filter(ctx, r) {
+			if !i.config.Filter(ctx, req) {
 				return next(ctx, request)
 			}
 		}
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
-		attrs := attributesFromRequest(r)
+		attrs := attributesFromRequest(req)
 		tracer := i.config.Tracer()
 		var span trace.Span
 		carrier := propagation.HeaderCarrier(request.Header())
@@ -125,9 +125,8 @@ func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
 	if strings.HasPrefix(protocol, "grpc") {
 		if serverErr != nil {
 			return codeKey.Int64(int64(connect.CodeOf(serverErr)))
-		} else {
-			return codeKey.Int64(0) // gRPC uses 0 for success
 		}
+		return codeKey.Int64(0) // gRPC uses 0 for success
 	} else if serverErr != nil {
 		return codeKey.String(connect.CodeOf(serverErr).String())
 	}
