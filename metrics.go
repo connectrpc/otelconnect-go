@@ -65,6 +65,7 @@ type metricsConfig struct {
 
 type metricsInterceptor struct {
 	config               metricsConfig
+	now                  func() time.Time
 	duration             syncint64.Histogram
 	requestSize          syncint64.Histogram
 	responseSize         syncint64.Histogram
@@ -78,6 +79,7 @@ type metricsInterceptor struct {
 func newMetricsInterceptor(metricConfig metricsConfig) (*metricsInterceptor, error) {
 	m := metricsInterceptor{
 		config: metricConfig,
+		now:    time.Now,
 	}
 	var err error
 	intProvider := m.config.Meter.SyncInt64()
@@ -118,7 +120,7 @@ func newMetricsInterceptor(metricConfig metricsConfig) (*metricsInterceptor, err
 
 func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
-		requestStartTime := time.Now()
+		requestStartTime := i.now()
 		r := &Request{
 			Spec:   request.Spec(),
 			Peer:   request.Peer(),
@@ -146,7 +148,8 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 			size := proto.Size(msg)
 			i.requestSize.Record(ctx, int64(size), attrs...)
 		}
-		i.duration.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
+
+		i.duration.Record(ctx, i.now().Sub(requestStartTime).Milliseconds(), attrs...)
 		return response, err
 	}
 }
@@ -164,7 +167,7 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 				return next(ctx, spec)
 			}
 		}
-		requestStartTime := time.Now()
+		requestStartTime := i.now()
 		var lastReceive, lastSend time.Time
 		attrs := attributesFromRequest(r)
 		return &streamingClientInterceptor{
@@ -186,7 +189,7 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 					if !lastReceive.Equal(time.Time{}) {
 						i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
 					}
-					lastReceive = time.Now()
+					lastReceive = i.now()
 					return nil
 				},
 				send: func(msg any, p connect.StreamingClientConn) error {
@@ -207,7 +210,7 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 					if !lastSend.Equal(time.Time{}) {
 						i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
 					}
-					lastSend = time.Now()
+					lastSend = i.now()
 					return nil
 				},
 			},
@@ -227,7 +230,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 				return next(ctx, conn)
 			}
 		}
-		requestStartTime := time.Now()
+		requestStartTime := i.now()
 		var lastReceive, lastSend time.Time
 		attrs := attributesFromRequest(r)
 		ret := &streamingHandlerInterceptor{
@@ -249,7 +252,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 					if !lastReceive.Equal(time.Time{}) {
 						i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
 					}
-					lastReceive = time.Now()
+					lastReceive = i.now()
 					return nil
 				},
 				send: func(msg any, p connect.StreamingHandlerConn) error {
@@ -270,7 +273,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 					if !lastSend.Equal(time.Time{}) {
 						i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
 					}
-					lastSend = time.Now()
+					lastSend = i.now()
 					return nil
 				},
 			},

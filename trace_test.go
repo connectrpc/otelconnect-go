@@ -141,16 +141,23 @@ func TestMetrics(t *testing.T) {
 			metricReader,
 		),
 	)
+	metricInterceptor, err := newMetricsInterceptor(metricsConfig{
+		interceptorType: Client,
+		Provider:        meterProvider,
+		Meter:           meterProvider.Meter(t.Name()),
+	})
+	var now time.Time
+	metricInterceptor.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
+		now = now.Add(time.Second)
+		return now
+	}
 	pingClient, _, _ := startServer(
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
-			WithTelemetry(
-				Client,
-				WithMeterProvider(meterProvider),
-			),
+			connect.WithInterceptors(metricInterceptor),
 		},
 	)
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {
 		t.Errorf(err.Error())
 	}
 	metrics, err := metricReader.Collect(context.Background())
@@ -178,8 +185,7 @@ func TestMetrics(t *testing.T) {
 		ScopeMetrics: []metricdata.ScopeMetrics{
 			{
 				Scope: instrumentation.Scope{
-					Name:    "github.com/bufbuild/connect-opentelemetry-go",
-					Version: "semver:0.0.1-dev",
+					Name: "TestMetrics",
 				},
 				Metrics: []metricdata.Metrics{
 					{
@@ -188,15 +194,8 @@ func TestMetrics(t *testing.T) {
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
-									Attributes: attribute.NewSet(
-										attribute.String("net.peer.name", "127.0.0.1"),
-										attribute.String("net.peer.port", "49717"),
-										attribute.String("rpc.method", "Ping"),
-										attribute.String("rpc.service", "observability.ping.v1.PingService"),
-										attribute.String("rpc.service", "observability.ping.v1.PingService"),
-										attribute.String("rpc.system", "connect"),
-									),
 									Count: 1,
+									Sum:   float64(time.Second.Milliseconds()),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -208,9 +207,8 @@ func TestMetrics(t *testing.T) {
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
-									//			//Attributes: attribute.Set{},
 									Count: 1,
-									//			//Sum:        2,
+									Sum:   16,
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -222,16 +220,8 @@ func TestMetrics(t *testing.T) {
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
-									//			//Attributes: attribute.NewSet(
-									//			//	attribute.String("net.peer.name", "127.0.0.1"),
-									//			//	attribute.String("net.peer.port", "49717"),
-									//			//	attribute.String("rpc.method", "Ping"),
-									//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
-									//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
-									//			//	attribute.String("rpc.system", "connect"),
-									//			//),
 									Count: 1,
-									//			//Sum:   2,
+									Sum:   16,
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -241,22 +231,6 @@ func TestMetrics(t *testing.T) {
 						Name: "rpc.client.requests_per_rpc",
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
-							//	DataPoints: []metricdata.HistogramDataPoint{
-							//		{
-							//			//Attributes: attribute.NewSet(
-							//			//	attribute.String("net.peer.name", "127.0.0.1"),
-							//			//	attribute.String("net.peer.port", "49717"),
-							//			//	attribute.String("rpc.method", "Ping"),
-							//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
-							//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
-							//			//	attribute.String("rpc.system", "connect"),
-							//			//),
-							//			StartTime: time.Date(2022, time.November, 1, 9, 54, 53, 152228000, time.Local),
-							//			Time:      time.Date(2022, time.November, 1, 9, 54, 53, 154112000, time.Local),
-							//			Count:     1,
-							//			Sum:       1,
-							//		},
-							//	},
 							Temporality: metricdata.CumulativeTemporality,
 						},
 					},
@@ -264,22 +238,6 @@ func TestMetrics(t *testing.T) {
 						Name: "rpc.client.responses_per_rpc",
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
-							//DataPoints: []metricdata.HistogramDataPoint{
-							//		{
-							//			//Attributes: attribute.NewSet(
-							//			//	attribute.String("net.peer.name", "127.0.0.1"),
-							//			//	attribute.String("net.peer.port", "49717"),
-							//			//	attribute.String("rpc.method", "Ping"),
-							//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
-							//			//	attribute.String("rpc.service", "observability.ping.v1.PingService"),
-							//			//	attribute.String("rpc.system", "connect"),
-							//			//),
-							//			//StartTime: time.Date(2022, time.November, 1, 9, 54, 53, 152230000, time.Local),
-							//			//Time:      time.Date(2022, time.November, 1, 9, 54, 53, 154112000, time.Local),
-							//			//Count: 1,
-							//			//Sum:   1,
-							//		},
-							//	},
 							Temporality: metricdata.CumulativeTemporality,
 						},
 					},
@@ -314,7 +272,7 @@ func TestMetrics(t *testing.T) {
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "BucketCounts"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Min"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Max"),
-		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Sum"),
+		//cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Sum"),
 		cmpopts.IgnoreFields(metricdata.ResourceMetrics{}, "Resource"),
 	)
 	if diff != "" {
