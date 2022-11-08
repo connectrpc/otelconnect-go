@@ -106,6 +106,9 @@ func TestMetrics(t *testing.T) {
 		Provider:        meterProvider,
 		Meter:           meterProvider.Meter(t.Name()),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var now time.Time
 	metricInterceptor.now = func() time.Time { // spoof time.Now() so that tests can be accurately run

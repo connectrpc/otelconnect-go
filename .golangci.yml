@@ -31,7 +31,6 @@ linters:
     - exhaustivestruct  # replaced by exhaustruct
     - funlen            # rely on code review to limit function length
     - gocognit          # dubious "cognitive overhead" quantification
-    - gofumpt           # prefer standard gofmt
     - golint            # deprecated by Go team
     - gomnd             # some unnamed constants are okay
     - ifshort           # deprecated by author
