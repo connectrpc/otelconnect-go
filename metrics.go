@@ -17,6 +17,10 @@ package otelconnect
 import (
 	"context"
 	"fmt"
+	"net"
+	"strings"
+	"time"
+
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -26,9 +30,6 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"google.golang.org/protobuf/proto"
-	"net"
-	"strings"
-	"time"
 )
 
 type InterceptorType string
@@ -45,7 +46,7 @@ const (
 	requestsPerRPC  = "requests_per_rpc"
 	responsesPerRPC = "responses_per_rpc"
 
-	/* non otel specified metrics */
+	/* non otel specified metrics. */
 	firstWriteDelay      = "first_write_delay"
 	interReceiveDuration = "inter_receive_duration"
 	interSendDuration    = "inter_send_duration"

@@ -15,26 +15,10 @@
 package otelconnect
 
 import (
-	"github.com/bufbuild/connect-go"
 	"net/http"
+
+	"github.com/bufbuild/connect-go"
 )
-
-type streamEventType int
-
-type streamEvent struct {
-	Type streamEventType
-	Err  error
-}
-
-const (
-	receiveEndEvent streamEventType = iota
-	errorEvent
-)
-
-type payloadInterceptor2 struct {
-	events     chan streamEvent
-	eventsDone chan struct{}
-}
 
 type payloadInterceptor[T streamer] struct {
 	conn    T // if this could be embedded then the other types wouldn't be needed

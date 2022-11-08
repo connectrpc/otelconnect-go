@@ -18,6 +18,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"math/rand"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/bufbuild/connect-go"
 	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
@@ -32,15 +42,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"io"
-	"math/rand"
-	"net"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"sync"
-	"testing"
-	"time"
 )
 
 func BenchmarkStreamingServerNoOptions(t *testing.B) {
@@ -603,12 +604,12 @@ func TestInterceptors(t *testing.T) {
 			},
 		},
 	}, spanRecorder.Ended())
-
 }
 
 func startServer(
 	handlerOpts []connect.HandlerOption,
-	clientOpts []connect.ClientOption) (pingv1connect.PingServiceClient, string, string) {
+	clientOpts []connect.ClientOption,
+) (pingv1connect.PingServiceClient, string, string) {
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, handlerOpts...))
 	server := httptest.NewServer(mux)

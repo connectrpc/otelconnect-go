@@ -16,8 +16,9 @@ package otelconnect
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/metric"
 
+
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )

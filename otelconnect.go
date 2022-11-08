@@ -17,14 +17,18 @@
 package otelconnect
 
 import (
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
 	"net/http"
 	"strings"
+
+
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/global"
 
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/global"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )
 
