@@ -168,56 +168,53 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 		}
 		attrs := attributesFromRequest(r)
 
-		ret := funcName(ctx, conn, i, attrs, lastReceive, requestStartTime, lastSend)
+		ret := &streamingClientInterceptor{
+			StreamingClientConn: conn,
+			payloadInterceptor: payloadInterceptor[connect.StreamingClientConn]{
+				conn: conn,
+				receive: func(msg any, p *payloadInterceptor[connect.StreamingClientConn]) error {
+					i.requestsPerRPC.Record(ctx, 1, attrs...)
+					i.responsesPerRPC.Record(ctx, 1, attrs...)
+					err := p.conn.Receive(msg)
+					if err != nil {
+						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+						return err
+					}
+					if msg, ok := msg.(proto.Message); ok {
+						size := proto.Size(msg)
+						i.requestSize.Record(ctx, int64(size), attrs...)
+					}
+					if !lastReceive.Equal(time.Time{}) {
+						i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
+					}
+					lastReceive = time.Now()
+					return nil
+				},
+				send: func(msg any, p *payloadInterceptor[connect.StreamingClientConn]) error {
+					err := p.conn.Send(msg)
+					if !requestStartTime.Equal(time.Time{}) {
+						i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
+						requestStartTime = time.Time{}
+					}
+
+					if err != nil {
+						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+						return err
+					}
+					if msg, ok := msg.(proto.Message); ok {
+						size := proto.Size(msg)
+						i.responseSize.Record(ctx, int64(size), attrs...)
+					}
+					if !lastSend.Equal(time.Time{}) {
+						i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
+					}
+					lastSend = time.Now()
+					return nil
+				},
+			},
+		}
 		return ret
 	}
-}
-
-func funcName(ctx context.Context, conn connect.StreamingClientConn, i *metricsInterceptor, attrs []attribute.KeyValue, lastReceive time.Time, requestStartTime time.Time, lastSend time.Time) *streamingClientInterceptor {
-	ret := &streamingClientInterceptor{
-		StreamingClientConn: conn,
-		payloadInterceptor: payloadInterceptor[connect.StreamingClientConn]{
-			conn: conn,
-			receive: func(msg any, p *payloadInterceptor[connect.StreamingClientConn]) {
-				i.requestsPerRPC.Record(ctx, 1, attrs...)
-				i.responsesPerRPC.Record(ctx, 1, attrs...)
-				err := p.conn.Receive(msg)
-				if err != nil {
-					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
-					return
-				}
-				if msg, ok := msg.(proto.Message); ok {
-					size := proto.Size(msg)
-					i.requestSize.Record(ctx, int64(size), attrs...)
-				}
-				if !lastReceive.Equal(time.Time{}) {
-					i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
-				}
-				lastReceive = time.Now()
-			},
-			send: func(msg any, p *payloadInterceptor[connect.StreamingClientConn]) {
-				err := p.conn.Send(msg)
-				if !requestStartTime.Equal(time.Time{}) {
-					i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
-					requestStartTime = time.Time{}
-				}
-
-				if err != nil {
-					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
-					return
-				}
-				if msg, ok := msg.(proto.Message); ok {
-					size := proto.Size(msg)
-					i.responseSize.Record(ctx, int64(size), attrs...)
-				}
-				if !lastSend.Equal(time.Time{}) {
-					i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
-				}
-				lastSend = time.Now()
-			},
-		},
-	}
-	return ret
 }
 
 func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
@@ -233,29 +230,56 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 				return next(ctx, conn)
 			}
 		}
+		var lastReceive, lastSend time.Time
 		attrs := attributesFromRequest(r)
 		ret := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			payloadInterceptor: payloadInterceptor[connect.StreamingHandlerConn]{
 				conn: conn,
-				handleErr: func(err error) {
-					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+				receive: func(msg any, p *payloadInterceptor[connect.StreamingHandlerConn]) error {
+					i.requestsPerRPC.Record(ctx, 1, attrs...)
+					i.responsesPerRPC.Record(ctx, 1, attrs...)
+					err := p.conn.Receive(msg)
+					if err != nil {
+						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+						return err
+					}
+					if msg, ok := msg.(proto.Message); ok {
+						size := proto.Size(msg)
+						i.requestSize.Record(ctx, int64(size), attrs...)
+					}
+					if !lastReceive.Equal(time.Time{}) {
+						i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
+					}
+					lastReceive = time.Now()
+					return nil
 				},
-				startTime:            make(chan time.Time, 1),
-				lastSend:             make(chan time.Time, 1),
-				lastReceive:          make(chan time.Time, 1),
-				requestsPerRPC:       func() { i.requestsPerRPC.Record(ctx, 1, attrs...) },
-				responsesPerRPC:      func() { i.responsesPerRPC.Record(ctx, 1, attrs...) },
-				responseSize:         func(size int64) { i.responseSize.Record(ctx, size, attrs...) },
-				requestSize:          func(size int64) { i.requestSize.Record(ctx, size, attrs...) },
-				firstWriteDelay:      func(t time.Duration) { i.firstWriteDelay.Record(ctx, t.Milliseconds(), attrs...) },
-				interReceiveDuration: func(t time.Duration) { i.interReceiveDuration.Record(ctx, t.Milliseconds(), attrs...) },
-				interSendDuration:    func(t time.Duration) { i.interSendDuration.Record(ctx, t.Milliseconds(), attrs...) },
+				send: func(msg any, p *payloadInterceptor[connect.StreamingHandlerConn]) error {
+					err := p.conn.Send(msg)
+					if !requestStartTime.Equal(time.Time{}) {
+						i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
+						requestStartTime = time.Time{}
+					}
+
+					if err != nil {
+						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+						return err
+					}
+					if msg, ok := msg.(proto.Message); ok {
+						size := proto.Size(msg)
+						i.responseSize.Record(ctx, int64(size), attrs...)
+					}
+					if !lastSend.Equal(time.Time{}) {
+						i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
+					}
+					lastSend = time.Now()
+					return nil
+				},
 			},
 		}
-		ret.startTime <- requestStartTime
-		ret.lastSend <- requestStartTime
-		ret.lastReceive <- requestStartTime
+		//ret.startTime <- requestStartTime
+		//ret.lastSend <- requestStartTime
+		//ret.lastReceive <- requestStartTime
 		return next(ctx, ret)
 
 	}
