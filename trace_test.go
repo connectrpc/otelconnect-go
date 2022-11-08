@@ -44,7 +44,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )
 
-const messagesPerRequest = 3
+const messagesPerRequest = 1
 
 func BenchmarkStreamingServerNoOptions(b *testing.B) {
 	testStreaming(b)
