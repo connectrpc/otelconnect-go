@@ -18,10 +18,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.opentelemetry.io/otel/sdk/resource"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
 	"time"
 
 	"github.com/bufbuild/connect-go"
@@ -34,17 +38,13 @@ import (
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"net"
-	"net/http/httptest"
-	"strings"
-	"sync"
-	"testing"
 )
 
-const messagesPerRequest = 1
+const messagesPerRequest = 3
 
 func BenchmarkStreamingServerNoOptions(b *testing.B) {
 	testStreaming(b)
@@ -79,7 +79,7 @@ func testStreaming(b *testing.B, options ...connect.HandlerOption) {
 			go func() {
 				defer wg.Done()
 				_, err := stream.Receive()
-				if errors.Is(err, io.EOF) { //nolint: gocritic
+				if errors.Is(err, io.EOF) {
 					b.Error(err)
 				} else if err != nil {
 					b.Error(err)
@@ -91,6 +91,7 @@ func testStreaming(b *testing.B, options ...connect.HandlerOption) {
 }
 
 func TestStreaming(t *testing.T) {
+	t.Parallel()
 	options := []connect.ClientOption{WithTelemetry(Server)}
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}))

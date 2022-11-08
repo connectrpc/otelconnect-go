@@ -194,36 +194,36 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 		}
 		requestStartTime := i.now()
 		attrs := attributesFromRequest(req)
-		var attrsMutex sync.Mutex
+		var mut sync.Mutex
+
 		var lastReceive, lastSend time.Time
-		var lastReceiveMut, lastSendMut sync.Mutex
-		return &streamingClientInterceptor{ //nolint: dupl
+		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			payloadInterceptor: payloadInterceptor[connect.StreamingClientConn]{
 				conn: conn,
 				receive: func(msg any, p connect.StreamingClientConn) error {
-					i.requestsPerRPC.Record(ctx, 1, attrs...)
-					i.responsesPerRPC.Record(ctx, 1, attrs...)
 					err := p.Receive(msg)
+					mut.Lock()
+					defer mut.Unlock()
 					if err != nil {
-						attrsMutex.Lock()
 						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
-						attrsMutex.Unlock()
 					}
 					if msg, ok := msg.(proto.Message); ok {
 						size := proto.Size(msg)
 						i.requestSize.Record(ctx, int64(size), attrs...)
 					}
-					lastReceiveMut.Lock()
 					if lastReceive.Equal(time.Time{}) {
 						i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
 					}
 					lastReceive = i.now()
-					lastReceiveMut.Unlock()
+					i.requestsPerRPC.Record(ctx, 1, attrs...)
+					i.responsesPerRPC.Record(ctx, 1, attrs...)
 					return err
 				},
 				send: func(msg any, p connect.StreamingClientConn) error {
 					err := p.Send(msg)
+					mut.Lock()
+					defer mut.Unlock()
 					if !requestStartTime.Equal(time.Time{}) {
 						i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
 						requestStartTime = time.Time{}
@@ -236,12 +236,10 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 						size := proto.Size(msg)
 						i.responseSize.Record(ctx, int64(size), attrs...)
 					}
-					lastSendMut.Lock()
 					if !lastSend.Equal(time.Time{}) {
 						i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
 					}
 					lastSend = i.now()
-					lastSendMut.Unlock()
 					return nil
 				},
 			},
@@ -263,13 +261,16 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 		}
 		requestStartTime := i.now()
 		var lastReceive, lastSend time.Time
+		var mut sync.Mutex
 		attrs := attributesFromRequest(req)
-		ret := &streamingHandlerInterceptor{ //nolint: dupl
+		ret := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			payloadInterceptor: payloadInterceptor[connect.StreamingHandlerConn]{
 				conn: conn,
 				receive: func(msg any, p connect.StreamingHandlerConn) error {
 					err := p.Receive(msg)
+					mut.Lock()
+					defer mut.Unlock()
 					if err != nil {
 						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 					}
@@ -287,6 +288,8 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 				},
 				send: func(msg any, p connect.StreamingHandlerConn) error {
 					err := p.Send(msg)
+					mut.Lock()
+					defer mut.Unlock()
 					if err != nil {
 						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 					}
