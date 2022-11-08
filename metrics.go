@@ -201,8 +201,8 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 			StreamingClientConn: conn,
 			payloadInterceptor: payloadInterceptor[connect.StreamingClientConn]{
 				conn: conn,
-				receive: func(msg any, p connect.StreamingClientConn) error {
-					err := p.Receive(msg)
+				receive: func(msg any, conn connect.StreamingClientConn) error {
+					err := conn.Receive(msg)
 					mut.Lock()
 					defer mut.Unlock()
 					if err != nil {
@@ -220,8 +220,8 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 					i.responsesPerRPC.Record(ctx, 1, attrs...)
 					return err
 				},
-				send: func(msg any, p connect.StreamingClientConn) error {
-					err := p.Send(msg)
+				send: func(msg any, conn connect.StreamingClientConn) error {
+					err := conn.Send(msg)
 					mut.Lock()
 					defer mut.Unlock()
 					if !requestStartTime.Equal(time.Time{}) {
@@ -267,8 +267,8 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 			StreamingHandlerConn: conn,
 			payloadInterceptor: payloadInterceptor[connect.StreamingHandlerConn]{
 				conn: conn,
-				receive: func(msg any, p connect.StreamingHandlerConn) error {
-					err := p.Receive(msg)
+				receive: func(msg any, conn connect.StreamingHandlerConn) error {
+					err := conn.Receive(msg)
 					mut.Lock()
 					defer mut.Unlock()
 					if err != nil {
@@ -286,8 +286,8 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 					i.responsesPerRPC.Record(ctx, 1, attrs...)
 					return err
 				},
-				send: func(msg any, p connect.StreamingHandlerConn) error {
-					err := p.Send(msg)
+				send: func(msg any, conn connect.StreamingHandlerConn) error {
+					err := conn.Send(msg)
 					mut.Lock()
 					defer mut.Unlock()
 					if err != nil {
