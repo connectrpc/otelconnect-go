@@ -153,8 +153,6 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 
 func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
-		requestStartTime := time.Now()
-		var lastReceive, lastSend time.Time
 		conn := next(ctx, spec)
 		r := &Request{
 			Spec:   conn.Spec(),
@@ -166,16 +164,17 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 				return next(ctx, spec)
 			}
 		}
+		requestStartTime := time.Now()
+		var lastReceive, lastSend time.Time
 		attrs := attributesFromRequest(r)
-
-		ret := &streamingClientInterceptor{
+		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			payloadInterceptor: payloadInterceptor[connect.StreamingClientConn]{
 				conn: conn,
-				receive: func(msg any, p *payloadInterceptor[connect.StreamingClientConn]) error {
+				receive: func(msg any, p connect.StreamingClientConn) error {
 					i.requestsPerRPC.Record(ctx, 1, attrs...)
 					i.responsesPerRPC.Record(ctx, 1, attrs...)
-					err := p.conn.Receive(msg)
+					err := p.Receive(msg)
 					if err != nil {
 						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 						return err
@@ -190,8 +189,8 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 					lastReceive = time.Now()
 					return nil
 				},
-				send: func(msg any, p *payloadInterceptor[connect.StreamingClientConn]) error {
-					err := p.conn.Send(msg)
+				send: func(msg any, p connect.StreamingClientConn) error {
+					err := p.Send(msg)
 					if !requestStartTime.Equal(time.Time{}) {
 						i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
 						requestStartTime = time.Time{}
@@ -213,13 +212,11 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 				},
 			},
 		}
-		return ret
 	}
 }
 
 func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		requestStartTime := time.Now()
 		r := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
@@ -230,16 +227,17 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 				return next(ctx, conn)
 			}
 		}
+		requestStartTime := time.Now()
 		var lastReceive, lastSend time.Time
 		attrs := attributesFromRequest(r)
 		ret := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			payloadInterceptor: payloadInterceptor[connect.StreamingHandlerConn]{
 				conn: conn,
-				receive: func(msg any, p *payloadInterceptor[connect.StreamingHandlerConn]) error {
+				receive: func(msg any, p connect.StreamingHandlerConn) error {
 					i.requestsPerRPC.Record(ctx, 1, attrs...)
 					i.responsesPerRPC.Record(ctx, 1, attrs...)
-					err := p.conn.Receive(msg)
+					err := p.Receive(msg)
 					if err != nil {
 						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 						return err
@@ -254,8 +252,8 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 					lastReceive = time.Now()
 					return nil
 				},
-				send: func(msg any, p *payloadInterceptor[connect.StreamingHandlerConn]) error {
-					err := p.conn.Send(msg)
+				send: func(msg any, p connect.StreamingHandlerConn) error {
+					err := p.Send(msg)
 					if !requestStartTime.Equal(time.Time{}) {
 						i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
 						requestStartTime = time.Time{}
@@ -277,11 +275,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 				},
 			},
 		}
-		//ret.startTime <- requestStartTime
-		//ret.lastSend <- requestStartTime
-		//ret.lastReceive <- requestStartTime
 		return next(ctx, ret)
-
 	}
 }
 
