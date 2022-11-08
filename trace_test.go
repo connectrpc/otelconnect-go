@@ -43,17 +43,15 @@ import (
 	"time"
 )
 
-//func BenchmarkStreamingServerNoOptions(t *testing.B) {
-//	testStreaming(t)
-//}
+func BenchmarkStreamingServerNoOptions(t *testing.B) {
+	testStreaming(t)
+}
 
-//func BenchmarkStreamingServerOption(t *testing.B) {
-//	testStreaming(t, WithTelemetry(Server))
-//}
+func BenchmarkStreamingServerOption(t *testing.B) {
+	testStreaming(t, WithTelemetry(Server))
+}
 
-func TestStreaming(t *testing.T) {
-	options := []connect.HandlerOption{}
-	options = append(options, WithTelemetry(Server))
+func testStreaming(t *testing.B, options ...connect.HandlerOption) {
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, options...))
 	server := httptest.NewUnstartedServer(mux)
@@ -68,11 +66,10 @@ func TestStreaming(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		time.Sleep(time.Second)
-		for i := 0; i < 10; i++ {
+		for i := 0; i < t.N; i++ {
 			err := stream.Send(&pingv1.CumSumRequest{Number: 12})
 			if errors.Is(err, io.EOF) {
-				println(err)
+				t.Error(err)
 			} else if err != nil {
 				t.Error(err)
 			}
@@ -80,56 +77,19 @@ func TestStreaming(t *testing.T) {
 	}()
 	go func() {
 		defer wg.Done()
-		time.Sleep(time.Second)
 		received := 0
-		for i := 0; i < 10; i++ {
-			resp, err := stream.Receive()
+		for i := 0; i < t.N; i++ {
+			_, err := stream.Receive()
 			if errors.Is(err, io.EOF) {
-				println(err)
+				t.Error(err)
 			} else if err != nil {
 				t.Error(err)
 			} else {
 				received++
-				t.Log(resp)
 			}
 		}
 	}()
-	connectClient2 := pingv1connect.NewPingServiceClient(
-		server.Client(),
-		server.URL,
-	)
-	stream2 := connectClient2.CumSum(context.Background())
-	var wg2 sync.WaitGroup
-	wg2.Add(2)
-	go func() {
-		defer wg2.Done()
-		for i := 0; i < 2; i++ {
-			err := stream2.Send(&pingv1.CumSumRequest{Number: 12})
-			if errors.Is(err, io.EOF) {
-				println(err)
-			} else if err != nil {
-				t.Error(err)
-			}
-		}
-	}()
-	go func() {
-		defer wg2.Done()
-		received := 0
-		for i := 0; i < 2; i++ {
-			resp, err := stream2.Receive()
-			if errors.Is(err, io.EOF) {
-				println(err)
-			} else if err != nil {
-				t.Error(err)
-			} else {
-				received++
-				t.Log(resp)
-			}
-		}
-	}()
-
 	wg.Wait()
-	wg2.Wait()
 }
 
 func TestMetrics(t *testing.T) {
