@@ -16,30 +16,131 @@ package otelconnect
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/sdk/instrumentation"
-	metricsdk "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	"go.opentelemetry.io/otel/sdk/resource"
-	"math/rand"
-	"net"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
-
+	"errors"
+	"fmt"
 	"github.com/bufbuild/connect-go"
 	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
+	metricsdk "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"io"
+	"math/rand"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
 )
 
-func TestMetrics(t *testing.T) {
+//func BenchmarkStreamingServerNoOptions(t *testing.B) {
+//	testStreaming(t)
+//}
+
+//func BenchmarkStreamingServerOption(t *testing.B) {
+//	testStreaming(t, WithTelemetry(Server))
+//}
+
+func TestStreaming(t *testing.T) {
+	options := []connect.HandlerOption{}
+	options = append(options, WithTelemetry(Server))
+	mux := http.NewServeMux()
+	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, options...))
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	connectClient := pingv1connect.NewPingServiceClient(
+		server.Client(),
+		server.URL,
+	)
+	stream := connectClient.CumSum(context.Background())
+	counter := 0
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		time.Sleep(time.Second)
+		for i := 0; i < 10; i++ {
+			err := stream.Send(&pingv1.CumSumRequest{Number: 12})
+			counter++
+			t.Log("Send", counter)
+			if errors.Is(err, io.EOF) {
+				println(err)
+			} else if err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		time.Sleep(time.Second)
+		received := 0
+		for i := 0; i < 10; i++ {
+			resp, err := stream.Receive()
+			counter++
+			t.Log("Receive", counter)
+			if errors.Is(err, io.EOF) {
+				println(err)
+			} else if err != nil {
+				t.Error(err)
+			} else {
+				received++
+				t.Log(resp)
+			}
+		}
+	}()
+	connectClient2 := pingv1connect.NewPingServiceClient(
+		server.Client(),
+		server.URL,
+	)
+	stream2 := connectClient2.CumSum(context.Background())
+	var wg2 sync.WaitGroup
+	wg2.Add(2)
+	go func() {
+		defer wg2.Done()
+		for i := 0; i < 2; i++ {
+			err := stream2.Send(&pingv1.CumSumRequest{Number: 12})
+			counter++
+			t.Log("Send2", counter)
+			if errors.Is(err, io.EOF) {
+				println(err)
+			} else if err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+	go func() {
+		defer wg2.Done()
+		received := 0
+		for i := 0; i < 2; i++ {
+			resp, err := stream2.Receive()
+			counter++
+			t.Log("Receive2", counter)
+			if errors.Is(err, io.EOF) {
+				println(err)
+			} else if err != nil {
+				t.Error(err)
+			} else {
+				received++
+				t.Log(resp)
+			}
+		}
+	}()
+
+	wg.Wait()
+	wg2.Wait()
+}
+
+func testMetrics(t *testing.T) {
 	t.Parallel()
 	metricReader := metricsdk.NewManualReader()
 
@@ -205,7 +306,7 @@ func TestMetrics(t *testing.T) {
 	}
 }
 
-func TestWithoutTracing(t *testing.T) {
+func testWithoutTracing(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
@@ -227,7 +328,7 @@ func TestWithoutTracing(t *testing.T) {
 	}
 }
 
-func TestClientSimple(t *testing.T) {
+func testClientSimple(t *testing.T) {
 	t.Parallel()
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
@@ -276,7 +377,7 @@ func TestClientSimple(t *testing.T) {
 	}, clientSpanRecorder.Ended())
 }
 
-func TestHandlerFailCall(t *testing.T) {
+func testHandlerFailCall(t *testing.T) {
 	t.Parallel()
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
@@ -328,7 +429,7 @@ func TestHandlerFailCall(t *testing.T) {
 	}, clientSpanRecorder.Ended())
 }
 
-func TestClientHandlerOpts(t *testing.T) {
+func testClientHandlerOpts(t *testing.T) {
 	t.Parallel()
 	serverSpanRecorder := tracetest.NewSpanRecorder()
 	serverTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(serverSpanRecorder))
@@ -388,7 +489,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	}, clientSpanRecorder.Ended())
 }
 
-func TestBasicFilter(t *testing.T) {
+func testBasicFilter(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
@@ -415,7 +516,7 @@ func TestBasicFilter(t *testing.T) {
 	checkUnarySpans(t, []wantSpans{}, spanRecorder.Ended())
 }
 
-func TestFilterHeader(t *testing.T) {
+func testFilterHeader(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
@@ -472,7 +573,7 @@ func TestFilterHeader(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
-func TestInterceptors(t *testing.T) {
+func testInterceptors(t *testing.T) {
 	t.Parallel()
 	const largeMessageSize = 1000
 	spanRecorder := tracetest.NewSpanRecorder()
@@ -560,6 +661,7 @@ func startServer(
 	server := httptest.NewServer(mux)
 	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
 	host, port, _ := net.SplitHostPort(strings.ReplaceAll(server.URL, "http://", ""))
+
 	return pingClient, host, port
 }
 
@@ -568,6 +670,26 @@ func (*PingServer) Ping(_ context.Context, req *connect.Request[pingv1.PingReque
 		Id:   req.Msg.Id,
 		Data: req.Msg.Data,
 	}), nil
+}
+
+func (*PingServer) CumSum(
+	ctx context.Context,
+	stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse],
+) error {
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		request, err := stream.Receive()
+		if err != nil && errors.Is(err, io.EOF) {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("receive request: %w", err)
+		}
+		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
+			return fmt.Errorf("send response: %w", err)
+		}
+	}
 }
 
 type PingServer struct {

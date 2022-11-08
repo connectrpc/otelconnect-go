@@ -37,21 +37,22 @@ const (
 	Client InterceptorType = "client"
 	Server InterceptorType = "server"
 
-	MetricKeyFormat = "rpc.%s.%s"
-	Duration        = "duration"
-	RequestSize     = "request.size"
-	ResponseSize    = "response.size"
-	RequestsPerRPC  = "requests_per_rpc"
-	ResponsesPerRPC = "responses_per_rpc"
+	connectProtocol = "connect"
+	metricKeyFormat = "rpc.%s.%s"
+	duration        = "duration"
+	requestSize     = "request.size"
+	responseSize    = "response.size"
+	requestsPerRPC  = "requests_per_rpc"
+	responsesPerRPC = "responses_per_rpc"
 
 	/* non otel specified metrics */
-	FirstWriteDelay      = "first_write_delay"
-	InterReceiveDuration = "inter_receive_duration"
-	InterSendDuration    = "inter_send_duration"
+	firstWriteDelay      = "first_write_delay"
+	interReceiveDuration = "inter_receive_duration"
+	interSendDuration    = "inter_send_duration"
 )
 
 func formatkeys(metricType InterceptorType, metricName string) string {
-	return fmt.Sprintf(MetricKeyFormat, metricType, metricName)
+	return fmt.Sprintf(metricKeyFormat, metricType, metricName)
 }
 
 type metricsConfig struct {
@@ -63,53 +64,52 @@ type metricsConfig struct {
 }
 
 type metricsInterceptor struct {
-	config metricsConfig
-
-	Duration             syncint64.Histogram
-	RequestSize          syncint64.Histogram
-	ResponseSize         syncint64.Histogram
-	RequestsPerRPC       syncint64.Histogram
-	ResponsesPerRPC      syncint64.Histogram
-	FirstWriteDelay      syncint64.Histogram
-	InterReceiveDuration syncint64.Histogram
-	InterSendDuration    syncint64.Histogram
+	config               metricsConfig
+	duration             syncint64.Histogram
+	requestSize          syncint64.Histogram
+	responseSize         syncint64.Histogram
+	requestsPerRPC       syncint64.Histogram
+	responsesPerRPC      syncint64.Histogram
+	firstWriteDelay      syncint64.Histogram
+	interReceiveDuration syncint64.Histogram
+	interSendDuration    syncint64.Histogram
 }
 
-func newmetricsInterceptor(metricConfig metricsConfig) (*metricsInterceptor, error) {
+func newMetricsInterceptor(metricConfig metricsConfig) (*metricsInterceptor, error) {
 	m := metricsInterceptor{
 		config: metricConfig,
 	}
 	var err error
 	intProvider := m.config.Meter.SyncInt64()
-	m.Duration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, Duration), instrument.WithUnit(unit.Milliseconds))
+	m.duration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, duration), instrument.WithUnit(unit.Milliseconds))
 	if err != nil {
 		return nil, err
 	}
-	m.RequestSize, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, RequestSize), instrument.WithUnit(unit.Bytes))
+	m.requestSize, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, requestSize), instrument.WithUnit(unit.Bytes))
 	if err != nil {
 		return nil, err
 	}
-	m.ResponseSize, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, ResponseSize), instrument.WithUnit(unit.Bytes))
+	m.responseSize, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, responseSize), instrument.WithUnit(unit.Bytes))
 	if err != nil {
 		return nil, err
 	}
-	m.RequestsPerRPC, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, RequestsPerRPC), instrument.WithUnit(unit.Dimensionless))
+	m.requestsPerRPC, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, requestsPerRPC), instrument.WithUnit(unit.Dimensionless))
 	if err != nil {
 		return nil, err
 	}
-	m.ResponsesPerRPC, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, ResponsesPerRPC), instrument.WithUnit(unit.Dimensionless))
+	m.responsesPerRPC, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, responsesPerRPC), instrument.WithUnit(unit.Dimensionless))
 	if err != nil {
 		return nil, err
 	}
-	m.FirstWriteDelay, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, FirstWriteDelay), instrument.WithUnit(unit.Milliseconds))
+	m.firstWriteDelay, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, firstWriteDelay), instrument.WithUnit(unit.Milliseconds))
 	if err != nil {
 		return nil, err
 	}
-	m.InterReceiveDuration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, InterReceiveDuration), instrument.WithUnit(unit.Milliseconds))
+	m.interReceiveDuration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, interReceiveDuration), instrument.WithUnit(unit.Milliseconds))
 	if err != nil {
 		return nil, err
 	}
-	m.InterSendDuration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, InterSendDuration), instrument.WithUnit(unit.Milliseconds))
+	m.interSendDuration, err = intProvider.Histogram(formatkeys(metricConfig.interceptorType, interSendDuration), instrument.WithUnit(unit.Milliseconds))
 	if err != nil {
 		return nil, err
 	}
@@ -117,177 +117,174 @@ func newmetricsInterceptor(metricConfig metricsConfig) (*metricsInterceptor, err
 }
 
 func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
-	return connect.UnaryFunc(func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 		requestStartTime := time.Now()
+		r := &Request{
+			Spec:   request.Spec(),
+			Peer:   request.Peer(),
+			Header: request.Header(),
+		}
 		if i.config.Filter != nil {
-			r := &Request{
-				Spec:   request.Spec(),
-				Peer:   request.Peer(),
-				Header: request.Header(),
-			}
 			if !i.config.Filter(ctx, r) {
 				return next(ctx, request)
 			}
 		}
-		serviceMethod := strings.Split(strings.TrimLeft(request.Spec().Procedure, "/"), "/")
-		var serviceName, methodName string
-		if len(serviceMethod) == 2 {
-			serviceName, methodName = serviceMethod[0], serviceMethod[1]
-		}
-		attrs := []attribute.KeyValue{
-			semconv.RPCSystemKey.String("connect"),
-			semconv.RPCServiceKey.String(serviceName),
-			semconv.RPCMethodKey.String(methodName),
-		}
-		host, port, err := net.SplitHostPort(request.Peer().Addr)
-		if err == nil {
-			attrs = append(attrs,
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
-			)
-		}
 		response, err := next(ctx, request)
+		attrs := attributesFromRequest(r)
+		protocol := parseProtocol(request.Header())
+		attrs = append(attrs, statusCodeAttribute(protocol, err))
 		if err != nil {
 			return nil, err
 		}
 		if err == nil {
 			if msg, ok := response.Any().(proto.Message); ok {
 				size := proto.Size(msg)
-				i.ResponseSize.Record(ctx, int64(size), attrs...)
+				i.responseSize.Record(ctx, int64(size), attrs...)
 			}
 		}
 		if msg, ok := request.Any().(proto.Message); ok {
 			size := proto.Size(msg)
-			i.RequestSize.Record(ctx, int64(size), attrs...)
+			i.requestSize.Record(ctx, int64(size), attrs...)
 		}
-		i.Duration.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
+		i.duration.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
 		return response, err
-	})
+	}
 }
 
 func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
-		conn := next(ctx, spec)
 		requestStartTime := time.Now()
+		var lastReceive, lastSend time.Time
+		conn := next(ctx, spec)
+		r := &Request{
+			Spec:   conn.Spec(),
+			Peer:   conn.Peer(),
+			Header: conn.RequestHeader(),
+		}
 		if i.config.Filter != nil {
-			r := &Request{
-				Spec:   conn.Spec(),
-				Peer:   conn.Peer(),
-				Header: conn.RequestHeader(),
-			}
 			if !i.config.Filter(ctx, r) {
 				return next(ctx, spec)
 			}
 		}
-		serviceMethod := strings.Split(strings.TrimLeft(conn.Spec().Procedure, "/"), "/")
-		var serviceName, methodName string
-		if len(serviceMethod) == 2 {
-			serviceName, methodName = serviceMethod[0], serviceMethod[1]
-		}
-		attrs := []attribute.KeyValue{
-			semconv.RPCSystemKey.String("connect"),
-			semconv.RPCServiceKey.String(serviceName),
-			semconv.RPCMethodKey.String(methodName),
-		}
-		host, port, err := net.SplitHostPort(conn.Peer().Addr)
-		if err == nil {
-			attrs = append(attrs,
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
-			)
-		}
+		attrs := attributesFromRequest(r)
 
-		i.Duration.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
-
-		return &payloadStreamInterceptorClient{
-			StreamingClientConn: conn,
-			startTime:           requestStartTime,
-			RequestsPerRPC: func() {
-				i.RequestsPerRPC.Record(ctx, 1, attrs...)
-			},
-			ResponsesPerRPC: func() {
-				i.ResponsesPerRPC.Record(ctx, 1, attrs...)
-			},
-			ResponseSize: func(size int64) {
-				i.ResponseSize.Record(ctx, size, attrs...)
-			},
-			RequestSize: func(size int64) {
-				i.RequestSize.Record(ctx, size, attrs...)
-			},
-
-			FirstWriteDelay: func(t time.Duration) {
-				i.FirstWriteDelay.Record(ctx, t.Milliseconds(), attrs...)
-			},
-			InterReceiveDuration: func(t time.Duration) {
-				i.InterReceiveDuration.Record(ctx, t.Milliseconds(), attrs...)
-			},
-			InterSendDuration: func(t time.Duration) {
-				i.InterSendDuration.Record(ctx, t.Milliseconds(), attrs...)
-			},
-		}
+		ret := funcName(ctx, conn, i, attrs, lastReceive, requestStartTime, lastSend)
+		return ret
 	}
+}
+
+func funcName(ctx context.Context, conn connect.StreamingClientConn, i *metricsInterceptor, attrs []attribute.KeyValue, lastReceive time.Time, requestStartTime time.Time, lastSend time.Time) *streamingClientInterceptor {
+	ret := &streamingClientInterceptor{
+		StreamingClientConn: conn,
+		payloadInterceptor: payloadInterceptor[connect.StreamingClientConn]{
+			conn: conn,
+			receive: func(msg any, p *payloadInterceptor[connect.StreamingClientConn]) {
+				i.requestsPerRPC.Record(ctx, 1, attrs...)
+				i.responsesPerRPC.Record(ctx, 1, attrs...)
+				err := p.conn.Receive(msg)
+				if err != nil {
+					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+					return
+				}
+				if msg, ok := msg.(proto.Message); ok {
+					size := proto.Size(msg)
+					i.requestSize.Record(ctx, int64(size), attrs...)
+				}
+				if !lastReceive.Equal(time.Time{}) {
+					i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
+				}
+				lastReceive = time.Now()
+			},
+			send: func(msg any, p *payloadInterceptor[connect.StreamingClientConn]) {
+				err := p.conn.Send(msg)
+				if !requestStartTime.Equal(time.Time{}) {
+					i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
+					requestStartTime = time.Time{}
+				}
+
+				if err != nil {
+					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+					return
+				}
+				if msg, ok := msg.(proto.Message); ok {
+					size := proto.Size(msg)
+					i.responseSize.Record(ctx, int64(size), attrs...)
+				}
+				if !lastSend.Equal(time.Time{}) {
+					i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
+				}
+				lastSend = time.Now()
+			},
+		},
+	}
+	return ret
 }
 
 func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		requestStartTime := time.Now()
+		r := &Request{
+			Spec:   conn.Spec(),
+			Peer:   conn.Peer(),
+			Header: conn.RequestHeader(),
+		}
 		if i.config.Filter != nil {
-			r := &Request{
-				Spec:   conn.Spec(),
-				Peer:   conn.Peer(),
-				Header: conn.RequestHeader(),
-			}
 			if !i.config.Filter(ctx, r) {
 				return next(ctx, conn)
 			}
 		}
-
-		serviceMethod := strings.Split(strings.TrimLeft(conn.Spec().Procedure, "/"), "/")
-		var serviceName, methodName string
-		if len(serviceMethod) == 2 {
-			serviceName, methodName = serviceMethod[0], serviceMethod[1]
+		attrs := attributesFromRequest(r)
+		ret := &streamingHandlerInterceptor{
+			StreamingHandlerConn: conn,
+			payloadInterceptor: payloadInterceptor[connect.StreamingHandlerConn]{
+				conn: conn,
+				handleErr: func(err error) {
+					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+				},
+				startTime:            make(chan time.Time, 1),
+				lastSend:             make(chan time.Time, 1),
+				lastReceive:          make(chan time.Time, 1),
+				requestsPerRPC:       func() { i.requestsPerRPC.Record(ctx, 1, attrs...) },
+				responsesPerRPC:      func() { i.responsesPerRPC.Record(ctx, 1, attrs...) },
+				responseSize:         func(size int64) { i.responseSize.Record(ctx, size, attrs...) },
+				requestSize:          func(size int64) { i.requestSize.Record(ctx, size, attrs...) },
+				firstWriteDelay:      func(t time.Duration) { i.firstWriteDelay.Record(ctx, t.Milliseconds(), attrs...) },
+				interReceiveDuration: func(t time.Duration) { i.interReceiveDuration.Record(ctx, t.Milliseconds(), attrs...) },
+				interSendDuration:    func(t time.Duration) { i.interSendDuration.Record(ctx, t.Milliseconds(), attrs...) },
+			},
 		}
+		ret.startTime <- requestStartTime
+		ret.lastSend <- requestStartTime
+		ret.lastReceive <- requestStartTime
+		return next(ctx, ret)
 
-		attrs := []attribute.KeyValue{
-			semconv.RPCSystemKey.String("connect"),
-			semconv.RPCServiceKey.String(serviceName),
-			semconv.RPCMethodKey.String(methodName),
-		}
-		host, port, err := net.SplitHostPort(conn.Peer().Addr)
-		if err == nil {
-			attrs = append(attrs,
+	}
+}
+
+func attributesFromRequest(r *Request) []attribute.KeyValue {
+	var attrs []attribute.KeyValue
+	host, port, err := net.SplitHostPort(r.Peer.Addr)
+	if err == nil {
+		attrs = append(attrs,
+			semconv.NetPeerNameKey.String(host),
+			semconv.NetPeerPortKey.String(port),
+		)
+	}
+	if addr := r.Peer.Addr; addr != "" {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			attrs = append(attrs, semconv.NetPeerNameKey.String(addr))
+		} else {
+			attrs = append(
+				attrs,
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.String(port),
 			)
 		}
-
-		i.Duration.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
-
-		return next(ctx, &payloadStreamInterceptorHandler{
-			StreamingHandlerConn: conn,
-			startTime:            requestStartTime,
-			RequestsPerRPC: func() {
-				i.RequestsPerRPC.Record(ctx, 1, attrs...)
-			},
-			ResponsesPerRPC: func() {
-				i.ResponsesPerRPC.Record(ctx, 1, attrs...)
-			},
-			ResponseSize: func(size int64) {
-				i.ResponseSize.Record(ctx, int64(size), attrs...)
-			},
-			RequestSize: func(size int64) {
-				i.RequestSize.Record(ctx, int64(size), attrs...)
-			},
-
-			FirstWriteDelay: func(t time.Duration) {
-				i.FirstWriteDelay.Record(ctx, t.Milliseconds(), attrs...)
-			},
-			InterReceiveDuration: func(t time.Duration) {
-				i.InterReceiveDuration.Record(ctx, t.Milliseconds(), attrs...)
-			},
-			InterSendDuration: func(t time.Duration) {
-				i.InterSendDuration.Record(ctx, t.Milliseconds(), attrs...)
-			},
-		})
 	}
+	name := strings.TrimLeft(r.Spec.Procedure, "/")
+	protocol := parseProtocol(r.Header)
+	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
+	attrs = append(attrs, parseProcedure(name)...)
+	return attrs
 }

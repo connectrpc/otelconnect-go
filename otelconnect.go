@@ -62,7 +62,7 @@ func NewOtelInterceptors(interceptorType InterceptorType, options ...Option) []c
 	}
 	var interceptors []connect.Interceptor
 	if !cfg.DisableMetrics {
-		interceptor, err := newmetricsInterceptor(cfg.Metrics)
+		interceptor, err := newMetricsInterceptor(cfg.Metrics)
 		if err != nil {
 			otel.Handle(err)
 		}

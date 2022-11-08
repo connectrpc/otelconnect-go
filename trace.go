@@ -17,7 +17,6 @@ package otelconnect
 import (
 	"context"
 	"errors"
-	"net"
 	"strings"
 
 	"github.com/bufbuild/connect-go"
@@ -47,38 +46,24 @@ type traceInterceptor struct {
 }
 
 func (i *traceInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
-	return connect.UnaryFunc(func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 		// TODO: I've intentionally minimized abstraction here, so that it's easy
 		// to read the logic from top to bottom. (otelgrpc has a bunch of
 		// indirection that makes the logic difficult for me to follow.) Once we
 		// have tests verifying that this is correct, we can factor out code that
 		// ought to be shared with WrapStreamingClient and WrapStreamingHandler.
+		r := &Request{
+			Spec:   request.Spec(),
+			Peer:   request.Peer(),
+			Header: request.Header(),
+		}
 		if i.config.Filter != nil {
-			r := &Request{
-				Spec:   request.Spec(),
-				Peer:   request.Peer(),
-				Header: request.Header(),
-			}
 			if !i.config.Filter(ctx, r) {
 				return next(ctx, request)
 			}
 		}
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
-		protocol := parseProtocol(request.Header())
-		attrs := []attribute.KeyValue{semconv.RPCSystemKey.String(protocol)}
-		attrs = append(attrs, parseProcedure(name)...)
-		if addr := request.Peer().Addr; addr != "" {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				attrs = append(attrs, semconv.NetPeerNameKey.String(addr))
-			} else {
-				attrs = append(
-					attrs,
-					semconv.NetPeerNameKey.String(host),
-					semconv.NetPeerPortKey.String(port),
-				)
-			}
-		}
+		attrs := attributesFromRequest(r)
 		tracer := i.config.Tracer()
 		var span trace.Span
 		carrier := propagation.HeaderCarrier(request.Header())
@@ -129,20 +114,24 @@ func (i *traceInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		}
 		// Following the respective specifications, use integers for gRPC codes and
 		// strings for Connect codes.
-		codeKey := attribute.Key("rpc." + protocol + ".status_code")
-		if strings.HasPrefix(protocol, "grpc") {
-			if err != nil {
-				span.SetAttributes(codeKey.Int64(int64(connect.CodeOf(err))))
-			} else {
-				span.SetAttributes(codeKey.Int64(0)) // gRPC uses 0 for success
-			}
-		} else if err != nil {
-			span.SetAttributes(codeKey.String(connect.CodeOf(err).String()))
-		} else {
-			span.SetAttributes(codeKey.String("success"))
-		}
+		codeAttr := statusCodeAttribute(parseProtocol(request.Header()), err)
+		span.SetAttributes(codeAttr)
 		return response, err
-	})
+	}
+}
+
+func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
+	codeKey := attribute.Key("rpc." + protocol + ".status_code")
+	if strings.HasPrefix(protocol, "grpc") {
+		if serverErr != nil {
+			return codeKey.Int64(int64(connect.CodeOf(serverErr)))
+		} else {
+			return codeKey.Int64(0) // gRPC uses 0 for success
+		}
+	} else if serverErr != nil {
+		return codeKey.String(connect.CodeOf(serverErr).String())
+	}
+	return codeKey.String("success")
 }
 
 func (i *traceInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {

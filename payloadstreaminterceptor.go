@@ -3,115 +3,106 @@ package otelconnect
 import (
 	"github.com/bufbuild/connect-go"
 	"google.golang.org/protobuf/proto"
+	"net/http"
+	"sync"
 	"time"
 )
 
-type payloadStreamInterceptorClient struct {
+var counterMutex sync.Mutex
+
+type streamingClientInterceptor struct {
 	connect.StreamingClientConn
-
-	ResponseSize    func(int64)
-	RequestSize     func(int64)
-	RequestsPerRPC  func()
-	ResponsesPerRPC func()
-
-	FirstWriteDelay      func(time.Duration)
-	InterReceiveDuration func(time.Duration)
-	InterSendDuration    func(time.Duration)
-
-	// need to put locks here
-	startTime   time.Time
-	lastSend    time.Time
-	lastReceive time.Time
+	payloadInterceptor[connect.StreamingClientConn]
 }
 
-func (p *payloadStreamInterceptorClient) Receive(msg any) error {
-	p.RequestsPerRPC()
-	p.ResponsesPerRPC()
-	err := p.StreamingClientConn.Receive(msg)
-	if err != nil {
-		return err
-	}
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		p.RequestSize(int64(size))
-	}
-	p.InterReceiveDuration(time.Since(p.lastReceive))
-	p.lastReceive = time.Now()
-
-	return nil
+func (p *streamingClientInterceptor) Receive(msg any) error {
+	return p.conn.Receive(msg)
 }
 
-func (p *payloadStreamInterceptorClient) Send(msg any) error {
-	err := p.StreamingClientConn.Send(msg)
-
-	if p.startTime != (time.Time{}) {
-		p.FirstWriteDelay(time.Since(p.startTime))
-		p.startTime = time.Time{}
-	}
-
-	if err != nil {
-		return err
-	}
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		p.ResponseSize(int64(size))
-	}
-	p.InterSendDuration(time.Since(p.lastReceive))
-	p.lastSend = time.Now()
-	return nil
+func (p *streamingClientInterceptor) Send(msg any) error {
+	return p.conn.Send(msg)
 }
 
-type payloadStreamInterceptorHandler struct {
+type streamingHandlerInterceptor struct {
 	connect.StreamingHandlerConn
-
-	ResponseSize    func(int64)
-	RequestSize     func(int64)
-	RequestsPerRPC  func()
-	ResponsesPerRPC func()
-
-	FirstWriteDelay      func(time.Duration)
-	InterReceiveDuration func(time.Duration)
-	InterSendDuration    func(time.Duration)
-
-	// need to put locks here
-	startTime   time.Time
-	lastSend    time.Time
-	lastReceive time.Time
+	payloadInterceptor[connect.StreamingHandlerConn]
 }
 
-func (p *payloadStreamInterceptorHandler) Receive(msg any) error {
-	p.RequestsPerRPC()
-	p.ResponsesPerRPC()
-	err := p.StreamingHandlerConn.Receive(msg)
+func (p *streamingHandlerInterceptor) Receive(msg any) error {
+	return p.payloadInterceptor.Receive(msg)
+}
+
+func (p *streamingHandlerInterceptor) Send(msg any) error {
+	return p.payloadInterceptor.Send(msg)
+}
+
+type Streamer interface {
+	Send(any) error
+	Receive(any) error
+	RequestHeader() http.Header
+	ResponseHeader() http.Header
+}
+
+// payloadInterceptor is necessary because go generics don't allow you to embed a generic type.
+type payloadInterceptor[T Streamer] struct {
+	conn    T
+	receive func(any, *payloadInterceptor[T])
+	send    func(any, *payloadInterceptor[T])
+
+	//handleErr            func(error)
+	//responseSize         func(int64)
+	//requestSize          func(int64)
+	//requestsPerRPC       func()
+	//responsesPerRPC      func()
+	//firstWriteDelay      func(time.Duration)
+	//interReceiveDuration func(time.Duration)
+	//interSendDuration    func(time.Duration)
+	// tracing
+
+	// need to put locks here
+	//startTime   chan time.Time
+	//lastSend    chan time.Time
+	//lastReceive chan time.Time
+}
+
+func (p *payloadInterceptor[T]) Receive(msg any) error {
+	p.requestsPerRPC()
+	//p.responsesPerRPC()
+	err := p.conn.Receive(msg)
 	if err != nil {
+		p.handleErr(err)
 		return err
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		p.RequestSize(int64(size))
+		p.requestSize(int64(size))
 	}
-	p.InterReceiveDuration(time.Since(p.lastReceive))
-	p.lastReceive = time.Now()
+	if len(p.lastReceive) == 1 {
+		p.interReceiveDuration(time.Since(<-p.lastReceive))
+	}
+	p.lastReceive <- time.Now()
 
 	return nil
 }
 
-func (p *payloadStreamInterceptorHandler) Send(msg any) error {
-	err := p.StreamingHandlerConn.Send(msg)
-
-	if p.startTime != (time.Time{}) {
-		p.FirstWriteDelay(time.Since(p.startTime))
-		p.startTime = time.Time{}
+func (p *payloadInterceptor[T]) Send(msg any) error {
+	err := p.conn.Send(msg)
+	if len(p.startTime) == 1 {
+		p.firstWriteDelay(time.Since(<-p.startTime))
+		close(p.startTime)
 	}
 
 	if err != nil {
+		p.handleErr(err)
 		return err
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		p.ResponseSize(int64(size))
+		p.responseSize(int64(size))
 	}
-	p.InterSendDuration(time.Since(p.lastReceive))
-	p.lastSend = time.Now()
+	if len(p.lastSend) == 1 {
+		p.interReceiveDuration(time.Since(<-p.lastSend))
+	}
+	p.lastSend <- time.Now()
 	return nil
 }
