@@ -18,14 +18,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"io"
 	"math/rand"
-	"net"
 	"net/http"
-	"net/http/httptest"
-	"strings"
-	"sync"
-	"testing"
 	"time"
 
 	"github.com/bufbuild/connect-go"
@@ -38,10 +34,14 @@ import (
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"net"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
 )
 
 func BenchmarkStreamingServerNoOptions(b *testing.B) {
@@ -49,7 +49,7 @@ func BenchmarkStreamingServerNoOptions(b *testing.B) {
 }
 
 func BenchmarkStreamingServerOption(b *testing.B) {
-	testStreaming(b, WithTelemetry(Server))
+	testStreaming(b, WithTelemetry(Client))
 }
 
 func testStreaming(b *testing.B, options ...connect.HandlerOption) {
@@ -79,17 +79,51 @@ func testStreaming(b *testing.B, options ...connect.HandlerOption) {
 	}()
 	go func() {
 		defer wg.Done()
-		received := 0
 		for i := 0; i < b.N; i++ {
 			_, err := stream.Receive()
 			if errors.Is(err, io.EOF) { //nolint: gocritic
 				b.Error(err)
 			} else if err != nil {
 				b.Error(err)
-			} else {
-				received++
 			}
 		}
+	}()
+	wg.Wait()
+}
+
+func TestStreaming(t *testing.T) {
+	options := []connect.ClientOption{WithTelemetry(Server)}
+	mux := http.NewServeMux()
+	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}))
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	connectClient := pingv1connect.NewPingServiceClient(
+		server.Client(),
+		server.URL,
+		options...,
+	)
+	stream := connectClient.CumSum(context.Background())
+	err := stream.Send(&pingv1.CumSumRequest{Number: 12})
+	if errors.Is(err, io.EOF) {
+		t.Error(err)
+	} else if err != nil {
+		t.Error(err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		_, _ = stream.Receive()
+
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = stream.Receive()
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = stream.Receive()
 	}()
 	wg.Wait()
 }
@@ -643,6 +677,16 @@ func (*PingServer) CumSum(
 			return nil
 		} else if err != nil {
 			return fmt.Errorf("receive request: %w", err)
+		}
+		// client
+		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
+			return fmt.Errorf("send response: %w", err)
+		}
+		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
+			return fmt.Errorf("send response: %w", err)
+		}
+		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
+			return fmt.Errorf("send response: %w", err)
 		}
 		if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
 			return fmt.Errorf("send response: %w", err)

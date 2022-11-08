@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bufbuild/connect-go"
@@ -171,7 +172,6 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 			size := proto.Size(msg)
 			i.requestSize.Record(ctx, int64(size), attrs...)
 		}
-
 		i.duration.Record(ctx, i.now().Sub(requestStartTime).Milliseconds(), attrs...)
 		i.requestsPerRPC.Record(ctx, 1, attrs...)
 		i.responsesPerRPC.Record(ctx, 1, attrs...)
@@ -194,6 +194,7 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 		}
 		requestStartTime := i.now()
 		var lastReceive, lastSend time.Time
+		var lastReceiveMut, lastSendMut sync.Mutex
 		attrs := attributesFromRequest(req)
 		return &streamingClientInterceptor{ //nolint: dupl
 			StreamingClientConn: conn,
@@ -204,17 +205,19 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 					i.responsesPerRPC.Record(ctx, 1, attrs...)
 					err := p.Receive(msg)
 					if err != nil {
-						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+						//////attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 						return err
 					}
 					if msg, ok := msg.(proto.Message); ok {
 						size := proto.Size(msg)
 						i.requestSize.Record(ctx, int64(size), attrs...)
 					}
+					lastReceiveMut.Lock()
 					if !lastReceive.Equal(time.Time{}) {
 						i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
 					}
 					lastReceive = i.now()
+					lastReceiveMut.Unlock()
 					return nil
 				},
 				send: func(msg any, p connect.StreamingClientConn) error {
@@ -225,17 +228,19 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 					}
 
 					if err != nil {
-						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+						////attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 						return err
 					}
 					if msg, ok := msg.(proto.Message); ok {
 						size := proto.Size(msg)
 						i.responseSize.Record(ctx, int64(size), attrs...)
 					}
+					lastSendMut.Lock()
 					if !lastSend.Equal(time.Time{}) {
 						i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
 					}
 					lastSend = i.now()
+					lastSendMut.Unlock()
 					return nil
 				},
 			},
@@ -267,7 +272,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 					i.responsesPerRPC.Record(ctx, 1, attrs...)
 					err := p.Receive(msg)
 					if err != nil {
-						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+						////attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 						return err
 					}
 					if msg, ok := msg.(proto.Message); ok {
@@ -288,7 +293,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 					}
 
 					if err != nil {
-						attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+						////attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 						return err
 					}
 					if msg, ok := msg.(proto.Message); ok {
