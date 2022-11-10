@@ -44,51 +44,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )
 
-const messagesPerRequest = 1
-
-func BenchmarkStreamingServerNoOptions(b *testing.B) {
-	testStreaming(b)
-}
-
-func BenchmarkStreamingServerOption(b *testing.B) {
-	testStreaming(b, WithTelemetry(Client))
-}
-
-func testStreaming(b *testing.B, options ...connect.HandlerOption) {
-	b.Helper()
-	mux := http.NewServeMux()
-	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, options...))
-	server := httptest.NewUnstartedServer(mux)
-	server.EnableHTTP2 = true
-	server.StartTLS()
-	connectClient := pingv1connect.NewPingServiceClient(
-		server.Client(),
-		server.URL,
-	)
-	stream := connectClient.CumSum(context.Background())
-	for i := 0; i < b.N; i++ {
-		err := stream.Send(&pingv1.CumSumRequest{Number: 12})
-		if errors.Is(err, io.EOF) {
-			b.Error(err)
-		} else if err != nil {
-			b.Error(err)
-		}
-		var wg sync.WaitGroup
-		for j := 0; j < messagesPerRequest; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				_, err := stream.Receive()
-				if errors.Is(err, io.EOF) {
-					b.Error(err)
-				} else if err != nil {
-					b.Error(err)
-				}
-			}()
-		}
-		wg.Wait()
-	}
-}
+const messagesPerRequest = 2
 
 func TestStreaming(t *testing.T) {
 	t.Parallel()
