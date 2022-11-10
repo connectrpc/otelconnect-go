@@ -18,42 +18,30 @@ import (
 	"github.com/bufbuild/connect-go"
 )
 
-type payloadInterceptor[T any] struct {
-	conn    T // if this could be embedded then the other types wouldn't be needed
-	receive func(any, T) error
-	send    func(any, T) error
-}
-
-func (p *payloadInterceptor[T]) Receive(msg any) error {
-	return p.receive(msg, p.conn)
-}
-
-func (p *payloadInterceptor[T]) Send(msg any) error {
-	return p.send(msg, p.conn)
-}
-
 type streamingClientInterceptor struct {
 	connect.StreamingClientConn
-	payloadInterceptor[connect.StreamingClientConn]
+	receive func(any, connect.StreamingClientConn) error
+	send    func(any, connect.StreamingClientConn) error
 }
 
 func (p *streamingClientInterceptor) Receive(msg any) error {
-	return p.payloadInterceptor.Receive(msg)
+	return p.receive(msg, p.StreamingClientConn)
 }
 
 func (p *streamingClientInterceptor) Send(msg any) error {
-	return p.payloadInterceptor.Send(msg)
+	return p.send(msg, p.StreamingClientConn)
 }
 
 type streamingHandlerInterceptor struct {
 	connect.StreamingHandlerConn
-	payloadInterceptor[connect.StreamingHandlerConn]
+	receive func(any, connect.StreamingHandlerConn) error
+	send    func(any, connect.StreamingHandlerConn) error
 }
 
 func (p *streamingHandlerInterceptor) Receive(msg any) error {
-	return p.payloadInterceptor.Receive(msg)
+	return p.receive(msg, p.StreamingHandlerConn)
 }
 
 func (p *streamingHandlerInterceptor) Send(msg any) error {
-	return p.payloadInterceptor.Send(msg)
+	return p.send(msg, p.StreamingHandlerConn)
 }
