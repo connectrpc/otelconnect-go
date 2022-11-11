@@ -16,7 +16,11 @@ package otelconnect
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	"net"
 	"strings"
 	"sync"
@@ -60,20 +64,31 @@ const (
 	interSendDuration = "inter_send_duration"
 )
 
-func formatkeys(metricType InterceptorType, metricName string) string {
-	return fmt.Sprintf(metricKeyFormat, metricType, metricName)
+func formatkeys(interceptorType InterceptorType, metricName string) string {
+	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
 }
 
-type metricsConfig struct {
+type config struct {
+	DisableTrace    bool
+	DisableMetrics  bool
 	Filter          func(context.Context, *Request) bool
-	Provider        metric.MeterProvider
+	MeterProvider   metric.MeterProvider
 	Meter           metric.Meter
+	TracerProvider  trace.TracerProvider
+	Propagator      propagation.TextMapPropagator
 	interceptorType InterceptorType
+	now             func() time.Time
 }
 
-type metricsInterceptor struct {
-	config               metricsConfig
-	now                  func() time.Time
+func (c config) Tracer() trace.Tracer {
+	return c.TracerProvider.Tracer(
+		instrumentationName,
+		trace.WithInstrumentationVersion(semanticVersion),
+	)
+}
+
+type interceptor struct {
+	config               config
 	duration             syncint64.Histogram
 	requestSize          syncint64.Histogram
 	responseSize         syncint64.Histogram
@@ -84,75 +99,74 @@ type metricsInterceptor struct {
 	interSendDuration    syncint64.Histogram
 }
 
-func newMetricsInterceptor(metricConfig metricsConfig) (*metricsInterceptor, error) {
-	interceptor := metricsInterceptor{
-		config: metricConfig,
-		now:    time.Now,
+func newInterceptor(cfg config) (*interceptor, error) {
+	intercept := interceptor{
+		config: cfg,
 	}
 	var err error
-	intProvider := interceptor.config.Meter.SyncInt64()
-	interceptor.duration, err = intProvider.Histogram(
-		formatkeys(metricConfig.interceptorType, duration),
+	intProvider := intercept.config.Meter.SyncInt64()
+	intercept.duration, err = intProvider.Histogram(
+		formatkeys(cfg.interceptorType, duration),
 		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
 		return nil, err
 	}
-	interceptor.requestSize, err = intProvider.Histogram(
-		formatkeys(metricConfig.interceptorType, requestSize),
+	intercept.requestSize, err = intProvider.Histogram(
+		formatkeys(cfg.interceptorType, requestSize),
 		instrument.WithUnit(unit.Bytes),
 	)
 	if err != nil {
 		return nil, err
 	}
-	interceptor.responseSize, err = intProvider.Histogram(
-		formatkeys(metricConfig.interceptorType, responseSize),
+	intercept.responseSize, err = intProvider.Histogram(
+		formatkeys(cfg.interceptorType, responseSize),
 		instrument.WithUnit(unit.Bytes),
 	)
 	if err != nil {
 		return nil, err
 	}
-	interceptor.requestsPerRPC, err = intProvider.Histogram(
-		formatkeys(metricConfig.interceptorType, requestsPerRPC),
+	intercept.requestsPerRPC, err = intProvider.Histogram(
+		formatkeys(cfg.interceptorType, requestsPerRPC),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
 		return nil, err
 	}
-	interceptor.responsesPerRPC, err = intProvider.Histogram(
-		formatkeys(metricConfig.interceptorType, responsesPerRPC),
+	intercept.responsesPerRPC, err = intProvider.Histogram(
+		formatkeys(cfg.interceptorType, responsesPerRPC),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
 		return nil, err
 	}
-	interceptor.firstWriteDelay, err = intProvider.Histogram(
-		formatkeys(metricConfig.interceptorType, firstWriteDelay),
+	intercept.firstWriteDelay, err = intProvider.Histogram(
+		formatkeys(cfg.interceptorType, firstWriteDelay),
 		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
 		return nil, err
 	}
-	interceptor.interReceiveDuration, err = intProvider.Histogram(
-		formatkeys(metricConfig.interceptorType, interReceiveDuration),
+	intercept.interReceiveDuration, err = intProvider.Histogram(
+		formatkeys(cfg.interceptorType, interReceiveDuration),
 		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
 		return nil, err
 	}
-	interceptor.interSendDuration, err = intProvider.Histogram(
-		formatkeys(metricConfig.interceptorType, interSendDuration),
+	intercept.interSendDuration, err = intProvider.Histogram(
+		formatkeys(cfg.interceptorType, interSendDuration),
 		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
 		return nil, err
 	}
-	return &interceptor, nil
+	return &intercept, nil
 }
 
-func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
-		requestStartTime := i.now()
+		requestStartTime := i.config.now()
 		req := &Request{
 			Spec:   request.Spec(),
 			Peer:   request.Peer(),
@@ -163,31 +177,77 @@ func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc
 				return next(ctx, request)
 			}
 		}
-		response, err := next(ctx, request)
+		tracer := i.config.Tracer()
+		var span trace.Span
+		carrier := propagation.HeaderCarrier(request.Header())
+		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		attrs := attributesFromRequest(req)
+		if request.Spec().IsClient {
+			ctx, span = tracer.Start(
+				ctx,
+				name,
+				trace.WithSpanKind(trace.SpanKindClient),
+				trace.WithAttributes(attrs...),
+			)
+			i.config.Propagator.Inject(ctx, carrier)
+		} else {
+			ctx = i.config.Propagator.Extract(ctx, carrier)
+			spanCtx := trace.SpanContextFromContext(ctx)
+			ctx, span = tracer.Start(
+				trace.ContextWithRemoteSpanContext(ctx, spanCtx),
+				name,
+				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithAttributes(attrs...),
+			)
+		}
+		defer span.End()
+		reqSpanType, resSpanType := semconv.MessageTypeKey.String("RECEIVED"), semconv.MessageTypeKey.String("SENT")
+		if request.Spec().IsClient {
+			reqSpanType, resSpanType = resSpanType, reqSpanType
+		}
+		reqSpanAttrs := []attribute.KeyValue{reqSpanType, semconv.MessageIDKey.Int(1)}
+		if msg, ok := request.Any().(proto.Message); ok {
+			size := proto.Size(msg)
+			reqSpanAttrs = append(reqSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
+		}
+		span.AddEvent("message", trace.WithAttributes(reqSpanAttrs...))
+		response, err := next(ctx, request)
 		protocol := parseProtocol(request.Header())
 		attrs = append(attrs, statusCodeAttribute(protocol, err))
 		if err != nil {
 			return nil, err
 		}
-		if err == nil {
-			if msg, ok := response.Any().(proto.Message); ok {
-				size := proto.Size(msg)
-				i.responseSize.Record(ctx, int64(size), attrs...)
-			}
-		}
 		if msg, ok := request.Any().(proto.Message); ok {
 			size := proto.Size(msg)
 			i.requestSize.Record(ctx, int64(size), attrs...)
 		}
-		i.duration.Record(ctx, i.now().Sub(requestStartTime).Milliseconds(), attrs...)
+		resSpanAttrs := []attribute.KeyValue{resSpanType, semconv.MessageIDKey.Int(1)}
+		if err == nil {
+			if msg, ok := response.Any().(proto.Message); ok {
+				size := proto.Size(msg)
+				i.responseSize.Record(ctx, int64(size), attrs...)
+				resSpanAttrs = append(resSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
+			}
+		}
+		span.AddEvent("message", trace.WithAttributes(resSpanAttrs...))
+		i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attrs...)
 		i.requestsPerRPC.Record(ctx, 1, attrs...)
 		i.responsesPerRPC.Record(ctx, 1, attrs...)
+		if err != nil {
+			if connectErr := new(connect.Error); errors.As(err, &connectErr) {
+				span.SetStatus(codes.Error, connectErr.Message())
+			} else {
+				span.SetStatus(codes.Error, err.Error())
+			}
+		}
+		codeAttr := statusCodeAttribute(parseProtocol(request.Header()), err)
+		span.SetAttributes(codeAttr)
 		return response, err
 	}
 }
 
-func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+// TODO: implement tracing in WrapStreamingClient.
+func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
 		req := &Request{
@@ -200,7 +260,7 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 				return next(ctx, spec)
 			}
 		}
-		requestStartTime := i.now()
+		requestStartTime := i.config.now()
 		attrs := attributesFromRequest(req)
 		var mut sync.Mutex
 
@@ -221,7 +281,7 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 				if lastReceive.Equal(time.Time{}) {
 					i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
 				}
-				lastReceive = i.now()
+				lastReceive = i.config.now()
 				i.requestsPerRPC.Record(ctx, 1, attrs...)
 				i.responsesPerRPC.Record(ctx, 1, attrs...)
 				return err
@@ -245,14 +305,15 @@ func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 				if !lastSend.Equal(time.Time{}) {
 					i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
 				}
-				lastSend = i.now()
+				lastSend = i.config.now()
 				return nil
 			},
 		}
 	}
 }
 
-func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+// TODO: implement tracing in WrapStreamingHandler.
+func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		req := &Request{
 			Spec:   conn.Spec(),
@@ -264,7 +325,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 				return next(ctx, conn)
 			}
 		}
-		requestStartTime := i.now()
+		requestStartTime := i.config.now()
 		var lastReceive, lastSend time.Time
 		var mut sync.Mutex
 		attrs := attributesFromRequest(req)
@@ -284,7 +345,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 				if !lastReceive.Equal(time.Time{}) {
 					i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
 				}
-				lastReceive = i.now()
+				lastReceive = i.config.now()
 				i.requestsPerRPC.Record(ctx, 1, attrs...)
 				i.responsesPerRPC.Record(ctx, 1, attrs...)
 				return err
@@ -307,7 +368,7 @@ func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerF
 				if !lastSend.Equal(time.Time{}) {
 					i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
 				}
-				lastSend = i.now()
+				lastSend = i.config.now()
 				return err
 			},
 		}

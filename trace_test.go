@@ -85,24 +85,20 @@ func TestMetrics(t *testing.T) {
 			metricReader,
 		),
 	)
-	metricInterceptor, err := newMetricsInterceptor(metricsConfig{
-		interceptorType: Client,
-		Provider:        meterProvider,
-		Meter:           meterProvider.Meter(t.Name()),
-	})
+	var now time.Time
+	interceptor, err := NewInterceptors(Client, WithMeterProvider(meterProvider), optionFunc(func(c *config) {
+		c.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
+			now = now.Add(time.Second)
+			return now
+		}
+	}))
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	var now time.Time
-	metricInterceptor.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
-		now = now.Add(time.Second)
-		return now
 	}
 	pingClient, _, _ := startServer(
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
-			connect.WithInterceptors(metricInterceptor),
+			connect.WithInterceptors(interceptor),
 		},
 	)
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {

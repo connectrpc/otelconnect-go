@@ -16,11 +16,18 @@ package otelconnect
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
+
+type optionFunc func(*config)
+
+func (o optionFunc) apply(c *config) {
+	o(c)
+}
 
 // An Option configures the OpenTelemetry instrumentation.
 type Option interface {
@@ -39,8 +46,8 @@ type meterProviderOption struct {
 }
 
 func (m meterProviderOption) apply(c *config) {
-	c.Metrics.Provider = m.provider
-	c.Metrics.Meter = c.Metrics.Provider.Meter(
+	c.MeterProvider = m.provider
+	c.Meter = c.MeterProvider.Meter(
 		instrumentationName,
 		metric.WithInstrumentationVersion(semanticVersion),
 	)
@@ -80,7 +87,7 @@ type propagatorOption struct {
 
 func (o *propagatorOption) apply(c *config) {
 	if o.propagator != nil {
-		c.Trace.Propagator = o.propagator
+		c.Propagator = o.propagator
 	}
 }
 
@@ -90,7 +97,7 @@ type tracerProviderOption struct {
 
 func (o *tracerProviderOption) apply(c *config) {
 	if o.provider != nil {
-		c.Trace.Provider = o.provider
+		c.TracerProvider = o.provider
 	}
 }
 
@@ -100,8 +107,8 @@ type filterOption struct {
 
 func (o *filterOption) apply(c *config) {
 	if o.filter != nil {
-		c.Trace.Filter = o.filter
-		c.Metrics.Filter = o.filter
+		c.Filter = o.filter
+		c.Filter = o.filter
 	}
 }
 
@@ -115,4 +122,12 @@ type disableMetricsOption struct{}
 
 func (o *disableMetricsOption) apply(c *config) {
 	c.DisableMetrics = true
+}
+
+type withTimeFunc struct {
+	now func() time.Time
+}
+
+func (o *withTimeFunc) apply(c *config) {
+	c.now = o.now
 }
