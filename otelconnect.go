@@ -37,12 +37,12 @@ const (
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
 // and tracing to Connect clients and handlers.
 func WithTelemetry(interceptorType InterceptorType, options ...Option) connect.Option {
-	return connect.WithInterceptors(NewOtelInterceptors(interceptorType, options...)...)
+	return connect.WithInterceptors(NewInterceptors(interceptorType, options...)...)
 }
 
-// NewOtelInterceptors constructs and returns OpenTelemetry Interceptors for metrics
+// NewInterceptors constructs and returns OpenTelemetry Interceptors for metrics
 // and tracing.
-func NewOtelInterceptors(interceptorType InterceptorType, options ...Option) []connect.Interceptor {
+func NewInterceptors(interceptorType InterceptorType, options ...Option) []connect.Interceptor {
 	cfg := config{
 		Trace: traceConfig{
 			Provider:   otel.GetTracerProvider(),
