@@ -107,7 +107,6 @@ type filterOption struct {
 func (o *filterOption) apply(c *config) {
 	if o.filter != nil {
 		c.Filter = o.filter
-		c.Filter = o.filter
 	}
 }
 
