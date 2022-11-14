@@ -38,13 +38,13 @@ const (
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
 // and tracing to Connect clients and handlers.
 func WithTelemetry(interceptorType InterceptorType, options ...Option) connect.Option {
-	interceptor, _ := NewInterceptors(interceptorType, options...)
+	interceptor, _ := NewInterceptor(interceptorType, options...)
 	return connect.WithInterceptors(interceptor)
 }
 
-// NewInterceptors constructs and returns OpenTelemetry Interceptors for metrics
+// NewInterceptor constructs and returns OpenTelemetry Interceptors for metrics
 // and tracing.
-func NewInterceptors(interceptorType InterceptorType, options ...Option) (connect.Interceptor, error) {
+func NewInterceptor(interceptorType InterceptorType, options ...Option) (connect.Interceptor, error) {
 	cfg := config{
 		now:             time.Now,
 		interceptorType: interceptorType,

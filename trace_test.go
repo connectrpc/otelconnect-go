@@ -86,7 +86,7 @@ func TestMetrics(t *testing.T) {
 		),
 	)
 	var now time.Time
-	interceptor, err := NewInterceptors(Client, WithMeterProvider(meterProvider), optionFunc(func(c *config) {
+	interceptor, err := NewInterceptor(Client, WithMeterProvider(meterProvider), optionFunc(func(c *config) {
 		c.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
 			now = now.Add(time.Second)
 			return now
@@ -252,7 +252,7 @@ func TestWithoutMetrics(t *testing.T) {
 			metricReader,
 		),
 	)
-	interceptor, err := NewInterceptors(Client, WithMeterProvider(meterProvider), WithoutMetrics())
+	interceptor, err := NewInterceptor(Client, WithMeterProvider(meterProvider), WithoutMetrics())
 	if err != nil {
 		t.Fatal(err)
 	}
