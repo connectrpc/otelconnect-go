@@ -16,7 +16,6 @@ package otelconnect
 
 import (
 	"context"
-	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
@@ -122,12 +121,4 @@ type disableMetricsOption struct{}
 
 func (o *disableMetricsOption) apply(c *config) {
 	c.DisableMetrics = true
-}
-
-type withTimeFunc struct {
-	now func() time.Time
-}
-
-func (o *withTimeFunc) apply(c *config) {
-	c.now = o.now
 }
