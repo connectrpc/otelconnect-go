@@ -69,7 +69,6 @@ func formatkeys(interceptorType InterceptorType, metricName string) string {
 }
 
 type config struct {
-	DisableMetrics  bool
 	Filter          func(context.Context, *Request) bool
 	MeterProvider   metric.MeterProvider
 	Meter           metric.Meter

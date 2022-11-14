@@ -244,6 +244,36 @@ func TestMetrics(t *testing.T) {
 	}
 }
 
+func TestWithoutMetrics(t *testing.T) {
+	t.Parallel()
+	metricReader := metricsdk.NewManualReader()
+	meterProvider := metricsdk.NewMeterProvider(
+		metricsdk.WithReader(
+			metricReader,
+		),
+	)
+	interceptor, err := NewInterceptors(Client, WithMeterProvider(meterProvider), WithoutMetrics())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pingClient, _, _ := startServer(
+		nil, /* handlerOpts */
+		[]connect.ClientOption{
+			connect.WithInterceptors(interceptor),
+		},
+	)
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {
+		t.Errorf(err.Error())
+	}
+	metrics, err := metricReader.Collect(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+	if len(metrics.ScopeMetrics) != 0 {
+		t.Error("metrics unexpectedly recorded")
+	}
+}
+
 func TestWithoutTracing(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()

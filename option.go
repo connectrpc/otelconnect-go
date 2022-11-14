@@ -120,5 +120,5 @@ func (o *disableTraceOption) apply(c *config) {
 type disableMetricsOption struct{}
 
 func (o *disableMetricsOption) apply(c *config) {
-	c.DisableMetrics = true
+	WithMeterProvider(metric.NewNoopMeterProvider()).apply(c)
 }
