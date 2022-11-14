@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/bufbuild/connect-go"
@@ -164,7 +163,6 @@ func newInterceptor(cfg config) (*interceptor, error) {
 
 func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
-		requestStartTime := i.config.now()
 		req := &Request{
 			Spec:   request.Spec(),
 			Peer:   request.Peer(),
@@ -175,11 +173,13 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				return next(ctx, request)
 			}
 		}
+		requestStartTime := i.config.now()
 		tracer := i.config.Tracer()
-		var span trace.Span
 		carrier := propagation.HeaderCarrier(request.Header())
-		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		attrs := attributesFromRequest(req)
+		name := strings.TrimLeft(request.Spec().Procedure, "/")
+		protocol := parseProtocol(request.Header())
+		var span trace.Span
 		if request.Spec().IsClient {
 			ctx, span = tracer.Start(
 				ctx,
@@ -210,8 +210,8 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		}
 		span.AddEvent("message", trace.WithAttributes(reqSpanAttrs...))
 		response, err := next(ctx, request)
-		protocol := parseProtocol(request.Header())
-		attrs = append(attrs, statusCodeAttribute(protocol, err))
+		codeAttr := statusCodeAttribute(protocol, err)
+		attrs = append(attrs, codeAttr)
 		if msg, ok := request.Any().(proto.Message); ok {
 			size := proto.Size(msg)
 			i.requestSize.Record(ctx, int64(size), attrs...)
@@ -225,9 +225,11 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			}
 		}
 		span.AddEvent("message", trace.WithAttributes(resSpanAttrs...))
-		i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attrs...)
-		i.requestsPerRPC.Record(ctx, 1, attrs...)
-		i.responsesPerRPC.Record(ctx, 1, attrs...)
+		if true {
+			i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attrs...)
+			i.requestsPerRPC.Record(ctx, 1, attrs...)
+			i.responsesPerRPC.Record(ctx, 1, attrs...)
+		}
 		if err != nil {
 			if connectErr := new(connect.Error); errors.As(err, &connectErr) {
 				span.SetStatus(codes.Error, connectErr.Message())
@@ -235,7 +237,6 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				span.SetStatus(codes.Error, err.Error())
 			}
 		}
-		codeAttr := statusCodeAttribute(parseProtocol(request.Header()), err)
 		span.SetAttributes(codeAttr)
 		return response, err
 	}
@@ -255,53 +256,19 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				return next(ctx, spec)
 			}
 		}
-		requestStartTime := i.config.now()
-		attrs := attributesFromRequest(req)
-		var mut sync.Mutex
+		state := streamingState{
+			protocol:         parseProtocol(req.Header),
+			requestStartTime: i.config.now(),
+			attrs:            attributesFromRequest(req),
+		}
 
-		var lastReceive, lastSend time.Time
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			receive: func(msg any, conn connect.StreamingClientConn) error {
-				err := conn.Receive(msg)
-				mut.Lock()
-				defer mut.Unlock()
-				if err != nil {
-					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
-				}
-				if msg, ok := msg.(proto.Message); ok {
-					size := proto.Size(msg)
-					i.requestSize.Record(ctx, int64(size), attrs...)
-				}
-				if lastReceive.Equal(time.Time{}) {
-					i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
-				}
-				lastReceive = i.config.now()
-				i.requestsPerRPC.Record(ctx, 1, attrs...)
-				i.responsesPerRPC.Record(ctx, 1, attrs...)
-				return err
+				return state.receive(ctx, i, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				err := conn.Send(msg)
-				mut.Lock()
-				defer mut.Unlock()
-				if !requestStartTime.Equal(time.Time{}) {
-					i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
-					requestStartTime = time.Time{}
-				}
-				if err != nil {
-					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
-					return err
-				}
-				if msg, ok := msg.(proto.Message); ok {
-					size := proto.Size(msg)
-					i.responseSize.Record(ctx, int64(size), attrs...)
-				}
-				if !lastSend.Equal(time.Time{}) {
-					i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
-				}
-				lastSend = i.config.now()
-				return nil
+				return state.send(ctx, i, msg, conn)
 			},
 		}
 	}
@@ -320,51 +287,18 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return next(ctx, conn)
 			}
 		}
-		requestStartTime := i.config.now()
-		var lastReceive, lastSend time.Time
-		var mut sync.Mutex
-		attrs := attributesFromRequest(req)
+		state := streamingState{
+			protocol:         parseProtocol(req.Header),
+			requestStartTime: i.config.now(),
+			attrs:            attributesFromRequest(req),
+		}
 		ret := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
-				err := conn.Receive(msg)
-				mut.Lock()
-				defer mut.Unlock()
-				if err != nil {
-					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
-				}
-				if msg, ok := msg.(proto.Message); ok {
-					size := proto.Size(msg)
-					i.requestSize.Record(ctx, int64(size), attrs...)
-				}
-				if !lastReceive.Equal(time.Time{}) {
-					i.interReceiveDuration.Record(ctx, int64(time.Since(lastReceive)), attrs...)
-				}
-				lastReceive = i.config.now()
-				i.requestsPerRPC.Record(ctx, 1, attrs...)
-				i.responsesPerRPC.Record(ctx, 1, attrs...)
-				return err
+				return state.receive(ctx, i, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingHandlerConn) error {
-				err := conn.Send(msg)
-				mut.Lock()
-				defer mut.Unlock()
-				if err != nil {
-					attrs = append(attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
-				}
-				if !requestStartTime.Equal(time.Time{}) {
-					i.firstWriteDelay.Record(ctx, time.Since(requestStartTime).Milliseconds(), attrs...)
-					requestStartTime = time.Time{}
-				}
-				if msg, ok := msg.(proto.Message); ok {
-					size := proto.Size(msg)
-					i.responseSize.Record(ctx, int64(size), attrs...)
-				}
-				if !lastSend.Equal(time.Time{}) {
-					i.interReceiveDuration.Record(ctx, time.Since(lastSend).Milliseconds(), attrs...)
-				}
-				lastSend = i.config.now()
-				return err
+				return state.send(ctx, i, msg, conn)
 			},
 		}
 		return next(ctx, ret)

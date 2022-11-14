@@ -58,8 +58,8 @@ func NewInterceptor(interceptorType InterceptorType, options ...Option) connect.
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
-	interceptor, _ := newInterceptor(cfg)
-	return interceptor
+	intercept, _ := newInterceptor(cfg)
+	return intercept
 }
 
 // Request is the information about each RPC available to filter functions. It
