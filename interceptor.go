@@ -69,7 +69,6 @@ func formatkeys(interceptorType InterceptorType, metricName string) string {
 }
 
 type config struct {
-	DisableTrace    bool
 	DisableMetrics  bool
 	Filter          func(context.Context, *Request) bool
 	MeterProvider   metric.MeterProvider
@@ -214,9 +213,6 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		response, err := next(ctx, request)
 		protocol := parseProtocol(request.Header())
 		attrs = append(attrs, statusCodeAttribute(protocol, err))
-		if err != nil {
-			return nil, err
-		}
 		if msg, ok := request.Any().(proto.Message); ok {
 			size := proto.Size(msg)
 			i.requestSize.Record(ctx, int64(size), attrs...)

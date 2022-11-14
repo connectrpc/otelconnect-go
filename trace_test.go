@@ -129,7 +129,8 @@ func TestMetrics(t *testing.T) {
 		ScopeMetrics: []metricdata.ScopeMetrics{
 			{
 				Scope: instrumentation.Scope{
-					Name: "TestMetrics",
+					Name:    instrumentationName,
+					Version: semanticVersion,
 				},
 				Metrics: []metricdata.Metrics{
 					{
@@ -251,8 +252,8 @@ func TestWithoutTracing(t *testing.T) {
 		[]connect.HandlerOption{
 			WithTelemetry(
 				Client,
-				WithoutTracing(),
 				WithTracerProvider(traceProvider),
+				WithoutTracing(),
 			),
 		},
 		nil, /* clientOpts */

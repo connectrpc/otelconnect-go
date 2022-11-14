@@ -115,7 +115,7 @@ func (o *filterOption) apply(c *config) {
 type disableTraceOption struct{}
 
 func (o *disableTraceOption) apply(c *config) {
-	c.DisableTrace = true
+	c.TracerProvider = trace.NewNoopTracerProvider()
 }
 
 type disableMetricsOption struct{}
