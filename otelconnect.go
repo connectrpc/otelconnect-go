@@ -47,7 +47,6 @@ func NewInterceptor(interceptorType InterceptorType, options ...Option) connect.
 	cfg := config{
 		now:             time.Now,
 		interceptorType: interceptorType,
-		MeterProvider:   global.MeterProvider(),
 		TracerProvider:  otel.GetTracerProvider(),
 		Propagator:      otel.GetTextMapPropagator(),
 		Meter: global.MeterProvider().Meter(

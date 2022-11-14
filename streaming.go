@@ -16,19 +16,16 @@ package otelconnect
 
 import (
 	"context"
-	"net/http"
-	"sync"
-	"time"
-
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
+	"net/http"
+	"sync"
 )
 
 type streamingState struct {
-	protocol                                string
-	mut                                     sync.Mutex
-	lastReceive, requestStartTime, lastSend time.Time
-	attrs                                   []attribute.KeyValue
+	protocol string
+	mut      sync.Mutex
+	attrs    []attribute.KeyValue
 }
 
 type sendReceiver interface {
@@ -48,10 +45,6 @@ func (s *streamingState) receive(ctx context.Context, intercept *interceptor, ms
 		size := proto.Size(msg)
 		intercept.requestSize.Record(ctx, int64(size), s.attrs...)
 	}
-	if !s.lastReceive.Equal(time.Time{}) {
-		intercept.interReceiveDuration.Record(ctx, int64(time.Since(s.lastReceive)), s.attrs...)
-	}
-	s.lastReceive = intercept.config.now()
 	intercept.requestsPerRPC.Record(ctx, 1, s.attrs...)
 	intercept.responsesPerRPC.Record(ctx, 1, s.attrs...)
 	return err
@@ -61,10 +54,6 @@ func (s *streamingState) send(ctx context.Context, intercept *interceptor, msg a
 	err := conn.Send(msg)
 	s.mut.Lock()
 	defer s.mut.Unlock()
-	if !s.requestStartTime.Equal(time.Time{}) {
-		intercept.firstWriteDelay.Record(ctx, time.Since(s.requestStartTime).Milliseconds(), s.attrs...)
-		s.requestStartTime = time.Time{}
-	}
 	if err != nil {
 		s.attrs = append(s.attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 	}
@@ -72,9 +61,5 @@ func (s *streamingState) send(ctx context.Context, intercept *interceptor, msg a
 		size := proto.Size(msg)
 		intercept.responseSize.Record(ctx, int64(size), s.attrs...)
 	}
-	if !s.lastSend.Equal(time.Time{}) {
-		intercept.interReceiveDuration.Record(ctx, time.Since(s.lastSend).Milliseconds(), s.attrs...)
-	}
-	s.lastSend = intercept.config.now()
 	return err
 }

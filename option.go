@@ -45,8 +45,7 @@ type meterProviderOption struct {
 }
 
 func (m meterProviderOption) apply(c *config) {
-	c.MeterProvider = m.provider
-	c.Meter = c.MeterProvider.Meter(
+	c.Meter = m.provider.Meter(
 		instrumentationName,
 		metric.WithInstrumentationVersion(semanticVersion),
 	)

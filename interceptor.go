@@ -49,27 +49,10 @@ const (
 	responseSize    = "response.size"
 	requestsPerRPC  = "requests_per_rpc"
 	responsesPerRPC = "responses_per_rpc"
-
-	// Custom metrics
-	// firstWriteDelay records the time from a stream being opened til the time of the first write
-	// if the interceptor is a client interceptor this will be the time from the stream being
-	// opened til the first message is opened.
-	// If the interceptor is a server interceptor then the time will be the time from when the client
-	// first connects til the time that the server replies with the first message.
-	firstWriteDelay = "first_write_delay"
-	// interReceiveDuration records the time between receiving consecutive messages.
-	interReceiveDuration = "inter_receive_duration"
-	// interSendDuration records the time between sending consecutive messages.
-	interSendDuration = "inter_send_duration"
 )
-
-func formatkeys(interceptorType InterceptorType, metricName string) string {
-	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
-}
 
 type config struct {
 	Filter          func(context.Context, *Request) bool
-	MeterProvider   metric.MeterProvider
 	Meter           metric.Meter
 	TracerProvider  trace.TracerProvider
 	Propagator      propagation.TextMapPropagator
@@ -85,15 +68,12 @@ func (c config) Tracer() trace.Tracer {
 }
 
 type interceptor struct {
-	config               config
-	duration             syncint64.Histogram
-	requestSize          syncint64.Histogram
-	responseSize         syncint64.Histogram
-	requestsPerRPC       syncint64.Histogram
-	responsesPerRPC      syncint64.Histogram
-	firstWriteDelay      syncint64.Histogram
-	interReceiveDuration syncint64.Histogram
-	interSendDuration    syncint64.Histogram
+	config          config
+	duration        syncint64.Histogram
+	requestSize     syncint64.Histogram
+	responseSize    syncint64.Histogram
+	requestsPerRPC  syncint64.Histogram
+	responsesPerRPC syncint64.Histogram
 }
 
 func newInterceptor(cfg config) (*interceptor, error) {
@@ -133,27 +113,6 @@ func newInterceptor(cfg config) (*interceptor, error) {
 	intercept.responsesPerRPC, err = intProvider.Histogram(
 		formatkeys(cfg.interceptorType, responsesPerRPC),
 		instrument.WithUnit(unit.Dimensionless),
-	)
-	if err != nil {
-		return nil, err
-	}
-	intercept.firstWriteDelay, err = intProvider.Histogram(
-		formatkeys(cfg.interceptorType, firstWriteDelay),
-		instrument.WithUnit(unit.Milliseconds),
-	)
-	if err != nil {
-		return nil, err
-	}
-	intercept.interReceiveDuration, err = intProvider.Histogram(
-		formatkeys(cfg.interceptorType, interReceiveDuration),
-		instrument.WithUnit(unit.Milliseconds),
-	)
-	if err != nil {
-		return nil, err
-	}
-	intercept.interSendDuration, err = intProvider.Histogram(
-		formatkeys(cfg.interceptorType, interSendDuration),
-		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
 		return nil, err
@@ -257,9 +216,8 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			}
 		}
 		state := streamingState{
-			protocol:         parseProtocol(req.Header),
-			requestStartTime: i.config.now(),
-			attrs:            attributesFromRequest(req),
+			protocol: parseProtocol(req.Header),
+			attrs:    attributesFromRequest(req),
 		}
 
 		return &streamingClientInterceptor{
@@ -288,9 +246,8 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			}
 		}
 		state := streamingState{
-			protocol:         parseProtocol(req.Header),
-			requestStartTime: i.config.now(),
-			attrs:            attributesFromRequest(req),
+			protocol: parseProtocol(req.Header),
+			attrs:    attributesFromRequest(req),
 		}
 		ret := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
@@ -331,4 +288,8 @@ func attributesFromRequest(req *Request) []attribute.KeyValue {
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
 	attrs = append(attrs, parseProcedure(name)...)
 	return attrs
+}
+
+func formatkeys(interceptorType InterceptorType, metricName string) string {
+	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
 }
