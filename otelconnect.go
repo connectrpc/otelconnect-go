@@ -38,13 +38,12 @@ const (
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
 // and tracing to Connect clients and handlers.
 func WithTelemetry(interceptorType InterceptorType, options ...Option) connect.Option {
-	interceptor, _ := NewInterceptor(interceptorType, options...)
-	return connect.WithInterceptors(interceptor)
+	return connect.WithInterceptors(NewInterceptor(interceptorType, options...))
 }
 
 // NewInterceptor constructs and returns OpenTelemetry Interceptors for metrics
 // and tracing.
-func NewInterceptor(interceptorType InterceptorType, options ...Option) (connect.Interceptor, error) {
+func NewInterceptor(interceptorType InterceptorType, options ...Option) connect.Interceptor {
 	cfg := config{
 		now:             time.Now,
 		interceptorType: interceptorType,
@@ -59,7 +58,8 @@ func NewInterceptor(interceptorType InterceptorType, options ...Option) (connect
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
-	return newInterceptor(cfg)
+	interceptor, _ := newInterceptor(cfg)
+	return interceptor
 }
 
 // Request is the information about each RPC available to filter functions. It

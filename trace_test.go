@@ -86,15 +86,12 @@ func TestMetrics(t *testing.T) {
 		),
 	)
 	var now time.Time
-	interceptor, err := NewInterceptor(Client, WithMeterProvider(meterProvider), optionFunc(func(c *config) {
+	interceptor := NewInterceptor(Client, WithMeterProvider(meterProvider), optionFunc(func(c *config) {
 		c.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
 			now = now.Add(time.Second)
 			return now
 		}
 	}))
-	if err != nil {
-		t.Fatal(err)
-	}
 	pingClient, _, _ := startServer(
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
@@ -252,10 +249,7 @@ func TestWithoutMetrics(t *testing.T) {
 			metricReader,
 		),
 	)
-	interceptor, err := NewInterceptor(Client, WithMeterProvider(meterProvider), WithoutMetrics())
-	if err != nil {
-		t.Fatal(err)
-	}
+	interceptor := NewInterceptor(Client, WithMeterProvider(meterProvider), WithoutMetrics())
 	pingClient, _, _ := startServer(
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
