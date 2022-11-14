@@ -16,10 +16,11 @@ package otelconnect
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/attribute"
-	"google.golang.org/protobuf/proto"
 	"net/http"
 	"sync"
+
+	"go.opentelemetry.io/otel/attribute"
+	"google.golang.org/protobuf/proto"
 )
 
 type streamingState struct {

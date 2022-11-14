@@ -37,18 +37,17 @@ const (
 
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
 // and tracing to Connect clients and handlers.
-func WithTelemetry(interceptorType InterceptorType, options ...Option) connect.Option {
-	return connect.WithInterceptors(NewInterceptor(interceptorType, options...))
+func WithTelemetry(options ...Option) connect.Option {
+	return connect.WithInterceptors(NewInterceptor(options...))
 }
 
 // NewInterceptor constructs and returns OpenTelemetry Interceptors for metrics
 // and tracing.
-func NewInterceptor(interceptorType InterceptorType, options ...Option) connect.Interceptor {
+func NewInterceptor(options ...Option) connect.Interceptor {
 	cfg := config{
-		now:             time.Now,
-		interceptorType: interceptorType,
-		TracerProvider:  otel.GetTracerProvider(),
-		Propagator:      otel.GetTextMapPropagator(),
+		now:            time.Now,
+		TracerProvider: otel.GetTracerProvider(),
+		Propagator:     otel.GetTextMapPropagator(),
 		Meter: global.MeterProvider().Meter(
 			instrumentationName,
 			metric.WithInstrumentationVersion(semanticVersion),
@@ -57,7 +56,7 @@ func NewInterceptor(interceptorType InterceptorType, options ...Option) connect.
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
-	intercept, _ := newInterceptor(cfg)
+	intercept := newInterceptor(cfg)
 	return intercept
 }
 

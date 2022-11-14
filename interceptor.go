@@ -35,12 +35,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type InterceptorType string
-
 const (
-	Client InterceptorType = "client"
-	Server InterceptorType = "server"
-
 	metricKeyFormat = "rpc.%s.%s"
 
 	// Metrics as defined by https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/rpc-metrics.md
@@ -51,13 +46,16 @@ const (
 	responsesPerRPC = "responses_per_rpc"
 )
 
+func interceptorError(err error) error {
+	return fmt.Errorf("error initialising interceptor: %w", err)
+}
+
 type config struct {
-	Filter          func(context.Context, *Request) bool
-	Meter           metric.Meter
-	TracerProvider  trace.TracerProvider
-	Propagator      propagation.TextMapPropagator
-	interceptorType InterceptorType
-	now             func() time.Time
+	Filter         func(context.Context, *Request) bool
+	Meter          metric.Meter
+	TracerProvider trace.TracerProvider
+	Propagator     propagation.TextMapPropagator
+	now            func() time.Time
 }
 
 func (c config) Tracer() trace.Tracer {
@@ -68,6 +66,7 @@ func (c config) Tracer() trace.Tracer {
 }
 
 type interceptor struct {
+	initialised     bool
 	config          config
 	duration        syncint64.Histogram
 	requestSize     syncint64.Histogram
@@ -76,52 +75,65 @@ type interceptor struct {
 	responsesPerRPC syncint64.Histogram
 }
 
-func newInterceptor(cfg config) (*interceptor, error) {
-	intercept := interceptor{
+func newInterceptor(cfg config) *interceptor {
+	return &interceptor{
 		config: cfg,
 	}
+}
+func (i *interceptor) initInterceptor(isClient bool) error {
 	var err error
-	intProvider := intercept.config.Meter.SyncInt64()
-	intercept.duration, err = intProvider.Histogram(
-		formatkeys(cfg.interceptorType, duration),
+	i.initialised = true
+	interceptorType := "server"
+	if isClient {
+		interceptorType = "client"
+	}
+	intProvider := i.config.Meter.SyncInt64()
+	i.duration, err = intProvider.Histogram(
+		formatkeys(interceptorType, duration),
 		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
-		return nil, err
+		return interceptorError(err)
 	}
-	intercept.requestSize, err = intProvider.Histogram(
-		formatkeys(cfg.interceptorType, requestSize),
+	i.requestSize, err = intProvider.Histogram(
+		formatkeys(interceptorType, requestSize),
 		instrument.WithUnit(unit.Bytes),
 	)
 	if err != nil {
-		return nil, err
+		return interceptorError(err)
 	}
-	intercept.responseSize, err = intProvider.Histogram(
-		formatkeys(cfg.interceptorType, responseSize),
+	i.responseSize, err = intProvider.Histogram(
+		formatkeys(interceptorType, responseSize),
 		instrument.WithUnit(unit.Bytes),
 	)
 	if err != nil {
-		return nil, err
+		return interceptorError(err)
 	}
-	intercept.requestsPerRPC, err = intProvider.Histogram(
-		formatkeys(cfg.interceptorType, requestsPerRPC),
+	i.requestsPerRPC, err = intProvider.Histogram(
+		formatkeys(interceptorType, requestsPerRPC),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
-		return nil, err
+		return interceptorError(err)
 	}
-	intercept.responsesPerRPC, err = intProvider.Histogram(
-		formatkeys(cfg.interceptorType, responsesPerRPC),
+	i.responsesPerRPC, err = intProvider.Histogram(
+		formatkeys(interceptorType, responsesPerRPC),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
-		return nil, err
+		return interceptorError(err)
 	}
-	return &intercept, nil
+	return nil
 }
 
 func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+		if !i.initialised {
+			// TODO: what does this error look like
+			if err := i.initInterceptor(request.Spec().IsClient); err != nil {
+				return nil, connect.NewError(connect.CodeInternal, err)
+			}
+		}
 		req := &Request{
 			Spec:   request.Spec(),
 			Peer:   request.Peer(),
@@ -205,6 +217,19 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
+		if !i.initialised {
+			if err := i.initInterceptor(spec.IsClient); err != nil {
+				return &streamingClientInterceptor{
+					StreamingClientConn: conn,
+					receive: func(any, connect.StreamingClientConn) error {
+						return err
+					},
+					send: func(any, connect.StreamingClientConn) error {
+						return err
+					},
+				}
+			}
+		}
 		req := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
@@ -219,7 +244,6 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			protocol: parseProtocol(req.Header),
 			attrs:    attributesFromRequest(req),
 		}
-
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			receive: func(msg any, conn connect.StreamingClientConn) error {
@@ -235,6 +259,11 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 // TODO: implement tracing in WrapStreamingHandler.
 func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		if !i.initialised {
+			if err := i.initInterceptor(conn.Spec().IsClient); err != nil {
+				return err
+			}
+		}
 		req := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
@@ -290,6 +319,6 @@ func attributesFromRequest(req *Request) []attribute.KeyValue {
 	return attrs
 }
 
-func formatkeys(interceptorType InterceptorType, metricName string) string {
+func formatkeys(interceptorType string, metricName string) string {
 	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
 }

@@ -20,6 +20,7 @@ import (
 
 type streamingClientInterceptor struct {
 	connect.StreamingClientConn
+
 	receive func(any, connect.StreamingClientConn) error
 	send    func(any, connect.StreamingClientConn) error
 }
@@ -34,6 +35,7 @@ func (p *streamingClientInterceptor) Send(msg any) error {
 
 type streamingHandlerInterceptor struct {
 	connect.StreamingHandlerConn
+
 	receive func(any, connect.StreamingHandlerConn) error
 	send    func(any, connect.StreamingHandlerConn) error
 }

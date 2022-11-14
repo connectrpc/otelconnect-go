@@ -16,8 +16,6 @@ package otelconnect
 
 import (
 	"context"
-	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -28,27 +26,29 @@ import (
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 )
 
-const concurrency = 5
-const messagesToSend = 10
+const (
+	concurrency    = 5
+	messagesToSend = 10
+)
 
 func BenchmarkStreamingServerNoOptions(b *testing.B) {
 	testStreaming(b, nil, nil)
 }
 
 func BenchmarkStreamingServerClientOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{WithTelemetry(Server)}, []connect.ClientOption{WithTelemetry(Client)})
+	testStreaming(b, []connect.HandlerOption{WithTelemetry()}, []connect.ClientOption{WithTelemetry()})
 }
 
 func BenchmarkStreamingServerOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{WithTelemetry(Server)}, []connect.ClientOption{})
+	testStreaming(b, []connect.HandlerOption{WithTelemetry()}, []connect.ClientOption{})
 }
 
 func BenchmarkStreamingClientOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{}, []connect.ClientOption{WithTelemetry(Client)})
+	testStreaming(b, []connect.HandlerOption{}, []connect.ClientOption{WithTelemetry()})
 }
 
 func BenchmarkUnaryOtel(b *testing.B) {
-	benchUnary(b, []connect.HandlerOption{WithTelemetry(Server)}, []connect.ClientOption{WithTelemetry(Client)})
+	benchUnary(b, []connect.HandlerOption{WithTelemetry()}, []connect.ClientOption{WithTelemetry()})
 }
 
 func BenchmarkUnary(b *testing.B) {
@@ -58,9 +58,7 @@ func BenchmarkUnary(b *testing.B) {
 func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
 	b.Helper()
 	svr, client := startBenchServer(handleropts, clientopts)
-	b.Cleanup(func() {
-		svr.Close()
-	})
+	b.Cleanup(svr.Close)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var wg sync.WaitGroup
@@ -94,17 +92,13 @@ func testStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopts
 				defer wg.Done()
 				for j := 0; j < messagesToSend; j++ {
 					err := stream.Send(req)
-					if errors.Is(err, io.EOF) {
-						b.Error(err)
-					} else if err != nil {
+					if err != nil {
 						b.Error(err)
 					}
 				}
 				for j := 0; j < messagesToSend; j++ {
 					_, err := stream.Receive()
-					if errors.Is(err, io.EOF) {
-						b.Error(err)
-					} else if err != nil {
+					if err != nil {
 						b.Error(err)
 					}
 				}
