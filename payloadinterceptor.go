@@ -21,16 +21,44 @@ import (
 type streamingClientInterceptor struct {
 	connect.StreamingClientConn
 
-	receive func(any, connect.StreamingClientConn) error
-	send    func(any, connect.StreamingClientConn) error
+	receive       func(any, connect.StreamingClientConn) error
+	send          func(any, connect.StreamingClientConn) error
+	closeRequest  func(connect.StreamingClientConn) error
+	closeResponse func(connect.StreamingClientConn) error
 }
 
-func (p *streamingClientInterceptor) Receive(msg any) error {
-	return p.receive(msg, p.StreamingClientConn)
+func (s *streamingClientInterceptor) Receive(msg any) error {
+	return s.receive(msg, s.StreamingClientConn)
 }
 
-func (p *streamingClientInterceptor) Send(msg any) error {
-	return p.send(msg, p.StreamingClientConn)
+func (s *streamingClientInterceptor) Send(msg any) error {
+	return s.send(msg, s.StreamingClientConn)
+}
+
+func (s *streamingClientInterceptor) CloseRequest() error {
+	return s.closeRequest(s.StreamingClientConn)
+}
+func (s *streamingClientInterceptor) CloseResponse() error {
+	return s.closeResponse(s.StreamingClientConn)
+}
+
+type errorStreamingClientInterceptor struct {
+	connect.StreamingClientConn
+
+	err error
+}
+
+func (e *errorStreamingClientInterceptor) Send(any) error {
+	return e.err
+}
+func (e *errorStreamingClientInterceptor) CloseRequest() error {
+	return e.err
+}
+func (e *errorStreamingClientInterceptor) Receive(any) error {
+	return e.err
+}
+func (e *errorStreamingClientInterceptor) CloseResponse() error {
+	return e.err
 }
 
 type streamingHandlerInterceptor struct {

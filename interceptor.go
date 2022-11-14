@@ -47,7 +47,7 @@ const (
 )
 
 func interceptorError(err error) error {
-	return fmt.Errorf("error initialising interceptor: %w", err)
+	return connect.NewError(connect.CodeInternal, fmt.Errorf("error initialising interceptor: %w", err))
 }
 
 type config struct {
@@ -128,10 +128,11 @@ func (i *interceptor) initInterceptor(isClient bool) error {
 
 func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+		requestStartTime := i.config.now()
 		if !i.initialised {
 			// TODO: what does this error look like
 			if err := i.initInterceptor(request.Spec().IsClient); err != nil {
-				return nil, connect.NewError(connect.CodeInternal, err)
+				return nil, err
 			}
 		}
 		req := &Request{
@@ -144,7 +145,6 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				return next(ctx, request)
 			}
 		}
-		requestStartTime := i.config.now()
 		tracer := i.config.Tracer()
 		carrier := propagation.HeaderCarrier(request.Header())
 		attrs := attributesFromRequest(req)
@@ -196,11 +196,9 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			}
 		}
 		span.AddEvent("message", trace.WithAttributes(resSpanAttrs...))
-		if true {
-			i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attrs...)
-			i.requestsPerRPC.Record(ctx, 1, attrs...)
-			i.responsesPerRPC.Record(ctx, 1, attrs...)
-		}
+		i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attrs...)
+		i.requestsPerRPC.Record(ctx, 1, attrs...)
+		i.responsesPerRPC.Record(ctx, 1, attrs...)
 		if err != nil {
 			if connectErr := new(connect.Error); errors.As(err, &connectErr) {
 				span.SetStatus(codes.Error, connectErr.Message())
@@ -216,17 +214,13 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 // TODO: implement tracing in WrapStreamingClient.
 func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		requestStartTime := i.config.now()
 		conn := next(ctx, spec)
 		if !i.initialised {
 			if err := i.initInterceptor(spec.IsClient); err != nil {
-				return &streamingClientInterceptor{
+				return &errorStreamingClientInterceptor{
 					StreamingClientConn: conn,
-					receive: func(any, connect.StreamingClientConn) error {
-						return err
-					},
-					send: func(any, connect.StreamingClientConn) error {
-						return err
-					},
+					err:                 err,
 				}
 			}
 		}
@@ -244,6 +238,10 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			protocol: parseProtocol(req.Header),
 			attrs:    attributesFromRequest(req),
 		}
+		var closeRequest, closeResponse bool
+		onClose := func() {
+			i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
+		}
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			receive: func(msg any, conn connect.StreamingClientConn) error {
@@ -252,6 +250,22 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			send: func(msg any, conn connect.StreamingClientConn) error {
 				return state.send(ctx, i, msg, conn)
 			},
+			closeRequest: func(conn connect.StreamingClientConn) error {
+				closeRequest = true
+				err := conn.CloseRequest()
+				if closeRequest && closeResponse {
+					onClose()
+				}
+				return err
+			},
+			closeResponse: func(conn connect.StreamingClientConn) error {
+				closeResponse = true
+				err := conn.CloseRequest()
+				if closeRequest && closeResponse {
+					onClose()
+				}
+				return err
+			},
 		}
 	}
 }
@@ -259,6 +273,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 // TODO: implement tracing in WrapStreamingHandler.
 func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		requestStartTime := i.config.now()
 		if !i.initialised {
 			if err := i.initInterceptor(conn.Spec().IsClient); err != nil {
 				return err
@@ -287,7 +302,9 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return state.send(ctx, i, msg, conn)
 			},
 		}
-		return next(ctx, ret)
+		streamingHandler := next(ctx, ret)
+		i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
+		return streamingHandler
 	}
 }
 
