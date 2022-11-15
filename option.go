@@ -22,6 +22,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+type optionFunc func(*config)
+
+func (o optionFunc) apply(c *config) {
+	o(c)
+}
+
 // An Option configures the OpenTelemetry instrumentation.
 type Option interface {
 	apply(*config)
@@ -39,8 +45,7 @@ type meterProviderOption struct {
 }
 
 func (m meterProviderOption) apply(c *config) {
-	c.Metrics.Provider = m.provider
-	c.Metrics.Meter = c.Metrics.Provider.Meter(
+	c.Meter = m.provider.Meter(
 		instrumentationName,
 		metric.WithInstrumentationVersion(semanticVersion),
 	)
@@ -80,7 +85,7 @@ type propagatorOption struct {
 
 func (o *propagatorOption) apply(c *config) {
 	if o.propagator != nil {
-		c.Trace.Propagator = o.propagator
+		c.Propagator = o.propagator
 	}
 }
 
@@ -90,7 +95,7 @@ type tracerProviderOption struct {
 
 func (o *tracerProviderOption) apply(c *config) {
 	if o.provider != nil {
-		c.Trace.Provider = o.provider
+		c.TracerProvider = o.provider
 	}
 }
 
@@ -100,19 +105,18 @@ type filterOption struct {
 
 func (o *filterOption) apply(c *config) {
 	if o.filter != nil {
-		c.Trace.Filter = o.filter
-		c.Metrics.Filter = o.filter
+		c.Filter = o.filter
 	}
 }
 
 type disableTraceOption struct{}
 
 func (o *disableTraceOption) apply(c *config) {
-	c.DisableTrace = true
+	c.TracerProvider = trace.NewNoopTracerProvider()
 }
 
 type disableMetricsOption struct{}
 
 func (o *disableMetricsOption) apply(c *config) {
-	c.DisableMetrics = true
+	WithMeterProvider(metric.NewNoopMeterProvider()).apply(c)
 }

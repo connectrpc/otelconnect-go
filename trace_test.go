@@ -48,7 +48,7 @@ const messagesPerRequest = 2
 
 func TestStreaming(t *testing.T) {
 	t.Parallel()
-	options := []connect.ClientOption{WithTelemetry(Server)}
+	options := []connect.ClientOption{WithTelemetry()}
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}))
 	server := httptest.NewUnstartedServer(mux)
@@ -61,9 +61,7 @@ func TestStreaming(t *testing.T) {
 	)
 	stream := connectClient.CumSum(context.Background())
 	err := stream.Send(&pingv1.CumSumRequest{Number: 12})
-	if errors.Is(err, io.EOF) {
-		t.Error(err)
-	} else if err != nil {
+	if err != nil {
 		t.Error(err)
 	}
 	var wg sync.WaitGroup
@@ -85,24 +83,17 @@ func TestMetrics(t *testing.T) {
 			metricReader,
 		),
 	)
-	metricInterceptor, err := newMetricsInterceptor(metricsConfig{
-		interceptorType: Client,
-		Provider:        meterProvider,
-		Meter:           meterProvider.Meter(t.Name()),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	var now time.Time
-	metricInterceptor.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
-		now = now.Add(time.Second)
-		return now
-	}
+	interceptor := NewInterceptor(WithMeterProvider(meterProvider), optionFunc(func(c *config) {
+		c.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
+			now = now.Add(time.Second)
+			return now
+		}
+	}))
 	pingClient, _, _ := startServer(
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
-			connect.WithInterceptors(metricInterceptor),
+			connect.WithInterceptors(interceptor),
 		},
 	)
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {
@@ -112,7 +103,7 @@ func TestMetrics(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	diff := cmp.Diff(metrics, metricdata.ResourceMetrics{
+	diff := cmp.Diff(metricdata.ResourceMetrics{
 		Resource: resource.NewWithAttributes("https://opentelemetry.io/schemas/1.12.0",
 			attribute.KeyValue{
 				Key: "service.name",
@@ -133,7 +124,8 @@ func TestMetrics(t *testing.T) {
 		ScopeMetrics: []metricdata.ScopeMetrics{
 			{
 				Scope: instrumentation.Scope{
-					Name: "TestMetrics",
+					Name:    instrumentationName,
+					Version: semanticVersion,
 				},
 				Metrics: []metricdata.Metrics{
 					{
@@ -211,31 +203,12 @@ func TestMetrics(t *testing.T) {
 							Temporality: metricdata.CumulativeTemporality,
 						},
 					},
-					{
-						Name: "rpc.client.first_write_delay",
-						Unit: "ms",
-						Data: metricdata.Histogram{
-							Temporality: metricdata.CumulativeTemporality,
-						},
-					},
-					{
-						Name: "rpc.client.inter_receive_duration",
-						Unit: "ms",
-						Data: metricdata.Histogram{
-							Temporality: metricdata.CumulativeTemporality,
-						},
-					},
-					{
-						Name: "rpc.client.inter_send_duration",
-						Unit: "ms",
-						Data: metricdata.Histogram{
-							Temporality: metricdata.CumulativeTemporality,
-						},
-					},
 				},
 			},
 		},
-	}, cmpopts.IgnoreUnexported(attribute.Set{}),
+	},
+		metrics,
+		cmpopts.IgnoreUnexported(attribute.Set{}),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "StartTime"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Time"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Bounds"),
@@ -247,17 +220,40 @@ func TestMetrics(t *testing.T) {
 	}
 }
 
+func TestWithoutMetrics(t *testing.T) {
+	t.Parallel()
+	metricReader := metricsdk.NewManualReader()
+	meterProvider := metricsdk.NewMeterProvider(
+		metricsdk.WithReader(
+			metricReader,
+		),
+	)
+	interceptor := NewInterceptor(WithMeterProvider(meterProvider), WithoutMetrics())
+	pingClient, _, _ := startServer(
+		nil, /* handlerOpts */
+		[]connect.ClientOption{
+			connect.WithInterceptors(interceptor),
+		},
+	)
+	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {
+		t.Errorf(err.Error())
+	}
+	metrics, err := metricReader.Collect(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+	if len(metrics.ScopeMetrics) != 0 {
+		t.Error("metrics unexpectedly recorded")
+	}
+}
+
 func TestWithoutTracing(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, _, _ := startServer(
 		[]connect.HandlerOption{
-			WithTelemetry(
-				Client,
-				WithoutTracing(),
-				WithTracerProvider(traceProvider),
-			),
+			WithTelemetry(WithTracerProvider(traceProvider), WithoutTracing()),
 		},
 		nil, /* clientOpts */
 	)
@@ -276,10 +272,7 @@ func TestClientSimple(t *testing.T) {
 	pingClient, host, port := startServer(
 		nil, /* handlerOpts */
 		[]connect.ClientOption{
-			WithTelemetry(
-				Client,
-				WithTracerProvider(clientTraceProvider),
-			),
+			WithTelemetry(WithTracerProvider(clientTraceProvider)),
 		},
 	)
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
@@ -325,10 +318,7 @@ func TestHandlerFailCall(t *testing.T) {
 	pingClient, host, port := startServer(
 		nil,
 		[]connect.ClientOption{
-			WithTelemetry(
-				Client,
-				WithTracerProvider(clientTraceProvider),
-			),
+			WithTelemetry(WithTracerProvider(clientTraceProvider)),
 		},
 	)
 	_, err := pingClient.Fail(
@@ -378,19 +368,12 @@ func TestClientHandlerOpts(t *testing.T) {
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	pingClient, host, port := startServer(
 		[]connect.HandlerOption{
-			WithTelemetry(
-				Server,
-				WithTracerProvider(serverTraceProvider),
-				WithFilter(func(ctx context.Context, request *Request) bool {
-					return false
-				}),
-			),
+			WithTelemetry(WithTracerProvider(serverTraceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
+				return false
+			})),
 		},
 		[]connect.ClientOption{
-			WithTelemetry(
-				Client,
-				WithTracerProvider(clientTraceProvider),
-			),
+			WithTelemetry(WithTracerProvider(clientTraceProvider)),
 		},
 	)
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
@@ -436,13 +419,9 @@ func TestBasicFilter(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, _, _ := startServer(
 		[]connect.HandlerOption{
-			WithTelemetry(
-				Client,
-				WithTracerProvider(traceProvider),
-				WithFilter(func(ctx context.Context, request *Request) bool {
-					return false
-				}),
-			),
+			WithTelemetry(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
+				return false
+			})),
 		},
 		nil, /* clientOpts */
 	)
@@ -463,13 +442,9 @@ func TestFilterHeader(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer(
 		[]connect.HandlerOption{
-			WithTelemetry(
-				Client,
-				WithTracerProvider(traceProvider),
-				WithFilter(func(ctx context.Context, request *Request) bool {
-					return request.Header.Get("Some-Header") == "foobar"
-				}),
-			),
+			WithTelemetry(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
+				return request.Header.Get("Some-Header") == "foobar"
+			})),
 		},
 		nil, /* clientOpts */
 	)
@@ -521,7 +496,7 @@ func TestInterceptors(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer(
 		[]connect.HandlerOption{
-			WithTelemetry(Client, WithTracerProvider(traceProvider)),
+			WithTelemetry(WithTracerProvider(traceProvider)),
 		},
 		nil, /* clientOpts */
 	)

@@ -19,6 +19,7 @@ package otelconnect
 import (
 	"net/http"
 	"strings"
+	time "time"
 
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel"
@@ -36,42 +37,27 @@ const (
 
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
 // and tracing to Connect clients and handlers.
-func WithTelemetry(interceptorType InterceptorType, options ...Option) connect.Option {
-	return connect.WithInterceptors(NewInterceptors(interceptorType, options...)...)
+func WithTelemetry(options ...Option) connect.Option {
+	return connect.WithInterceptors(NewInterceptor(options...))
 }
 
-// NewInterceptors constructs and returns OpenTelemetry Interceptors for metrics
+// NewInterceptor constructs and returns OpenTelemetry Interceptors for metrics
 // and tracing.
-func NewInterceptors(interceptorType InterceptorType, options ...Option) []connect.Interceptor {
+func NewInterceptor(options ...Option) connect.Interceptor {
 	cfg := config{
-		Trace: traceConfig{
-			Provider:   otel.GetTracerProvider(),
-			Propagator: otel.GetTextMapPropagator(),
-		},
-		Metrics: metricsConfig{
-			interceptorType: interceptorType,
-			Provider:        global.MeterProvider(),
-			Meter: global.MeterProvider().Meter(
-				instrumentationName,
-				metric.WithInstrumentationVersion(semanticVersion),
-			),
-		},
+		now:            time.Now,
+		TracerProvider: otel.GetTracerProvider(),
+		Propagator:     otel.GetTextMapPropagator(),
+		Meter: global.MeterProvider().Meter(
+			instrumentationName,
+			metric.WithInstrumentationVersion(semanticVersion),
+		),
 	}
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
-	var interceptors []connect.Interceptor
-	if !cfg.DisableMetrics {
-		interceptor, err := newMetricsInterceptor(cfg.Metrics)
-		if err != nil {
-			otel.Handle(err)
-		}
-		interceptors = append(interceptors, interceptor)
-	}
-	if !cfg.DisableTrace {
-		interceptors = append(interceptors, &traceInterceptor{cfg.Trace})
-	}
-	return interceptors
+	intercept := newInterceptor(cfg)
+	return intercept
 }
 
 // Request is the information about each RPC available to filter functions. It
@@ -81,13 +67,6 @@ type Request struct {
 	Spec   connect.Spec
 	Peer   connect.Peer
 	Header http.Header
-}
-
-type config struct {
-	DisableTrace   bool
-	Trace          traceConfig
-	DisableMetrics bool
-	Metrics        metricsConfig
 }
 
 func parseProtocol(header http.Header) string {
@@ -121,4 +100,19 @@ func parseProcedure(procedure string) []attribute.KeyValue {
 		}
 	}
 	return attrs
+}
+
+func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
+	codeKey := attribute.Key("rpc." + protocol + ".status_code")
+	// Following the respective specifications, use integers for gRPC codes and
+	// strings for Connect codes.
+	if strings.HasPrefix(protocol, "grpc") {
+		if serverErr != nil {
+			return codeKey.Int64(int64(connect.CodeOf(serverErr)))
+		}
+		return codeKey.Int64(0) // gRPC uses 0 for success
+	} else if serverErr != nil {
+		return codeKey.String(connect.CodeOf(serverErr).String())
+	}
+	return codeKey.String("success")
 }
