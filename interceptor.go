@@ -22,6 +22,9 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
+
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel/attribute"
@@ -46,14 +49,36 @@ const (
 	responsesPerRPC = "responses_per_rpc"
 )
 
-type interceptor struct {
-	initialised     bool
-	config          config
+type instruments struct {
+	sync.Once
+	instrumentType  string
+	initErr         error
 	duration        syncint64.Histogram
 	requestSize     syncint64.Histogram
 	responseSize    syncint64.Histogram
 	requestsPerRPC  syncint64.Histogram
 	responsesPerRPC syncint64.Histogram
+}
+
+type interceptor struct {
+	config config
+
+	clientInstruments instruments
+
+	handlerInstruments instruments
+}
+
+func (i *interceptor) getAndInitInstrument(isClient bool) (*instruments, error) {
+	if isClient {
+		if err := i.clientInstruments.init(i.config.meter, isClient); err != nil {
+			return nil, err
+		}
+		return &i.clientInstruments, nil
+	}
+	if err := i.handlerInstruments.init(i.config.meter, isClient); err != nil {
+		return nil, err
+	}
+	return &i.handlerInstruments, nil
 }
 
 func newInterceptor(cfg config) *interceptor {
@@ -62,60 +87,60 @@ func newInterceptor(cfg config) *interceptor {
 	}
 }
 
-func (i *interceptor) initInterceptor(isClient bool) error {
-	var err error
-	i.initialised = true
-	interceptorType := "server"
-	if isClient {
-		interceptorType = "client"
-	}
-	intProvider := i.config.meter.SyncInt64()
-	i.duration, err = intProvider.Histogram(
-		formatkeys(interceptorType, duration),
-		instrument.WithUnit(unit.Milliseconds),
-	)
-	if err != nil {
-		return interceptorError(err)
-	}
-	i.requestSize, err = intProvider.Histogram(
-		formatkeys(interceptorType, requestSize),
-		instrument.WithUnit(unit.Bytes),
-	)
-	if err != nil {
-		return interceptorError(err)
-	}
-	i.responseSize, err = intProvider.Histogram(
-		formatkeys(interceptorType, responseSize),
-		instrument.WithUnit(unit.Bytes),
-	)
-	if err != nil {
-		return interceptorError(err)
-	}
-	i.requestsPerRPC, err = intProvider.Histogram(
-		formatkeys(interceptorType, requestsPerRPC),
-		instrument.WithUnit(unit.Dimensionless),
-	)
-	if err != nil {
-		return interceptorError(err)
-	}
-	i.responsesPerRPC, err = intProvider.Histogram(
-		formatkeys(interceptorType, responsesPerRPC),
-		instrument.WithUnit(unit.Dimensionless),
-	)
-	if err != nil {
-		return interceptorError(err)
-	}
-	return nil
+func (i *instruments) init(meter metric.Meter, isClient bool) error {
+	i.Do(func() {
+		intProvider := meter.SyncInt64()
+		interceptorType := "server"
+		if isClient {
+			interceptorType = "client"
+		}
+		i.duration, i.initErr = intProvider.Histogram(
+			formatkeys(interceptorType, duration),
+			instrument.WithUnit(unit.Milliseconds),
+		)
+		if i.initErr != nil {
+			return
+		}
+		i.requestSize, i.initErr = intProvider.Histogram(
+			formatkeys(interceptorType, requestSize),
+			instrument.WithUnit(unit.Bytes),
+		)
+		if i.initErr != nil {
+			return
+		}
+		i.responseSize, i.initErr = intProvider.Histogram(
+			formatkeys(interceptorType, responseSize),
+			instrument.WithUnit(unit.Bytes),
+		)
+		if i.initErr != nil {
+			return
+		}
+		i.requestsPerRPC, i.initErr = intProvider.Histogram(
+			formatkeys(interceptorType, requestsPerRPC),
+			instrument.WithUnit(unit.Dimensionless),
+		)
+		if i.initErr != nil {
+			return
+		}
+		i.responsesPerRPC, i.initErr = intProvider.Histogram(
+			formatkeys(interceptorType, responsesPerRPC),
+			instrument.WithUnit(unit.Dimensionless),
+		)
+		if i.initErr != nil {
+			return
+		}
+		return
+	})
+	return i.initErr
 }
 
 func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 		requestStartTime := i.config.now()
-		if !i.initialised {
-			// TODO: what does this error look like
-			if err := i.initInterceptor(request.Spec().IsClient); err != nil {
-				return nil, err
-			}
+		isClient := request.Spec().IsClient
+		instr, err := i.getAndInitInstrument(isClient)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 		req := &Request{
 			Spec:   request.Spec(),
@@ -167,20 +192,20 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		attrs = append(attrs, codeAttr)
 		if msg, ok := request.Any().(proto.Message); ok {
 			size := proto.Size(msg)
-			i.requestSize.Record(ctx, int64(size), attrs...)
+			instr.requestSize.Record(ctx, int64(size), attrs...)
 		}
 		resSpanAttrs := []attribute.KeyValue{resSpanType, semconv.MessageIDKey.Int(1)}
 		if err == nil {
 			if msg, ok := response.Any().(proto.Message); ok {
 				size := proto.Size(msg)
-				i.responseSize.Record(ctx, int64(size), attrs...)
+				instr.responseSize.Record(ctx, int64(size), attrs...)
 				resSpanAttrs = append(resSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
 			}
 		}
 		span.AddEvent("message", trace.WithAttributes(resSpanAttrs...))
-		i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attrs...)
-		i.requestsPerRPC.Record(ctx, 1, attrs...)
-		i.responsesPerRPC.Record(ctx, 1, attrs...)
+		instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attrs...)
+		instr.requestsPerRPC.Record(ctx, 1, attrs...)
+		instr.responsesPerRPC.Record(ctx, 1, attrs...)
 		if err != nil {
 			if connectErr := new(connect.Error); errors.As(err, &connectErr) {
 				span.SetStatus(codes.Error, connectErr.Message())
@@ -198,12 +223,11 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		requestStartTime := i.config.now()
 		conn := next(ctx, spec)
-		if !i.initialised {
-			if err := i.initInterceptor(spec.IsClient); err != nil {
-				return &errorStreamingClientInterceptor{
-					StreamingClientConn: conn,
-					err:                 err,
-				}
+		instr, err := i.getAndInitInstrument(spec.IsClient)
+		if err != nil {
+			return &errorStreamingClientInterceptor{
+				StreamingClientConn: conn,
+				err:                 connect.NewError(connect.CodeInternal, err),
 			}
 		}
 		req := &Request{
@@ -225,13 +249,13 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			requestClosed:       make(chan struct{}),
 			responseClosed:      make(chan struct{}),
 			onClose: func() {
-				i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
+				instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
-				return state.receive(ctx, i, msg, conn)
+				return state.receive(ctx, instr, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				return state.send(ctx, i, msg, conn)
+				return state.send(ctx, instr, msg, conn)
 			},
 		}
 	}
@@ -241,10 +265,10 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		requestStartTime := i.config.now()
-		if !i.initialised {
-			if err := i.initInterceptor(conn.Spec().IsClient); err != nil {
-				return err
-			}
+		isClient := conn.Spec().IsClient
+		instr, err := i.getAndInitInstrument(isClient)
+		if err != nil {
+			return err
 		}
 		req := &Request{
 			Spec:   conn.Spec(),
@@ -263,14 +287,14 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
-				return state.receive(ctx, i, msg, conn)
+				return state.receive(ctx, instr, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingHandlerConn) error {
-				return state.send(ctx, i, msg, conn)
+				return state.send(ctx, instr, msg, conn)
 			},
 		}
-		err := next(ctx, streamingHandler)
-		i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
+		err = next(ctx, streamingHandler)
+		instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
 		return err
 	}
 }

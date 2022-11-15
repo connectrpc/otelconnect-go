@@ -35,7 +35,7 @@ type sendReceiver interface {
 	RequestHeader() http.Header
 }
 
-func (s *streamingState) receive(ctx context.Context, intercept *interceptor, msg any, conn sendReceiver) error {
+func (s *streamingState) receive(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -44,14 +44,14 @@ func (s *streamingState) receive(ctx context.Context, intercept *interceptor, ms
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		intercept.requestSize.Record(ctx, int64(size), s.attrs...)
+		instr.requestSize.Record(ctx, int64(size), s.attrs...)
 	}
-	intercept.requestsPerRPC.Record(ctx, 1, s.attrs...)
-	intercept.responsesPerRPC.Record(ctx, 1, s.attrs...)
+	instr.requestsPerRPC.Record(ctx, 1, s.attrs...)
+	instr.responsesPerRPC.Record(ctx, 1, s.attrs...)
 	return err
 }
 
-func (s *streamingState) send(ctx context.Context, intercept *interceptor, msg any, conn sendReceiver) error {
+func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -60,7 +60,7 @@ func (s *streamingState) send(ctx context.Context, intercept *interceptor, msg a
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		intercept.responseSize.Record(ctx, int64(size), s.attrs...)
+		instr.responseSize.Record(ctx, int64(size), s.attrs...)
 	}
 	return err
 }
