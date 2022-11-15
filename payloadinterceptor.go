@@ -15,8 +15,6 @@
 package otelconnect
 
 import (
-	"fmt"
-
 	"github.com/bufbuild/connect-go"
 )
 
@@ -65,9 +63,7 @@ func (e *errorStreamingClientInterceptor) Send(any) error {
 }
 
 func (e *errorStreamingClientInterceptor) CloseRequest() error {
-	if err := e.StreamingClientConn.CloseRequest(); err != nil {
-		return fmt.Errorf("%w %w", err, e.err)
-	}
+	_ = e.StreamingClientConn.CloseRequest()
 	return e.err
 }
 
@@ -76,9 +72,7 @@ func (e *errorStreamingClientInterceptor) Receive(any) error {
 }
 
 func (e *errorStreamingClientInterceptor) CloseResponse() error {
-	if err := e.StreamingClientConn.CloseResponse(); err != nil {
-		return fmt.Errorf("%w %w", err, e.err)
-	}
+	_ = e.StreamingClientConn.CloseResponse()
 	return e.err
 }
 
