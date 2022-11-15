@@ -312,7 +312,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 
 func parseAddress(address string) []attribute.KeyValue {
 	host, port, err := net.SplitHostPort(address)
-	if err != nil {
+	if err == nil {
 		return []attribute.KeyValue{
 			semconv.NetPeerNameKey.String(host),
 			semconv.NetPeerPortKey.String(port),
