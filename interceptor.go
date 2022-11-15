@@ -24,11 +24,10 @@ import (
 	"strings"
 	"sync"
 
-	"go.opentelemetry.io/otel/metric"
-
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 	"go.opentelemetry.io/otel/metric/unit"
@@ -51,7 +50,6 @@ const (
 
 type instruments struct {
 	sync.Once
-	instrumentType  string
 	initErr         error
 	duration        syncint64.Histogram
 	requestSize     syncint64.Histogram
@@ -126,10 +124,6 @@ func (i *instruments) init(meter metric.Meter, isClient bool) error {
 			formatkeys(interceptorType, responsesPerRPC),
 			instrument.WithUnit(unit.Dimensionless),
 		)
-		if i.initErr != nil {
-			return
-		}
-		return
 	})
 	return i.initErr
 }
@@ -330,8 +324,4 @@ func attributesFromRequest(req *Request) []attribute.KeyValue {
 
 func formatkeys(interceptorType string, metricName string) string {
 	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
-}
-
-func interceptorError(err error) error {
-	return connect.NewError(connect.CodeInternal, fmt.Errorf("error initialising interceptor: %w", err))
 }
