@@ -300,7 +300,7 @@ func TestClientSimple(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
@@ -349,7 +349,7 @@ func TestHandlerFailCall(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
@@ -402,7 +402,7 @@ func TestClientHandlerOpts(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
@@ -478,7 +478,7 @@ func TestFilterHeader(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
@@ -528,7 +528,7 @@ func TestInterceptors(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
@@ -557,7 +557,7 @@ func TestInterceptors(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
 				semconv.RPCSystemKey.String("connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
@@ -651,7 +651,7 @@ func checkUnarySpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 				t.Error(diff)
 			}
 		}
-		diff := cmp.Diff(span.Attributes(), wantAttributes,
+		diff := cmp.Diff(wantAttributes, span.Attributes(),
 			cmpopts.IgnoreUnexported(attribute.Value{}),
 			cmp.Comparer(func(x, y attribute.KeyValue) bool {
 				if x.Key == semconv.NetPeerPortKey && y.Key == semconv.NetPeerPortKey {
