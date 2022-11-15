@@ -46,7 +46,7 @@ func WithTracerProvider(provider trace.TracerProvider) Option {
 }
 
 // WithFilter configures the instrumentation to emit traces and metrics only
-// when the filter function returns true. filter functions must be safe to call
+// when the filter function returns true. Filter functions must be safe to call
 // concurrently.
 func WithFilter(filter func(context.Context, *Request) bool) Option {
 	return &filterOption{filter}
