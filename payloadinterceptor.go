@@ -15,16 +15,25 @@
 package otelconnect
 
 import (
+	"fmt"
+
 	"github.com/bufbuild/connect-go"
 )
 
 type streamingClientInterceptor struct {
 	connect.StreamingClientConn
 
-	receive       func(any, connect.StreamingClientConn) error
-	send          func(any, connect.StreamingClientConn) error
-	closeRequest  func(connect.StreamingClientConn) error
-	closeResponse func(connect.StreamingClientConn) error
+	receive        func(any, connect.StreamingClientConn) error
+	send           func(any, connect.StreamingClientConn) error
+	requestClosed  chan struct{}
+	responseClosed chan struct{}
+	onClose        func()
+}
+
+func (s *streamingClientInterceptor) OnClose() {
+	<-s.requestClosed
+	<-s.responseClosed
+	s.onClose()
 }
 
 func (s *streamingClientInterceptor) Receive(msg any) error {
@@ -36,10 +45,13 @@ func (s *streamingClientInterceptor) Send(msg any) error {
 }
 
 func (s *streamingClientInterceptor) CloseRequest() error {
-	return s.closeRequest(s.StreamingClientConn)
+	defer close(s.requestClosed)
+	return s.StreamingClientConn.CloseRequest()
 }
+
 func (s *streamingClientInterceptor) CloseResponse() error {
-	return s.closeResponse(s.StreamingClientConn)
+	defer close(s.responseClosed)
+	return s.StreamingClientConn.CloseResponse()
 }
 
 type errorStreamingClientInterceptor struct {
@@ -51,13 +63,22 @@ type errorStreamingClientInterceptor struct {
 func (e *errorStreamingClientInterceptor) Send(any) error {
 	return e.err
 }
+
 func (e *errorStreamingClientInterceptor) CloseRequest() error {
+	if err := e.StreamingClientConn.CloseRequest(); err != nil {
+		return fmt.Errorf("%w %w", err, e.err)
+	}
 	return e.err
 }
+
 func (e *errorStreamingClientInterceptor) Receive(any) error {
 	return e.err
 }
+
 func (e *errorStreamingClientInterceptor) CloseResponse() error {
+	if err := e.StreamingClientConn.CloseResponse(); err != nil {
+		return fmt.Errorf("%w %w", err, e.err)
+	}
 	return e.err
 }
 

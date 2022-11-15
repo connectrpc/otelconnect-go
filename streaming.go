@@ -25,7 +25,7 @@ import (
 
 type streamingState struct {
 	protocol string
-	mut      sync.Mutex
+	mu       sync.Mutex
 	attrs    []attribute.KeyValue
 }
 
@@ -37,8 +37,8 @@ type sendReceiver interface {
 
 func (s *streamingState) receive(ctx context.Context, intercept *interceptor, msg any, conn sendReceiver) error {
 	err := conn.Receive(msg)
-	s.mut.Lock()
-	defer s.mut.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err != nil {
 		s.attrs = append(s.attrs, statusCodeAttribute(s.protocol, err))
 	}
@@ -53,8 +53,8 @@ func (s *streamingState) receive(ctx context.Context, intercept *interceptor, ms
 
 func (s *streamingState) send(ctx context.Context, intercept *interceptor, msg any, conn sendReceiver) error {
 	err := conn.Send(msg)
-	s.mut.Lock()
-	defer s.mut.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err != nil {
 		s.attrs = append(s.attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
 	}

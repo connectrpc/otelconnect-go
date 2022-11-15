@@ -18,6 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
+	"strconv"
+	"strings"
+
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -28,10 +33,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
-	"net"
-	"net/netip"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -219,33 +220,18 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			protocol: parseProtocol(req.Header),
 			attrs:    attributesFromRequest(req),
 		}
-		var closeRequest, closeResponse bool
-		onClose := func() {
-			i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
-		}
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
+			requestClosed:       make(chan struct{}),
+			responseClosed:      make(chan struct{}),
+			onClose: func() {
+				i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
+			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
 				return state.receive(ctx, i, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
 				return state.send(ctx, i, msg, conn)
-			},
-			closeRequest: func(conn connect.StreamingClientConn) error {
-				closeRequest = true
-				err := conn.CloseRequest()
-				if closeRequest && closeResponse {
-					onClose()
-				}
-				return err
-			},
-			closeResponse: func(conn connect.StreamingClientConn) error {
-				closeResponse = true
-				err := conn.CloseRequest()
-				if closeRequest && closeResponse {
-					onClose()
-				}
-				return err
 			},
 		}
 	}
@@ -274,7 +260,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			protocol: parseProtocol(req.Header),
 			attrs:    attributesFromRequest(req),
 		}
-		ret := &streamingHandlerInterceptor{
+		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
 				return state.receive(ctx, i, msg, conn)
@@ -283,9 +269,9 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return state.send(ctx, i, msg, conn)
 			},
 		}
-		streamingHandler := next(ctx, ret)
+		err := next(ctx, streamingHandler)
 		i.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
-		return streamingHandler
+		return err
 	}
 }
 

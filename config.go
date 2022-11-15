@@ -2,10 +2,11 @@ package otelconnect
 
 import (
 	"context"
+	"time"
+
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
-	"time"
 )
 
 type config struct {
