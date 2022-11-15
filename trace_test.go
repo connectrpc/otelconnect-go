@@ -677,3 +677,9 @@ func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 func ptr[T any](val T) *T {
 	return &val
 }
+
+type optionFunc func(*config)
+
+func (o optionFunc) apply(c *config) {
+	o(c)
+}

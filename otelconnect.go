@@ -46,9 +46,9 @@ func WithTelemetry(options ...Option) connect.Option {
 func NewInterceptor(options ...Option) connect.Interceptor {
 	cfg := config{
 		now:            time.Now,
-		TracerProvider: otel.GetTracerProvider(),
-		Propagator:     otel.GetTextMapPropagator(),
-		Meter: global.MeterProvider().Meter(
+		tracerProvider: otel.GetTracerProvider(),
+		propagator:     otel.GetTextMapPropagator(),
+		meter: global.MeterProvider().Meter(
 			instrumentationName,
 			metric.WithInstrumentationVersion(semanticVersion),
 		),

@@ -22,12 +22,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type optionFunc func(*config)
-
-func (o optionFunc) apply(c *config) {
-	o(c)
-}
-
 // An Option configures the OpenTelemetry instrumentation.
 type Option interface {
 	apply(*config)
@@ -38,17 +32,6 @@ type Option interface {
 // uses otel.GetTextMapPropagator().
 func WithPropagator(propagator propagation.TextMapPropagator) Option {
 	return &propagatorOption{propagator}
-}
-
-type meterProviderOption struct {
-	provider metric.MeterProvider
-}
-
-func (m meterProviderOption) apply(c *config) {
-	c.Meter = m.provider.Meter(
-		instrumentationName,
-		metric.WithInstrumentationVersion(semanticVersion),
-	)
 }
 
 func WithMeterProvider(provider metric.MeterProvider) Option {
@@ -63,7 +46,7 @@ func WithTracerProvider(provider trace.TracerProvider) Option {
 }
 
 // WithFilter configures the instrumentation to emit traces and metrics only
-// when the filter function returns true. Filter functions must be safe to call
+// when the filter function returns true. filter functions must be safe to call
 // concurrently.
 func WithFilter(filter func(context.Context, *Request) bool) Option {
 	return &filterOption{filter}
@@ -85,7 +68,7 @@ type propagatorOption struct {
 
 func (o *propagatorOption) apply(c *config) {
 	if o.propagator != nil {
-		c.Propagator = o.propagator
+		c.propagator = o.propagator
 	}
 }
 
@@ -95,7 +78,7 @@ type tracerProviderOption struct {
 
 func (o *tracerProviderOption) apply(c *config) {
 	if o.provider != nil {
-		c.TracerProvider = o.provider
+		c.tracerProvider = o.provider
 	}
 }
 
@@ -105,18 +88,29 @@ type filterOption struct {
 
 func (o *filterOption) apply(c *config) {
 	if o.filter != nil {
-		c.Filter = o.filter
+		c.filter = o.filter
 	}
 }
 
 type disableTraceOption struct{}
 
 func (o *disableTraceOption) apply(c *config) {
-	c.TracerProvider = trace.NewNoopTracerProvider()
+	c.tracerProvider = trace.NewNoopTracerProvider()
 }
 
 type disableMetricsOption struct{}
 
 func (o *disableMetricsOption) apply(c *config) {
 	WithMeterProvider(metric.NewNoopMeterProvider()).apply(c)
+}
+
+type meterProviderOption struct {
+	provider metric.MeterProvider
+}
+
+func (m meterProviderOption) apply(c *config) {
+	c.meter = m.provider.Meter(
+		instrumentationName,
+		metric.WithInstrumentationVersion(semanticVersion),
+	)
 }

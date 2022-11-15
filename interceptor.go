@@ -18,16 +18,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"net/netip"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 	"go.opentelemetry.io/otel/metric/unit"
@@ -35,6 +28,10 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
+	"net"
+	"net/netip"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -47,25 +44,6 @@ const (
 	requestsPerRPC  = "requests_per_rpc"
 	responsesPerRPC = "responses_per_rpc"
 )
-
-func interceptorError(err error) error {
-	return connect.NewError(connect.CodeInternal, fmt.Errorf("error initialising interceptor: %w", err))
-}
-
-type config struct {
-	Filter         func(context.Context, *Request) bool
-	Meter          metric.Meter
-	TracerProvider trace.TracerProvider
-	Propagator     propagation.TextMapPropagator
-	now            func() time.Time
-}
-
-func (c config) Tracer() trace.Tracer {
-	return c.TracerProvider.Tracer(
-		instrumentationName,
-		trace.WithInstrumentationVersion(semanticVersion),
-	)
-}
 
 type interceptor struct {
 	initialised     bool
@@ -82,6 +60,7 @@ func newInterceptor(cfg config) *interceptor {
 		config: cfg,
 	}
 }
+
 func (i *interceptor) initInterceptor(isClient bool) error {
 	var err error
 	i.initialised = true
@@ -89,7 +68,7 @@ func (i *interceptor) initInterceptor(isClient bool) error {
 	if isClient {
 		interceptorType = "client"
 	}
-	intProvider := i.config.Meter.SyncInt64()
+	intProvider := i.config.meter.SyncInt64()
 	i.duration, err = intProvider.Histogram(
 		formatkeys(interceptorType, duration),
 		instrument.WithUnit(unit.Milliseconds),
@@ -142,8 +121,8 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			Peer:   request.Peer(),
 			Header: request.Header(),
 		}
-		if i.config.Filter != nil {
-			if !i.config.Filter(ctx, req) {
+		if i.config.filter != nil {
+			if !i.config.filter(ctx, req) {
 				return next(ctx, request)
 			}
 		}
@@ -160,9 +139,9 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				trace.WithSpanKind(trace.SpanKindClient),
 				trace.WithAttributes(attrs...),
 			)
-			i.config.Propagator.Inject(ctx, carrier)
+			i.config.propagator.Inject(ctx, carrier)
 		} else {
-			ctx = i.config.Propagator.Extract(ctx, carrier)
+			ctx = i.config.propagator.Extract(ctx, carrier)
 			spanCtx := trace.SpanContextFromContext(ctx)
 			ctx, span = tracer.Start(
 				trace.ContextWithRemoteSpanContext(ctx, spanCtx),
@@ -231,8 +210,8 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			Peer:   conn.Peer(),
 			Header: conn.RequestHeader(),
 		}
-		if i.config.Filter != nil {
-			if !i.config.Filter(ctx, req) {
+		if i.config.filter != nil {
+			if !i.config.filter(ctx, req) {
 				return next(ctx, spec)
 			}
 		}
@@ -286,8 +265,8 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			Peer:   conn.Peer(),
 			Header: conn.RequestHeader(),
 		}
-		if i.config.Filter != nil {
-			if !i.config.Filter(ctx, req) {
+		if i.config.filter != nil {
+			if !i.config.filter(ctx, req) {
 				return next(ctx, conn)
 			}
 		}
@@ -341,4 +320,8 @@ func attributesFromRequest(req *Request) []attribute.KeyValue {
 
 func formatkeys(interceptorType string, metricName string) string {
 	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
+}
+
+func interceptorError(err error) error {
+	return connect.NewError(connect.CodeInternal, fmt.Errorf("error initialising interceptor: %w", err))
 }
