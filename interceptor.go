@@ -19,6 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -308,26 +310,27 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	}
 }
 
-func attributesFromRequest(req *Request) []attribute.KeyValue {
-	var attrs []attribute.KeyValue
-	host, port, err := net.SplitHostPort(req.Peer.Addr)
-	if err == nil {
-		attrs = append(attrs,
+func parseAddress(address string) []attribute.KeyValue {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return []attribute.KeyValue{
 			semconv.NetPeerNameKey.String(host),
 			semconv.NetPeerPortKey.String(port),
-		)
-	}
-	if addr := req.Peer.Addr; addr != "" {
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			attrs = append(attrs, semconv.NetPeerNameKey.String(addr))
-		} else {
-			attrs = append(
-				attrs,
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.String(port),
-			)
 		}
+	}
+	if addrPort, err := netip.ParseAddrPort(address); err != nil {
+		return []attribute.KeyValue{
+			semconv.NetPeerIPKey.String(addrPort.Addr().String()),
+			semconv.NetPeerPortKey.String(strconv.Itoa(int(addrPort.Port()))),
+		}
+	}
+	return []attribute.KeyValue{semconv.NetPeerNameKey.String(address)}
+}
+
+func attributesFromRequest(req *Request) []attribute.KeyValue {
+	var attrs []attribute.KeyValue
+	if addr := req.Peer.Addr; addr != "" {
+		attrs = append(attrs, parseAddress(addr)...)
 	}
 	name := strings.TrimLeft(req.Spec.Procedure, "/")
 	protocol := parseProtocol(req.Header)
