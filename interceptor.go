@@ -236,8 +236,6 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		}
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
-			requestClosed:       make(chan struct{}),
-			responseClosed:      make(chan struct{}),
 			onClose: func() {
 				instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
 			},
