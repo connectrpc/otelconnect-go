@@ -16,6 +16,8 @@ package otelconnect
 
 import (
 	"context"
+	"errors"
+	"io"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -37,7 +39,7 @@ func (s *streamingState) receive(ctx context.Context, instr *instruments, msg an
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err != nil {
+	if err != nil && !errors.Is(err, io.EOF) {
 		s.attrs = append(s.attrs, statusCodeAttribute(s.protocol, err))
 	}
 	if msg, ok := msg.(proto.Message); ok {
@@ -53,7 +55,7 @@ func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, 
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err != nil {
+	if err != nil && !errors.Is(err, io.EOF) {
 		s.attrs = append(s.attrs, statusCodeAttribute(s.protocol, err))
 	}
 	if msg, ok := msg.(proto.Message); ok {

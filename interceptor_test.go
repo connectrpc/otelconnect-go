@@ -18,13 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"io"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -46,33 +46,163 @@ import (
 
 const messagesPerRequest = 2
 
-func TestStreaming(t *testing.T) {
+func TestStreamingMetrics(t *testing.T) {
 	t.Parallel()
-	options := []connect.ClientOption{WithTelemetry()}
-	mux := http.NewServeMux()
-	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}))
-	server := httptest.NewUnstartedServer(mux)
-	server.EnableHTTP2 = true
-	server.StartTLS()
-	connectClient := pingv1connect.NewPingServiceClient(
-		server.Client(),
-		server.URL,
-		options...,
+	metricReader := metricsdk.NewManualReader()
+	meterProvider := metricsdk.NewMeterProvider(
+		metricsdk.WithReader(
+			metricReader,
+		),
+	)
+	var now time.Time
+	connectClient, host, port := startServer(
+		[]connect.HandlerOption{WithTelemetry(WithMeterProvider(meterProvider), optionFunc(func(c *config) {
+			c.now = func() time.Time { // spoof time.Now() so that tests can be accurately run
+				now = now.Add(time.Second)
+				return now
+			}
+		}))},
+		[]connect.ClientOption{WithTelemetry()},
 	)
 	stream := connectClient.CumSum(context.Background())
 	err := stream.Send(&pingv1.CumSumRequest{Number: 12})
 	if err != nil {
 		t.Error(err)
 	}
-	var wg sync.WaitGroup
-	for i := 0; i < messagesPerRequest; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, _ = stream.Receive()
-		}()
+	_, err = stream.Receive()
+	if err != nil {
+		t.Error(err)
 	}
-	wg.Wait()
+	metrics, err := metricReader.Collect(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	diff := cmp.Diff(metricdata.ResourceMetrics{
+		Resource: resource.NewWithAttributes("https://opentelemetry.io/schemas/1.12.0",
+			attribute.KeyValue{
+				Key: "service.name",
+			},
+			attribute.KeyValue{
+				Key:   "telemetry.sdk.language",
+				Value: attribute.StringValue("go"),
+			},
+			attribute.KeyValue{
+				Key:   "telemetry.sdk.name",
+				Value: attribute.StringValue("opentelemetry"),
+			},
+			attribute.KeyValue{
+				Key:   "telemetry.sdk.version",
+				Value: attribute.StringValue("1.11.1"),
+			},
+		),
+		ScopeMetrics: []metricdata.ScopeMetrics{
+			{
+				Scope: instrumentation.Scope{
+					Name:    instrumentationName,
+					Version: semanticVersion,
+				},
+				Metrics: []metricdata.Metrics{
+					{
+						Name: "rpc.server.duration",
+						Unit: "ms",
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.String(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("Ping"),
+									),
+									Count: 1,
+									Sum:   1000.0,
+									Min:   ptr(1000.0),
+									Max:   ptr(1000.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.server.request.size",
+						Unit: unit.Bytes,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Count: 2,
+									Sum:   2.0,
+									Min:   ptr(0.0),
+									Max:   ptr(2.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.server.response.size",
+						Unit: unit.Bytes,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Count: 2,
+									Sum:   4.0,
+									Min:   ptr(2.0),
+									Max:   ptr(2.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.server.requests_per_rpc",
+						Unit: unit.Dimensionless,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Count: 2,
+									Sum:   2,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.server.responses_per_rpc",
+						Unit: unit.Dimensionless,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Count: 2,
+									Sum:   2,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+				},
+			},
+		},
+	},
+		metrics,
+		cmp.Comparer(func(x, y attribute.Set) bool {
+			return x.Equals(&y)
+		}),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "StartTime"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Time"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Bounds"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "BucketCounts"),
+		cmpopts.IgnoreFields(metricdata.ResourceMetrics{}, "Resource"),
+	)
+	if diff != "" {
+		t.Error(diff)
+	}
 }
 
 func TestMetrics(t *testing.T) {
@@ -574,7 +704,9 @@ func startServer(
 ) (pingv1connect.PingServiceClient, string, string) {
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, handlerOpts...))
-	server := httptest.NewServer(mux)
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.StartTLS()
 	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
 	host, port, _ := net.SplitHostPort(strings.ReplaceAll(server.URL, "http://", ""))
 
