@@ -54,12 +54,12 @@ func WithFilter(filter func(context.Context, *Request) bool) Option {
 
 // WithoutTracing disables tracing.
 func WithoutTracing() Option {
-	return &disableTraceOption{}
+	return WithTracerProvider(trace.NewNoopTracerProvider())
 }
 
 // WithoutMetrics disables metrics.
 func WithoutMetrics() Option {
-	return &disableMetricsOption{}
+	return WithMeterProvider(metric.NewNoopMeterProvider())
 }
 
 type propagatorOption struct {
@@ -90,18 +90,6 @@ func (o *filterOption) apply(c *config) {
 	if o.filter != nil {
 		c.filter = o.filter
 	}
-}
-
-type disableTraceOption struct{}
-
-func (o *disableTraceOption) apply(c *config) {
-	c.tracerProvider = trace.NewNoopTracerProvider()
-}
-
-type disableMetricsOption struct{}
-
-func (o *disableMetricsOption) apply(c *config) {
-	WithMeterProvider(metric.NewNoopMeterProvider()).apply(c)
 }
 
 type meterProviderOption struct {
