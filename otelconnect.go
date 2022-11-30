@@ -69,15 +69,17 @@ type Request struct {
 	Header http.Header
 }
 
-func parseProtocol(header http.Header) string {
-	ctype := header.Get("Content-Type")
-	if strings.HasPrefix(ctype, "application/grpc-web") {
+func protocolToSemConv(peer connect.Peer) string {
+	switch peer.Protocol {
+	case "grpcweb":
 		return "grpc_web"
-	}
-	if strings.HasPrefix(ctype, "application/grpc") {
+	case "grpc":
 		return "grpc"
+	case "connect":
+		return "buf_connect"
+	default:
+		return peer.Protocol
 	}
-	return "connect"
 }
 
 func parseProcedure(procedure string) []attribute.KeyValue {

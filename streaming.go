@@ -16,7 +16,6 @@ package otelconnect
 
 import (
 	"context"
-	"net/http"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -32,7 +31,6 @@ type streamingState struct {
 type sendReceiver interface {
 	Receive(any) error
 	Send(any) error
-	RequestHeader() http.Header
 }
 
 func (s *streamingState) receive(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
@@ -56,7 +54,7 @@ func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
-		s.attrs = append(s.attrs, statusCodeAttribute(parseProtocol(conn.RequestHeader()), err))
+		s.attrs = append(s.attrs, statusCodeAttribute(s.protocol, err))
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)

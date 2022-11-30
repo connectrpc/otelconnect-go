@@ -302,10 +302,10 @@ func TestClientSimple(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
-				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCSystemKey.String("buf_connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.connect.status_code").String("success"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -351,10 +351,10 @@ func TestHandlerFailCall(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
-				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCSystemKey.String("buf_connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Fail"),
-				attribute.Key("rpc.connect.status_code").String("unimplemented"),
+				attribute.Key("rpc.buf_connect.status_code").String("unimplemented"),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -404,10 +404,10 @@ func TestClientHandlerOpts(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
-				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCSystemKey.String("buf_connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.connect.status_code").String("success"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -480,10 +480,10 @@ func TestFilterHeader(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
-				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCSystemKey.String("buf_connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.connect.status_code").String("success"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -530,10 +530,10 @@ func TestInterceptors(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
-				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCSystemKey.String("buf_connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.connect.status_code").String("success"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
 			},
 		},
 		{
@@ -559,10 +559,10 @@ func TestInterceptors(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.String(port),
-				semconv.RPCSystemKey.String("connect"),
+				semconv.RPCSystemKey.String("buf_connect"),
 				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.connect.status_code").String("success"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
 			},
 		},
 	}, spanRecorder.Ended())

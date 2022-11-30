@@ -146,7 +146,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		carrier := propagation.HeaderCarrier(request.Header())
 		attrs := attributesFromRequest(req)
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
-		protocol := parseProtocol(request.Header())
+		protocol := protocolToSemConv(request.Peer())
 		var span trace.Span
 		if request.Spec().IsClient {
 			ctx, span = tracer.Start(
@@ -231,7 +231,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			}
 		}
 		state := streamingState{
-			protocol: parseProtocol(req.Header),
+			protocol: protocolToSemConv(conn.Peer()),
 			attrs:    attributesFromRequest(req),
 		}
 		return &streamingClientInterceptor{
@@ -271,7 +271,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			}
 		}
 		state := streamingState{
-			protocol: parseProtocol(req.Header),
+			protocol: protocolToSemConv(req.Peer),
 			attrs:    attributesFromRequest(req),
 		}
 		streamingHandler := &streamingHandlerInterceptor{
@@ -311,7 +311,7 @@ func attributesFromRequest(req *Request) []attribute.KeyValue {
 		attrs = append(attrs, parseAddress(addr)...)
 	}
 	name := strings.TrimLeft(req.Spec.Procedure, "/")
-	protocol := parseProtocol(req.Header)
+	protocol := protocolToSemConv(req.Peer)
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
 	attrs = append(attrs, parseProcedure(name)...)
 	return attrs
