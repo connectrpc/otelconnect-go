@@ -50,6 +50,7 @@ const (
 
 type instruments struct {
 	sync.Once
+
 	initErr         error
 	duration        syncint64.Histogram
 	requestSize     syncint64.Histogram
