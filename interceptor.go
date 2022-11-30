@@ -227,7 +227,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		}
 		if i.config.filter != nil {
 			if !i.config.filter(ctx, req) {
-				return next(ctx, spec)
+				return conn
 			}
 		}
 		state := streamingState{
