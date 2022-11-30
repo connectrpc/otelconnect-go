@@ -59,34 +59,7 @@ type instruments struct {
 	responsesPerRPC syncint64.Histogram
 }
 
-type interceptor struct {
-	config config
-
-	clientInstruments instruments
-
-	handlerInstruments instruments
-}
-
-func (i *interceptor) getAndInitInstrument(isClient bool) (*instruments, error) {
-	if isClient {
-		if err := i.clientInstruments.init(i.config.meter, isClient); err != nil {
-			return nil, err
-		}
-		return &i.clientInstruments, nil
-	}
-	if err := i.handlerInstruments.init(i.config.meter, isClient); err != nil {
-		return nil, err
-	}
-	return &i.handlerInstruments, nil
-}
-
-func newInterceptor(cfg config) *interceptor {
-	return &interceptor{
-		config: cfg,
-	}
-}
-
-func (i *instruments) init(meter metric.Meter, isClient bool) error {
+func (i *instruments) init(meter metric.Meter, isClient bool) {
 	i.Do(func() {
 		intProvider := meter.SyncInt64()
 		interceptorType := "server"
@@ -126,7 +99,29 @@ func (i *instruments) init(meter metric.Meter, isClient bool) error {
 			instrument.WithUnit(unit.Dimensionless),
 		)
 	})
-	return i.initErr
+}
+
+type interceptor struct {
+	config config
+
+	clientInstruments instruments
+
+	handlerInstruments instruments
+}
+
+func (i *interceptor) getAndInitInstrument(isClient bool) (*instruments, error) {
+	if isClient {
+		i.clientInstruments.init(i.config.meter, isClient)
+		return &i.clientInstruments, i.clientInstruments.initErr
+	}
+	i.handlerInstruments.init(i.config.meter, isClient)
+	return &i.handlerInstruments, i.handlerInstruments.initErr
+}
+
+func newInterceptor(cfg config) *interceptor {
+	return &interceptor{
+		config: cfg,
+	}
 }
 
 func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
