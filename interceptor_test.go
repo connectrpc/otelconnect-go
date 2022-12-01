@@ -62,7 +62,7 @@ func TestStreamingMetrics(t *testing.T) {
 				return now
 			}
 		}))},
-		[]connect.ClientOption{WithTelemetry()},
+		[]connect.ClientOption{},
 	)
 	stream := connectClient.CumSum(context.Background())
 	err := stream.Send(&pingv1.CumSumRequest{Number: 12})
@@ -73,12 +73,12 @@ func TestStreamingMetrics(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
 	metrics, err := metricReader.Collect(context.Background())
 	if err != nil {
 		t.Error(err)
 	}
-	require.NoError(t, stream.CloseRequest())
-	require.NoError(t, stream.CloseResponse())
 	diff := cmp.Diff(metricdata.ResourceMetrics{
 		Resource: resource.NewWithAttributes("https://opentelemetry.io/schemas/1.12.0",
 			attribute.KeyValue{
@@ -115,7 +115,7 @@ func TestStreamingMetrics(t *testing.T) {
 										semconv.NetPeerPortKey.String(port),
 										semconv.RPCSystemKey.String("buf_connect"),
 										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("Ping"),
+										semconv.RPCMethodKey.String("CumSum"),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -132,6 +132,13 @@ func TestStreamingMetrics(t *testing.T) {
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.String(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
 									Count: 2,
 									Sum:   2.0,
 									Min:   ptr(0.0),
@@ -147,6 +154,13 @@ func TestStreamingMetrics(t *testing.T) {
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.String(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
 									Count: 2,
 									Sum:   4.0,
 									Min:   ptr(2.0),
@@ -162,6 +176,13 @@ func TestStreamingMetrics(t *testing.T) {
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.String(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
 									Count: 2,
 									Sum:   2,
 									Min:   ptr(1.0),
@@ -177,6 +198,13 @@ func TestStreamingMetrics(t *testing.T) {
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.String(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
 									Count: 2,
 									Sum:   2,
 									Min:   ptr(1.0),
@@ -191,8 +219,14 @@ func TestStreamingMetrics(t *testing.T) {
 		},
 	},
 		metrics,
-		cmp.Comparer(func(x, y attribute.Set) bool {
-			return x.Equals(&y)
+		cmp.Transformer("blah", func(x attribute.Set) []attribute.KeyValue {
+			return x.ToSlice()
+		}),
+		cmp.Comparer(func(x, y attribute.KeyValue) bool {
+			if x.Key == semconv.NetPeerPortKey {
+				return true
+			}
+			return x == y
 		}),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "StartTime"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Time"),
@@ -708,8 +742,7 @@ func startServer(
 	server.EnableHTTP2 = true
 	server.StartTLS()
 	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
-	host, port, _ := net.SplitHostPort(strings.ReplaceAll(server.URL, "http://", ""))
-
+	host, port, _ := net.SplitHostPort(strings.ReplaceAll(server.URL, "https://", ""))
 	return pingClient, host, port
 }
 
