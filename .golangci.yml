@@ -58,3 +58,5 @@ issues:
     # If-else is clearer than switch here.
     - linters: [gocritic]
       path: trace.go
+    - path: interceptor_test.go
+      linters: [dupl]
