@@ -110,7 +110,7 @@ func testStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopts
 
 func startBenchServer(handleropts []connect.HandlerOption, clientopts []connect.ClientOption) (*httptest.Server, pingv1connect.PingServiceClient) {
 	mux := http.NewServeMux()
-	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, handleropts...))
+	mux.Handle(pingv1connect.NewPingServiceHandler(happyPingServer(), handleropts...))
 	server := httptest.NewUnstartedServer(mux)
 	server.EnableHTTP2 = true
 	server.StartTLS()

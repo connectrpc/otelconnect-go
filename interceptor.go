@@ -282,6 +282,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			},
 		}
 		err = next(ctx, streamingHandler)
+		state.attrs = append(state.attrs, statusCodeAttribute(state.protocol, err))
 		instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
 		return err
 	}
@@ -291,13 +292,16 @@ func parseAddress(address string) []attribute.KeyValue {
 	if addrPort, err := netip.ParseAddrPort(address); err == nil {
 		return []attribute.KeyValue{
 			semconv.NetPeerIPKey.String(addrPort.Addr().String()),
-			semconv.NetPeerPortKey.String(strconv.Itoa(int(addrPort.Port()))),
+			semconv.NetPeerPortKey.Int(int(addrPort.Port())),
 		}
 	}
 	if host, port, err := net.SplitHostPort(address); err == nil {
-		return []attribute.KeyValue{
-			semconv.NetPeerNameKey.String(host),
-			semconv.NetPeerPortKey.String(port),
+		portint, err := strconv.Atoi(port)
+		if err != nil {
+			return []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.Int(portint),
+			}
 		}
 	}
 	return []attribute.KeyValue{semconv.NetPeerNameKey.String(address)}
