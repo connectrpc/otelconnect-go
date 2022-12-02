@@ -19,10 +19,13 @@ package otelconnect
 import (
 	"net/http"
 	"strings"
+	time "time"
 
 	"connectrpc.com/connect"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/global"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )
 
@@ -35,30 +38,26 @@ const (
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
 // and tracing to Connect clients and handlers.
 func WithTelemetry(options ...Option) connect.Option {
-	return connect.WithInterceptors(NewOtelInterceptors(options...)...)
+	return connect.WithInterceptors(NewInterceptor(options...))
 }
 
-// NewOtelInterceptors constructs and returns OpenTelemetry Interceptors for metrics
+// NewInterceptor constructs and returns OpenTelemetry Interceptors for metrics
 // and tracing.
-func NewOtelInterceptors(options ...Option) []connect.Interceptor {
+func NewInterceptor(options ...Option) connect.Interceptor {
 	cfg := config{
-		Trace: traceConfig{
-			Provider:   otel.GetTracerProvider(),
-			Propagator: otel.GetTextMapPropagator(),
-		},
-		Metrics: metricsConfig{},
+		now:            time.Now,
+		tracerProvider: otel.GetTracerProvider(),
+		propagator:     otel.GetTextMapPropagator(),
+		meter: global.MeterProvider().Meter(
+			instrumentationName,
+			metric.WithInstrumentationVersion(semanticVersion),
+		),
 	}
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
-	var interceptors []connect.Interceptor
-	if !cfg.DisableMetrics {
-		interceptors = append(interceptors, &metricsInterceptor{cfg.Metrics})
-	}
-	if !cfg.DisableTrace {
-		interceptors = append(interceptors, &traceInterceptor{cfg.Trace})
-	}
-	return interceptors
+	intercept := newInterceptor(cfg)
+	return intercept
 }
 
 // Request is the information about each RPC available to filter functions. It
@@ -70,22 +69,17 @@ type Request struct {
 	Header http.Header
 }
 
-type config struct {
-	DisableTrace   bool
-	Trace          traceConfig
-	DisableMetrics bool
-	Metrics        metricsConfig
-}
-
-func parseProtocol(header http.Header) string {
-	ctype := header.Get("Content-Type")
-	if strings.HasPrefix(ctype, "application/grpc-web") {
+func protocolToSemConv(peer connect.Peer) string {
+	switch peer.Protocol {
+	case "grpcweb":
 		return "grpc_web"
-	}
-	if strings.HasPrefix(ctype, "application/grpc") {
+	case "grpc":
 		return "grpc"
+	case "connect":
+		return "buf_connect"
+	default:
+		return peer.Protocol
 	}
-	return "connect"
 }
 
 func parseProcedure(procedure string) []attribute.KeyValue {
@@ -108,4 +102,19 @@ func parseProcedure(procedure string) []attribute.KeyValue {
 		}
 	}
 	return attrs
+}
+
+func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
+	codeKey := attribute.Key("rpc." + protocol + ".status_code")
+	// Following the respective specifications, use integers for gRPC codes and
+	// strings for Connect codes.
+	if strings.HasPrefix(protocol, "grpc") {
+		if serverErr != nil {
+			return codeKey.Int64(int64(connect.CodeOf(serverErr)))
+		}
+		return codeKey.Int64(0) // gRPC uses 0 for success
+	} else if serverErr != nil {
+		return codeKey.String(connect.CodeOf(serverErr).String())
+	}
+	return codeKey.String("success")
 }

@@ -17,6 +17,7 @@ package otelconnect
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -31,6 +32,10 @@ type Option interface {
 // uses otel.GetTextMapPropagator().
 func WithPropagator(propagator propagation.TextMapPropagator) Option {
 	return &propagatorOption{propagator}
+}
+
+func WithMeterProvider(provider metric.MeterProvider) Option {
+	return &meterProviderOption{provider: provider}
 }
 
 // WithTracerProvider configures the instrumentation to use the supplied
@@ -49,12 +54,12 @@ func WithFilter(filter func(context.Context, *Request) bool) Option {
 
 // WithoutTracing disables tracing.
 func WithoutTracing() Option {
-	return &disableTraceOption{}
+	return WithTracerProvider(trace.NewNoopTracerProvider())
 }
 
 // WithoutMetrics disables metrics.
 func WithoutMetrics() Option {
-	return &disableMetricsOption{}
+	return WithMeterProvider(metric.NewNoopMeterProvider())
 }
 
 type propagatorOption struct {
@@ -63,7 +68,7 @@ type propagatorOption struct {
 
 func (o *propagatorOption) apply(c *config) {
 	if o.propagator != nil {
-		c.Trace.Propagator = o.propagator
+		c.propagator = o.propagator
 	}
 }
 
@@ -73,7 +78,7 @@ type tracerProviderOption struct {
 
 func (o *tracerProviderOption) apply(c *config) {
 	if o.provider != nil {
-		c.Trace.Provider = o.provider
+		c.tracerProvider = o.provider
 	}
 }
 
@@ -83,19 +88,17 @@ type filterOption struct {
 
 func (o *filterOption) apply(c *config) {
 	if o.filter != nil {
-		c.Trace.Filter = o.filter
-		c.Metrics.Filter = o.filter
+		c.filter = o.filter
 	}
 }
 
-type disableTraceOption struct{}
-
-func (o *disableTraceOption) apply(c *config) {
-	c.DisableTrace = true
+type meterProviderOption struct {
+	provider metric.MeterProvider
 }
 
-type disableMetricsOption struct{}
-
-func (o *disableMetricsOption) apply(c *config) {
-	c.DisableMetrics = true
+func (m meterProviderOption) apply(c *config) {
+	c.meter = m.provider.Meter(
+		instrumentationName,
+		metric.WithInstrumentationVersion(semanticVersion),
+	)
 }
