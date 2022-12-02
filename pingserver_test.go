@@ -25,18 +25,18 @@ import (
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 )
 
-func PingHappy(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+func pingHappy(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 	return connect.NewResponse(&pingv1.PingResponse{
 		Id:   req.Msg.Id,
 		Data: req.Msg.Data,
 	}), nil
 }
 
-func PingFail(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+func pingFail(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 	return nil, connect.NewError(connect.CodeDataLoss, errors.New("Oh no"))
 }
 
-func CumSumHappy(
+func cumSumHappy(
 	ctx context.Context,
 	stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse],
 ) error {
@@ -59,7 +59,7 @@ func CumSumHappy(
 	}
 }
 
-func CumSumFail(
+func cumSumFail(
 	ctx context.Context,
 	stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse],
 ) error {
@@ -81,15 +81,15 @@ func CumSumFail(
 
 func happyPingServer() *pluggablePingServer {
 	return &pluggablePingServer{
-		ping:   PingHappy,
-		cumSum: CumSumHappy,
+		ping:   pingHappy,
+		cumSum: cumSumHappy,
 	}
 }
 
 func failPingServer() *pluggablePingServer {
 	return &pluggablePingServer{
-		ping:   PingFail,
-		cumSum: CumSumFail,
+		ping:   pingFail,
+		cumSum: cumSumFail,
 	}
 }
 
