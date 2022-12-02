@@ -16,26 +16,24 @@ package otelconnect
 
 import (
 	"context"
+	"time"
 
-	"github.com/bufbuild/connect-go"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
-type metricsConfig struct {
-	Filter func(context.Context, *Request) bool
+type config struct {
+	filter         func(context.Context, *Request) bool
+	meter          metric.Meter
+	tracerProvider trace.TracerProvider
+	propagator     propagation.TextMapPropagator
+	now            func() time.Time
 }
 
-type metricsInterceptor struct {
-	config metricsConfig
-}
-
-func (i *metricsInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
-	return next // TODO
-}
-
-func (i *metricsInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
-	return next // TODO
-}
-
-func (i *metricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return next // TODO
+func (c config) Tracer() trace.Tracer {
+	return c.tracerProvider.Tracer(
+		instrumentationName,
+		trace.WithInstrumentationVersion(semanticVersion),
+	)
 }
