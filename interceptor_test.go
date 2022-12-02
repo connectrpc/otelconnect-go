@@ -228,6 +228,374 @@ func TestStreamingMetrics(t *testing.T) {
 	}
 }
 
+func TestStreamingMetricsClient(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetrics()
+	var now time.Time
+	connectClient, host, port := startServer(
+		[]connect.HandlerOption{},
+		[]connect.ClientOption{
+			WithTelemetry(
+				WithMeterProvider(meterProvider), optionFunc(func(c *config) {
+					c.now = func() time.Time {
+						now = now.Add(time.Second)
+						return now
+					}
+				}))}, happyPingServer())
+	stream := connectClient.CumSum(context.Background())
+	err := stream.Send(&pingv1.CumSumRequest{Number: 12})
+	if err != nil {
+		t.Error(err)
+	}
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	if err != nil {
+		t.Error(err)
+	}
+	require.NoError(t, stream.CloseResponse())
+	metrics, err := metricReader.Collect(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+
+	diff := cmp.Diff(metricdata.ResourceMetrics{
+		Resource: metricResource(),
+		ScopeMetrics: []metricdata.ScopeMetrics{
+			{
+				Scope: instrumentation.Scope{
+					Name:    instrumentationName,
+					Version: semanticVersion,
+				},
+				Metrics: []metricdata.Metrics{
+					{
+						Name: "rpc.client.duration",
+						Unit: "ms",
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+										attribute.Key("rpc.buf_connect.status_code").String("success"),
+									),
+									Count: 1,
+									Sum:   1000.0,
+									Min:   ptr(1000.0),
+									Max:   ptr(1000.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.request.size",
+						Unit: unit.Bytes,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   2.0,
+									Min:   ptr(2.0),
+									Max:   ptr(2.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.response.size",
+						Unit: unit.Bytes,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   2.0,
+									Min:   ptr(2.0),
+									Max:   ptr(2.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.requests_per_rpc",
+						Unit: unit.Dimensionless,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   1,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.responses_per_rpc",
+						Unit: unit.Dimensionless,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   1,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+				},
+			},
+		},
+	},
+		metrics,
+		cmpOpts()...,
+	)
+	if diff != "" {
+		t.Error(diff)
+	}
+}
+
+func TestStreamingMetricsClientFail(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetrics()
+	var now time.Time
+	connectClient, host, port := startServer(
+		[]connect.HandlerOption{},
+		[]connect.ClientOption{
+			WithTelemetry(
+				WithMeterProvider(meterProvider), optionFunc(func(c *config) {
+					c.now = func() time.Time {
+						now = now.Add(time.Second)
+						return now
+					}
+				}))}, failPingServer())
+	stream := connectClient.CumSum(context.Background())
+	err := stream.Send(&pingv1.CumSumRequest{Number: 12})
+	if err != nil {
+		t.Error(err)
+	}
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	_, err = stream.Receive()
+	require.Error(t, err)
+	require.NoError(t, stream.CloseResponse())
+	metrics, err := metricReader.Collect(context.Background())
+	if err != nil {
+		t.Error(err)
+	}
+
+	diff := cmp.Diff(metricdata.ResourceMetrics{
+		Resource: metricResource(),
+		ScopeMetrics: []metricdata.ScopeMetrics{
+			{
+				Scope: instrumentation.Scope{
+					Name:    instrumentationName,
+					Version: semanticVersion,
+				},
+				Metrics: []metricdata.Metrics{
+					{
+						Name: "rpc.client.duration",
+						Unit: "ms",
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										attribute.Key("rpc.buf_connect.status_code").String("success"),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   1000.0,
+									Min:   ptr(1000.0),
+									Max:   ptr(1000.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.request.size",
+						Unit: unit.Bytes,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 2,
+									Sum:   4.0,
+									Min:   ptr(2.0),
+									Max:   ptr(2.0),
+								},
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										attribute.Key("rpc.buf_connect.status_code").String("data_loss"),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   0.0,
+									Min:   ptr(0.0),
+									Max:   ptr(0.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.response.size",
+						Unit: unit.Bytes,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   2.0,
+									Min:   ptr(2.0),
+									Max:   ptr(2.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.requests_per_rpc",
+						Unit: unit.Dimensionless,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 2,
+									Sum:   2,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										attribute.Key("rpc.buf_connect.status_code").String("data_loss"),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   1,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: "rpc.client.responses_per_rpc",
+						Unit: unit.Dimensionless,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 2,
+									Sum:   2,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										attribute.Key("rpc.buf_connect.status_code").String("data_loss"),
+										semconv.RPCSystemKey.String("buf_connect"),
+										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+										semconv.RPCMethodKey.String("CumSum"),
+									),
+									Count: 1,
+									Sum:   1,
+									Min:   ptr(1.0),
+									Max:   ptr(1.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+				},
+			},
+		},
+	},
+		metrics,
+		cmpOpts()...,
+	)
+	if diff != "" {
+		t.Error(diff)
+	}
+}
+
 func TestStreamingMetricsFail(t *testing.T) {
 	t.Parallel()
 	metricReader, meterProvider := setupMetrics()
@@ -247,11 +615,14 @@ func TestStreamingMetricsFail(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	//require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.NoError(t, err)
 	_, err = stream.Receive()
 	require.NoError(t, err)
 	_, err = stream.Receive()
 	require.Error(t, err)
-	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
 	metrics, err := metricReader.Collect(context.Background())
 	if err != nil {
 		t.Error(err)

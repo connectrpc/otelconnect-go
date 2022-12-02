@@ -63,14 +63,17 @@ func CumSumFail(
 	ctx context.Context,
 	stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse],
 ) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	request, err := stream.Receive()
 	if err != nil && errors.Is(err, io.EOF) {
-		return err
+		return nil
 	}
 	if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
 		return fmt.Errorf("send response: %w", err)
 	}
-	if err := stream.Send(nil); err != nil {
+	if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
 		return fmt.Errorf("send response: %w", err)
 	}
 	return connect.NewError(connect.CodeDataLoss, errors.New("Oh no"))

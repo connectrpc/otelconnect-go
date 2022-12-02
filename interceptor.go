@@ -237,6 +237,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
+				state.attrs = append(state.attrs, statusCodeAttribute(state.protocol, nil))
 				instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
