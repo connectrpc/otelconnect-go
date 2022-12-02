@@ -241,7 +241,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 						now = now.Add(time.Second)
 						return now
 					}
-				}))}, happyPingServer())
+				})),
+		}, happyPingServer())
 	stream := connectClient.CumSum(context.Background())
 	err := stream.Send(&pingv1.CumSumRequest{Number: 12})
 	if err != nil {
@@ -403,7 +404,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						now = now.Add(time.Second)
 						return now
 					}
-				}))}, failPingServer())
+				})),
+		}, failPingServer())
 	stream := connectClient.CumSum(context.Background())
 	err := stream.Send(&pingv1.CumSumRequest{Number: 12})
 	if err != nil {
@@ -421,7 +423,6 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
 	diff := cmp.Diff(metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
@@ -615,7 +616,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	//require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseRequest())
 	_, err = stream.Receive()
 	require.NoError(t, err)
 	_, err = stream.Receive()
@@ -694,8 +695,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 										semconv.RPCMethodKey.String("CumSum"),
 									),
-									Count: 1,
-									Sum:   2.0,
+									Count: 2,
+									Sum:   4.0,
 									Min:   ptr(2.0),
 									Max:   ptr(2.0),
 								},
@@ -1322,14 +1323,17 @@ func (o optionFunc) apply(c *config) {
 
 func cmpOpts() []cmp.Option {
 	return []cmp.Option{
-		cmp.Transformer("attribute.Set", func(x attribute.Set) []attribute.KeyValue {
-			return x.ToSlice()
+		cmp.Comparer(func(setx, sety attribute.Set) bool {
+			setx, _ = setx.Filter(func(value attribute.KeyValue) bool {
+				return value.Key != semconv.NetPeerPortKey
+			})
+			sety, _ = sety.Filter(func(value attribute.KeyValue) bool {
+				return value.Key != semconv.NetPeerPortKey
+			})
+			return setx.Equals(&sety)
 		}),
-		cmp.Comparer(func(x, y attribute.KeyValue) bool {
-			if x.Key == semconv.NetPeerPortKey {
-				return x.Value.AsInt64() != 0
-			}
-			return x == y
+		cmpopts.SortSlices(func(x, y metricdata.HistogramDataPoint) bool {
+			return x.Attributes.Len() > y.Attributes.Len()
 		}),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "StartTime"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Time"),
