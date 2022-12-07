@@ -3,8 +3,7 @@ module connectrpc.com/otelconnect
 go 1.18
 
 require (
-	github.com/alecthomas/repr v0.1.1
-	connectrpc.com/connect v1.2.0
+	connectrpc.com/connect v1.3.1
 	github.com/google/go-cmp v0.5.9
 	github.com/stretchr/testify v1.8.0
 	go.opentelemetry.io/otel v1.11.1
