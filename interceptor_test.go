@@ -16,6 +16,7 @@ package otelconnect
 
 import (
 	"context"
+	"github.com/bufbuild/connect-go"
 	"math/rand"
 	"net"
 	"net/http"
@@ -25,8 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bufbuild/connect-go"
-	"github.com/bufbuild/connect-opentelemetry-go/internal/assert"
 	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 	"github.com/google/go-cmp/cmp"
@@ -45,6 +44,7 @@ import (
 const messagesPerRequest = 2
 
 /*
+Attributes tested:
 
 | Attribute  | Type |
 |---|---|---|---|---|
