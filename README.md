@@ -16,6 +16,14 @@ For more on OpenTelemetry, see the official [Go OpenTelemetry
 packages][otel-go], [opentelemetry.io], and the [Go
 quickstart][otel-go-quickstart].
 
+## Features
+
+|         | Unary | Streaming Client | Streaming Handler |
+|---------|-------|------------------|-------------------|
+| Metrics | ✅     | ✅                | ✅                 |
+| Tracing | ✅     | ❌                | ❌                 |
+
+
 ## A small example
 
 ### Server
@@ -188,17 +196,7 @@ Like [`connect-go`][connect-go], this module is a beta: we may make a few change
 as we gather feedback from early adopters. We're planning to tag a stable v1 in 
 October, soon after the Go 1.19 release.
 
-Here is what is supported for connect-opentelemetry
-
-
 ## Support and Versioning
-
-`connect-opentelemetry-go` supports:
-
-|         | Unary | Streaming Client | Streaming Handler |
-|---------|-------|------------------|-------------------|
-| Metrics | ✅     | ✅                | ✅                 |
-| Tracing | ✅     | ❌                | ❌                 |
 
 * The [two most recent major releases][go-support-policy] of Go.
 * [APIv2][] of protocol buffers in Go (`google.golang.org/protobuf`).
