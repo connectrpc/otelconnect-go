@@ -63,3 +63,6 @@ issues:
     # a lot of duplications
     - path: interceptor_test.go
       linters: [dupl]
+    # If future reflect.Kinds are nil-able, we'll find out when a test fails.
+    - linters: [exhaustive]
+      path: internal/assert/assert.go
