@@ -26,11 +26,11 @@ import (
 	"time"
 
 	"github.com/bufbuild/connect-go"
+	"github.com/bufbuild/connect-opentelemetry-go/internal/assert"
 	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
@@ -89,8 +89,8 @@ func TestStreamingMetrics(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	require.NoError(t, stream.CloseRequest())
-	require.NoError(t, stream.CloseResponse())
+	assert.Nil(t, stream.CloseRequest())
+	assert.Nil(t, stream.CloseResponse())
 	metrics, err := metricReader.Collect(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -248,12 +248,12 @@ func TestStreamingMetricsClient(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	require.NoError(t, stream.CloseRequest())
+	assert.Nil(t, stream.CloseRequest())
 	_, err = stream.Receive()
 	if err != nil {
 		t.Error(err)
 	}
-	require.NoError(t, stream.CloseResponse())
+	assert.Nil(t, stream.CloseResponse())
 	metrics, err := metricReader.Collect(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -411,14 +411,14 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	require.NoError(t, stream.CloseRequest())
+	assert.Nil(t, stream.CloseRequest())
 	_, err = stream.Receive()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	_, err = stream.Receive()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	_, err = stream.Receive()
-	require.Error(t, err)
-	require.NoError(t, stream.CloseResponse())
+	assert.NotNil(t, err)
+	assert.Nil(t, stream.CloseResponse())
 	metrics, err := metricReader.Collect(context.Background())
 	if err != nil {
 		t.Error(err)
@@ -616,14 +616,14 @@ func TestStreamingMetricsFail(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	require.NoError(t, stream.CloseRequest())
+	assert.Nil(t, stream.CloseRequest())
 	_, err = stream.Receive()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	_, err = stream.Receive()
-	require.NoError(t, err)
+	assert.Nil(t, err)
 	_, err = stream.Receive()
-	require.Error(t, err)
-	require.NoError(t, stream.CloseResponse())
+	assert.NotNil(t, err)
+	assert.Nil(t, stream.CloseResponse())
 	metrics, err := metricReader.Collect(context.Background())
 	if err != nil {
 		t.Error(err)
