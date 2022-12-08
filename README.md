@@ -26,9 +26,8 @@ For more on OpenTelemetry, see the official [Go OpenTelemetry
 packages][otel-go], [opentelemetry.io], and the [Go
 quickstart][otel-go-quickstart].
 
-## A small example
-
-### Server
+## An example
+This example pushes metrics to [prometheus](https://prometheus.io/) and tracing to [zipkin](https://zipkin.io/)
 
 ```go
 package main
