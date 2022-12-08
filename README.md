@@ -35,96 +35,81 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log"
+	"net/http"
+
 	"github.com/bufbuild/connect-go"
 	otelconnect "github.com/bufbuild/connect-opentelemetry-go"
 	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
+	promclient "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
+	promexport "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/exporters/zipkin"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
-	"io"
-	"log"
-	"net/http"
+)
+
+const (
+	prometheusTarget = "http://localhost:9091"
+	zipkinTarget     = "http://localhost:9411"
+	prometheusJob    = "services"
+	serverAddress    = "localhost:7777"
 )
 
 func main() {
-	metricReader := metricsdk.NewManualReader()
-	meterProvider := metricsdk.NewMeterProvider(
-		metricsdk.WithReader(metricReader),
-	)
-	spanRecorder := tracetest.NewSpanRecorder()
-	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-	// create telemetry option that can be passed in as both client and handler options
-	telemetryOption := otelconnect.WithTelemetry(otelconnect.WithMeterProvider(meterProvider), otelconnect.WithTracerProvider(traceProvider))
+	// push metrics from global prometheus registry
+	pusher := push.New(prometheusTarget, prometheusJob).Gatherer(promclient.DefaultGatherer)
+	defer pusher.Push() // push all global metrics when finished
 	mux := http.NewServeMux()
-	pingServer := &PingServer{}
-	mux.Handle(pingv1connect.NewPingServiceHandler(pingServer, telemetryOption)) // pass in Telemetry option
-	err := http.ListenAndServe(
-		"localhost:8080",
-		// For gRPC clients, it's convenient to support HTTP/2 without TLS. You can
-		// avoid x/net/http2 by using http.ListenAndServeTLS.
-		h2c.NewHandler(mux, &http2.Server{}),
+	mux.Handle(
+		pingv1connect.NewPingServiceHandler(
+			&PingServer{},
+			otelconnect.WithTelemetry( // configure connect handler with telemetry
+				otelconnect.WithTracerProvider(zipkinTracing()), // Set trace provider to export to zipkin
+				otelconnect.WithMeterProvider(promMetrics()),    // Set meter provider to export to prometheus
+			),
+		),
 	)
-	log.Fatalf("listen failed: %v", err)
-}
-```
-
-### Client
-
-```go
-package main
-
-import (
-	"context"
-	"crypto/tls"
-	"fmt"
-	"github.com/bufbuild/connect-go"
-	otelconnect "github.com/bufbuild/connect-opentelemetry-go"
-	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
-	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
-	metricsdk "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	"log"
-	"net"
-	"net/http"
-)
-
-func main() {
-	metricReader := metricsdk.NewManualReader()
-	meterProvider := metricsdk.NewMeterProvider(
-		metricsdk.WithReader(metricReader),
-	)
-	spanRecorder := tracetest.NewSpanRecorder()
-	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	go http.ListenAndServe(serverAddress, h2c.NewHandler(mux, &http2.Server{}))
 	client := pingv1connect.NewPingServiceClient(
 		http.DefaultClient,
-		"http://localhost:8080/",
-		otelconnect.WithTelemetry(otelconnect.WithTracerProvider(traceProvider), otelconnect.WithMeterProvider(meterProvider)),
+		"http://"+serverAddress,
+		otelconnect.WithTelemetry( // configure connect client with telemetry
+			otelconnect.WithTracerProvider(zipkinTracing()), // Set trace provider to export to zipkin
+			otelconnect.WithMeterProvider(promMetrics()),    // Set meter provider to export to prometheus
+		),
 	)
-	req := connect.NewRequest(&pingv1.PingRequest{
-		Id: 42,
-	})
-	// unary request
-	_, err := client.Ping(context.Background(), req)
+	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 42}))
 	if err != nil {
 		log.Fatal(err)
 	}
-	// spans recorded
-	spans := spanRecorder.Ended()
-	fmt.Println("number of spans recorded:", len(spans))
+	fmt.Println("response:", resp)
+}
 
-	// metrics recorded
-	metricData, err := metricReader.Collect(context.Background())
+// promMetrics returns a metric peter provider that exports to the global prometheus registry.
+func promMetrics() *metricsdk.MeterProvider {
+	exporter, err := promexport.New(
+		promexport.WithRegisterer(promclient.DefaultRegisterer),
+		promexport.WithoutScopeInfo(),
+		promexport.WithoutTargetInfo(),
+	)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
-	fmt.Println("number of metrics recorded:", len(metricData.ScopeMetrics[0].Metrics))
+	return metricsdk.NewMeterProvider(metricsdk.WithReader(exporter))
+}
 
+// zipkinTracing returns a trace provider that exports traces to a zipkin target.
+func zipkinTracing() *sdktrace.TracerProvider {
+	exporter, err := zipkin.New(zipkinTarget + "/api/v2/spans")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sdktrace.NewSimpleSpanProcessor(exporter)))
 }
 ```
 
