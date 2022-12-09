@@ -5,6 +5,16 @@ connect-opentelemetry-go
 [![Report Card](https://goreportcard.com/badge/connectrpc.com/otelconnect)](https://goreportcard.com/report/connectrpc.com/otelconnect)
 [![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect.svg)](https://pkg.go.dev/connectrpc.com/otelconnect)
 
+
+
+|         | Unary | Streaming Client | Streaming Handler |
+|---------|-------|------------------|-------------------|
+| Metrics | ✅     | ✅                | ✅                 |
+| Tracing | ✅     | ❌                | ❌                 |
+
+For progress on streaming tracing see: https://connectrpc.com/otelconnect/issues/28
+
+
 `connect-opentelemetry-go` adds support for [OpenTelemetry][opentelemetry.io]
 tracing and metrics collection to [Connect][connect-go] servers and clients.
 
@@ -16,18 +26,94 @@ For more on OpenTelemetry, see the official [Go OpenTelemetry
 packages][otel-go], [opentelemetry.io], and the [Go
 quickstart][otel-go-quickstart].
 
-## A small example
-
-### Server
-
-```go
-// TODO
-```
-
-### Client
+## An example
+This example pushes metrics to [prometheus](https://prometheus.io/) and tracing to [zipkin](https://zipkin.io/)
 
 ```go
-// TODO
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+
+	"connectrpc.com/connect"
+	otelconnect "connectrpc.com/otelconnect"
+	// pingv1 is generated from a protobuf schema using protoc-gen-go 
+	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
+	// pingv1connect is generated from a protobuf schema using protoc-gen-connect-go
+	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
+	promclient "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
+	promexport "go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/exporters/zipkin"
+	metricsdk "go.opentelemetry.io/otel/sdk/metric"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+)
+
+const (
+	prometheusTarget = "http://localhost:9091"
+	zipkinTarget     = "http://localhost:9411"
+	prometheusJob    = "services"
+	serverAddress    = "localhost:7777"
+)
+
+func main() {
+	// push metrics from global prometheus registry
+	pusher := push.New(prometheusTarget, prometheusJob).Gatherer(promclient.DefaultGatherer)
+	defer pusher.Push() // push all global metrics when finished
+	mux := http.NewServeMux()
+	
+	// Setup handler and clients with otelconnect.WithTelemetry.
+	// otelconnect.WithTelemetry() can be used without the need for any
+	// other otelconnect.Options passed in if using global otel meter/trace providers.
+	mux.Handle(
+		pingv1connect.NewPingServiceHandler(
+			&pingv1connect.UnimplementedPingServiceHandler{},
+			otelconnect.WithTelemetry( // configure connect handler with telemetry. 
+				otelconnect.WithTracerProvider(zipkinTracing()), // Set trace provider to export to zipkin
+				otelconnect.WithMeterProvider(promMetrics()),    // Set meter provider to export to prometheus
+			),
+		),
+	)
+	go http.ListenAndServe(serverAddress, mux)
+	client := pingv1connect.NewPingServiceClient(
+		http.DefaultClient,
+		"http://"+serverAddress,
+		otelconnect.WithTelemetry( // configure connect client with telemetry
+			otelconnect.WithTracerProvider(zipkinTracing()), // Set trace provider to export to zipkin
+			otelconnect.WithMeterProvider(promMetrics()),    // Set meter provider to export to prometheus
+		),
+	)
+	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 42}))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("response:", resp)
+}
+
+// promMetrics returns a metric peter provider that exports to the global prometheus registry.
+func promMetrics() *metricsdk.MeterProvider {
+	exporter, err := promexport.New(
+		promexport.WithRegisterer(promclient.DefaultRegisterer),
+		promexport.WithoutScopeInfo(),
+		promexport.WithoutTargetInfo(),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return metricsdk.NewMeterProvider(metricsdk.WithReader(exporter))
+}
+
+// zipkinTracing returns a trace provider that exports traces to a zipkin target.
+func zipkinTracing() *tracesdk.TracerProvider {
+	exporter, err := zipkin.New(zipkinTarget + "/api/v2/spans")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return tracesdk.NewTracerProvider(tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)))
+}
 ```
 
 ## Status
@@ -54,7 +140,7 @@ Offered under the [Apache 2 license][license].
 [connect-go]: https://connectrpc.com/connect
 [demo]: https://github.com/bufbuild/connect-demo
 [docs]: https://connectrpc.com
-[Getting Started]: https://connectrpc.com/go/getting-started
+[Getting Started]: https://connectrpc.com/docs/go/getting-started
 [go-support-policy]: https://golang.org/doc/devel/release#policy
 [license]: https://connectrpc.com/otelconnect/blob/main/LICENSE
 [opentelemetry.io]: https://opentelemetry.io/
