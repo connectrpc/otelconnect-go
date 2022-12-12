@@ -5,12 +5,12 @@ go 1.18
 require (
 	github.com/bufbuild/connect-go v1.3.1
 	github.com/google/go-cmp v0.5.9
-	github.com/stretchr/testify v1.8.0
-	go.opentelemetry.io/otel v1.11.1
-	go.opentelemetry.io/otel/metric v0.33.0
+	github.com/stretchr/testify v1.8.1
+	go.opentelemetry.io/otel v1.11.2
+	go.opentelemetry.io/otel/metric v0.34.0
 	go.opentelemetry.io/otel/sdk v1.11.1
 	go.opentelemetry.io/otel/sdk/metric v0.33.0
-	go.opentelemetry.io/otel/trace v1.11.1
+	go.opentelemetry.io/otel/trace v1.11.2
 	google.golang.org/protobuf v1.28.1
 )
 
