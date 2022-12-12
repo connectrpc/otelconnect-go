@@ -5,16 +5,6 @@ connect-opentelemetry-go
 [![Report Card](https://goreportcard.com/badge/github.com/bufbuild/connect-opentelemetry-go)](https://goreportcard.com/report/github.com/bufbuild/connect-opentelemetry-go)
 [![GoDoc](https://pkg.go.dev/badge/github.com/bufbuild/connect-opentelemetry-go.svg)](https://pkg.go.dev/github.com/bufbuild/connect-opentelemetry-go)
 
-
-
-|         | Unary | Streaming Client | Streaming Handler |
-|---------|-------|------------------|-------------------|
-| Metrics | ✅     | ✅                | ✅                 |
-| Tracing | ✅     | ❌                | ❌                 |
-
-For progress on streaming tracing see: https://github.com/bufbuild/connect-opentelemetry-go/issues/28
-
-
 `connect-opentelemetry-go` adds support for [OpenTelemetry][opentelemetry.io]
 tracing and metrics collection to [Connect][connect-go] servers and clients.
 
@@ -27,115 +17,94 @@ packages][otel-go], [opentelemetry.io], and the [Go
 quickstart][otel-go-quickstart].
 
 ## An example
-This example pushes metrics to [prometheus](https://prometheus.io/) and tracing to [zipkin](https://zipkin.io/)
 
 ```go
 package main
 
 import (
-	"context"
-	"fmt"
-	"log"
-	"net/http"
+  "context"
+  "fmt"
+  "log"
+  "net/http"
 
-	"github.com/bufbuild/connect-go"
-	otelconnect "github.com/bufbuild/connect-opentelemetry-go"
-	// pingv1 is generated from a protobuf schema using protoc-gen-go 
-	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
-	// pingv1connect is generated from a protobuf schema using protoc-gen-connect-go
-	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
-	promclient "github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/push"
-	promexport "go.opentelemetry.io/otel/exporters/prometheus"
-	"go.opentelemetry.io/otel/exporters/zipkin"
-	metricsdk "go.opentelemetry.io/otel/sdk/metric"
-	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-)
+  "github.com/bufbuild/connect-go"
+  otelconnect "github.com/bufbuild/connect-opentelemetry-go"
 
-const (
-	prometheusTarget = "http://localhost:9091"
-	zipkinTarget     = "http://localhost:9411"
-	prometheusJob    = "services"
-	serverAddress    = "localhost:7777"
+  // Generated from your protobuf schema by protoc-gen-go and
+  // protoc-gen-connect-go.
+  pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
+  "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 )
 
 func main() {
-	// push metrics from global prometheus registry
-	pusher := push.New(prometheusTarget, prometheusJob).Gatherer(promclient.DefaultGatherer)
-	defer pusher.Push() // push all global metrics when finished
-	mux := http.NewServeMux()
-	
-	// Setup handler and clients with otelconnect.WithTelemetry.
-	// otelconnect.WithTelemetry() can be used without the need for any
-	// other otelconnect.Options passed in if using global otel meter/trace providers.
-	mux.Handle(
-		pingv1connect.NewPingServiceHandler(
-			&pingv1connect.UnimplementedPingServiceHandler{},
-			otelconnect.WithTelemetry( // configure connect handler with telemetry. 
-				otelconnect.WithTracerProvider(zipkinTracing()), // Set trace provider to export to zipkin
-				otelconnect.WithMeterProvider(promMetrics()),    // Set meter provider to export to prometheus
-			),
-		),
-	)
-	go http.ListenAndServe(serverAddress, mux)
-	client := pingv1connect.NewPingServiceClient(
-		http.DefaultClient,
-		"http://"+serverAddress,
-		otelconnect.WithTelemetry( // configure connect client with telemetry
-			otelconnect.WithTracerProvider(zipkinTracing()), // Set trace provider to export to zipkin
-			otelconnect.WithMeterProvider(promMetrics()),    // Set meter provider to export to prometheus
-		),
-	)
-	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 42}))
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("response:", resp)
+  mux := http.NewServeMux()
+
+  // otelconnect.WithTelemetry adds tracing and metrics to both clients and
+  // handlers. By default, it uses OpenTelemetry's global TracerProvider and
+  // MeterProvider, which you can configure by following the OpenTelemetry
+  // documentation. If you'd prefer to avoid globals, use
+  // otelconnect.WithTracerProvider and otelconnect.WithMeterProvider.
+  mux.Handle(pingv1connect.NewPingServiceHandler(
+    &pingv1connect.UnimplementedPingServiceHandler{},
+    otelconnect.WithTelemetry(),
+  ))
+
+  http.ListenAndServe("localhost:8080", mux)
 }
 
-// promMetrics returns a metric peter provider that exports to the global prometheus registry.
-func promMetrics() *metricsdk.MeterProvider {
-	exporter, err := promexport.New(
-		promexport.WithRegisterer(promclient.DefaultRegisterer),
-		promexport.WithoutScopeInfo(),
-		promexport.WithoutTargetInfo(),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return metricsdk.NewMeterProvider(metricsdk.WithReader(exporter))
-}
-
-// zipkinTracing returns a trace provider that exports traces to a zipkin target.
-func zipkinTracing() *tracesdk.TracerProvider {
-	exporter, err := zipkin.New(zipkinTarget + "/api/v2/spans")
-	if err != nil {
-		log.Fatal(err)
-	}
-	return tracesdk.NewTracerProvider(tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)))
+func makeRequest() {
+  client := pingv1connect.NewPingServiceClient(
+    http.DefaultClient,
+    "http://localhost:8080",
+    otelconnect.WithTelemetry(),
+  )
+  resp, err := client.Ping(
+    context.Background(),
+    connect.NewRequest(&pingv1.PingRequest{}),
+  )
+  if err != nil {
+    log.Fatal(err)
+  }
+  fmt.Println(resp)
 }
 ```
 
 ## Status
 
-Like [`connect-go`][connect-go], this module is a beta: we may make a few changes 
-as we gather feedback from early adopters. We're planning to tag a stable v1 in 
-October, soon after the Go 1.19 release.
+`connect-opentelemetry-go` is available as an untagged alpha release. It's
+missing tracing support for streaming RPCs, but otherwise supports metrics and
+tracing for both clients and handlers.
+
+|         | Unary | Streaming Client | Streaming Handler |
+|---------|:-----:|:----------------:|:-----------------:|
+| Metrics | ✅    | ✅               | ✅                |
+| Tracing | ✅    | ❌               | ❌                |
+
+For progress on streaming tracing, see [this
+issue](https://github.com/bufbuild/connect-opentelemetry-go/issues/28).
+
+We plan to tag a production-ready beta release, with tracing for streaming
+RPCs, by the end of 2022. Users of this package should expect breaking changes
+as [the underlying OpenTelemetry
+APIs](https://opentelemetry.io/docs/instrumentation/go/#status-and-releases)
+change. Once the Go OpenTelemetry metrics SDK stabilizes, we'll
+release a stable v1 of this package.
 
 ## Support and Versioning
 
 `connect-opentelemetry-go` supports:
 
 * The [two most recent major releases][go-support-policy] of Go.
-* [APIv2][] of protocol buffers in Go (`google.golang.org/protobuf`).
+* v1 of the `go.opentelemetry.io/otel` tracing SDK.
+* The current alpha release of the `go.opentelemetry.io/otel` metrics SDK.
 
-Within those parameters, it follows semantic versioning.
+It's not yet stable. We take every effort to maintain backward compatibility,
+but can't commit to a stable v1 until the OpenTelemetry APIs are stable.
 
 ## Legal
 
 Offered under the [Apache 2 license][license].
 
-[APIv2]: https://blog.golang.org/protobuf-apiv2
 [blog]: https://buf.build/blog/connect-a-better-grpc
 [connect-go]: https://github.com/bufbuild/connect-go
 [demo]: https://github.com/bufbuild/connect-demo
