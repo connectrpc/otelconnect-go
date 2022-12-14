@@ -310,7 +310,7 @@ func parseAddress(address string) []attribute.KeyValue {
 
 func attributesFromRequest(req *Request) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
-	if addr := req.Peer.Addr; addr != "" {
+	if addr := req.Peer.Addr; addr != "" && req.Spec.IsClient {
 		attrs = append(attrs, parseAddress(addr)...)
 	}
 	name := strings.TrimLeft(req.Spec.Procedure, "/")
