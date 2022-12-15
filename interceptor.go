@@ -18,9 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"net/netip"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -289,30 +286,8 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	}
 }
 
-func parseAddress(address string) []attribute.KeyValue {
-	if addrPort, err := netip.ParseAddrPort(address); err == nil {
-		return []attribute.KeyValue{
-			semconv.NetPeerIPKey.String(addrPort.Addr().String()),
-			semconv.NetPeerPortKey.Int(int(addrPort.Port())),
-		}
-	}
-	if host, port, err := net.SplitHostPort(address); err == nil {
-		portint, err := strconv.Atoi(port)
-		if err != nil {
-			return []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.Int(portint),
-			}
-		}
-	}
-	return []attribute.KeyValue{semconv.NetPeerNameKey.String(address)}
-}
-
 func attributesFromRequest(req *Request) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
-	if addr := req.Peer.Addr; addr != "" && req.Spec.IsClient {
-		attrs = append(attrs, parseAddress(addr)...)
-	}
 	name := strings.TrimLeft(req.Spec.Procedure, "/")
 	protocol := protocolToSemConv(req.Peer)
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
