@@ -30,9 +30,11 @@ import (
 	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/unit"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -1238,6 +1240,23 @@ func TestInterceptors(t *testing.T) {
 			},
 		},
 	}, spanRecorder.Ended())
+}
+
+func TestPropagation(t *testing.T) {
+	t.Parallel()
+	assertTraceParent := func(ctx context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+		assert.NotZero(t, req.Header().Get("traceparent"))
+		return connect.NewResponse(&pingv1.PingResponse{Id: req.Msg.Id}), nil
+	}
+	client, _, _ := startServer([]connect.HandlerOption{
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(trace.NewTracerProvider()),
+		),
+	}, nil, &pluggablePingServer{ping: assertTraceParent})
+	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Msg.Id)
 }
 
 type wantSpans struct {
