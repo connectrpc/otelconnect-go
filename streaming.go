@@ -28,6 +28,7 @@ type streamingState struct {
 	protocol string
 	mu       sync.Mutex
 	attrs    []attribute.KeyValue
+	error    error
 }
 
 type sendReceiver interface {

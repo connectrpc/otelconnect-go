@@ -1281,6 +1281,28 @@ func TestStreamingHandlerPropagation(t *testing.T) {
 	assert.Equal(t, int64(1), resp.Sum)
 }
 
+func TestStreamingClientPropagation(t *testing.T) {
+	t.Parallel()
+	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse]) error {
+		assert.NotZero(t, stream.RequestHeader().Get("traceparent"))
+		assert.NoError(t, stream.Send(&pingv1.CumSumResponse{Sum: 1}))
+		return nil
+	}
+	client, _, _ := startServer(nil, []connect.ClientOption{
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(trace.NewTracerProvider()),
+		),
+	}, &pluggablePingServer{cumSum: assertTraceParent},
+	)
+	stream := client.CumSum(context.Background())
+	assert.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	assert.NoError(t, stream.CloseResponse())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Sum)
+}
+
 func TestStreamingHandlerTracing(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
@@ -1321,6 +1343,53 @@ func TestStreamingHandlerTracing(t *testing.T) {
 						semconv.MessageTypeKey.String("SENT"),
 						semconv.MessageUncompressedSizeKey.Int(2),
 						semconv.MessageIDKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String("buf_connect"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("CumSum"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestStreamingClientTracing(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer(nil, []connect.ClientOption{
+		WithTelemetry(WithTracerProvider(traceProvider)),
+	}, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: "observability.ping.v1.PingService/CumSum",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
 					},
 				},
 			},

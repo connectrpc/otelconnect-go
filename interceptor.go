@@ -209,7 +209,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	}
 }
 
-// TODO: implement tracing in WrapStreamingClient.
+// WrapStreamingClient implements otel tracing and metrics for streaming connect clients.
 func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		requestStartTime := i.config.now()
@@ -235,17 +235,45 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			protocol: protocolToSemConv(conn.Peer()),
 			attrs:    attributesFromRequest(req),
 		}
+		carrier := propagation.HeaderCarrier(conn.RequestHeader())
+		ctx = i.config.propagator.Extract(ctx, carrier)
+		spanCtx := trace.SpanContextFromContext(ctx)
+		tracer := i.config.Tracer()
+		name := strings.TrimLeft(conn.Spec().Procedure, "/")
+		ctx, span := tracer.Start(
+			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
+			name,
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(state.attrs...),
+		)
+		i.config.propagator.Inject(ctx, carrier)
+		var receivedCounter, sentCounter int
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
-				state.attrs = append(state.attrs, statusCodeAttribute(state.protocol, nil))
+				state.attrs = append(state.attrs, statusCodeAttribute(state.protocol, state.error))
+				span.SetAttributes(state.attrs...)
+				span.SetStatus(spanStatus(state.error))
+				span.End()
 				instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
-				return state.receive(ctx, instr, msg, conn)
+				receivedCounter++
+				err := state.receive(ctx, instr, msg, conn)
+				if !errors.Is(err, io.EOF) {
+					span.AddEvent("message", trace.WithAttributes(eventAttributes(msg, receivedCounter, semconv.MessageTypeKey.String("RECEIVED"))...))
+					state.error = err
+				}
+				return err
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				return state.send(ctx, instr, msg, conn)
+				sentCounter++
+				err := state.send(ctx, instr, msg, conn)
+				if !errors.Is(err, io.EOF) {
+					span.AddEvent("message", trace.WithAttributes(eventAttributes(msg, sentCounter, semconv.MessageTypeKey.String("SENT"))...))
+					state.error = err
+				}
+				return err
 			},
 		}
 	}
