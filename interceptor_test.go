@@ -443,7 +443,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
+										attribute.Key("rpc.buf_connect.status_code").String("data_loss"),
 										semconv.RPCSystemKey.String("buf_connect"),
 										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
 										semconv.RPCMethodKey.String("CumSum"),
