@@ -155,7 +155,6 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				trace.WithSpanKind(trace.SpanKindClient),
 				trace.WithAttributes(attrs...),
 			)
-			i.config.propagator.Inject(ctx, carrier)
 		} else {
 			ctx = i.config.propagator.Extract(ctx, carrier)
 			spanCtx := trace.SpanContextFromContext(ctx)
@@ -166,6 +165,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				trace.WithAttributes(attrs...),
 			)
 		}
+		i.config.propagator.Inject(ctx, carrier)
 		defer span.End()
 		reqSpanType, resSpanType := semconv.MessageTypeKey.String("RECEIVED"), semconv.MessageTypeKey.String("SENT")
 		if request.Spec().IsClient {
