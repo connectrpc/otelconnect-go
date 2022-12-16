@@ -17,7 +17,14 @@
 package otelconnect
 
 import (
+	"errors"
+	"fmt"
+	"go.opentelemetry.io/otel/codes"
+	"google.golang.org/protobuf/proto"
+	"net"
 	"net/http"
+	"net/netip"
+	"strconv"
 	"strings"
 	time "time"
 
@@ -69,8 +76,8 @@ type Request struct {
 	Header http.Header
 }
 
-func protocolToSemConv(peer connect.Peer) string {
-	switch peer.Protocol {
+func protocolToSemConv(peer string) string {
+	switch peer {
 	case "grpcweb":
 		return "grpc_web"
 	case "grpc":
@@ -78,11 +85,11 @@ func protocolToSemConv(peer connect.Peer) string {
 	case "connect":
 		return "buf_connect"
 	default:
-		return peer.Protocol
+		return peer
 	}
 }
 
-func parseProcedure(procedure string) []attribute.KeyValue {
+func procedureAttributes(procedure string) []attribute.KeyValue {
 	parts := strings.SplitN(procedure, "/", 2)
 	var attrs []attribute.KeyValue
 	switch len(parts) {
@@ -104,6 +111,37 @@ func parseProcedure(procedure string) []attribute.KeyValue {
 	return attrs
 }
 
+func spanStatus(err error) (codes.Code, string) {
+	if err == nil {
+		return codes.Ok, ""
+	}
+	if connectErr := new(connect.Error); errors.As(err, &connectErr) {
+		return codes.Error, connectErr.Message()
+	}
+	return codes.Error, err.Error()
+}
+
+func eventAttributes(msg any, counter int, attributes ...attribute.KeyValue) []attribute.KeyValue {
+	var size int
+	if msg, ok := msg.(proto.Message); ok {
+		size = proto.Size(msg)
+		attributes = append(attributes, semconv.MessageUncompressedSizeKey.Int(size))
+	}
+	return append(attributes, semconv.MessageIDKey.Int(counter))
+}
+
+func requestAttributes(req *Request) []attribute.KeyValue {
+	var attrs []attribute.KeyValue
+	if addr := req.Peer.Addr; addr != "" {
+		attrs = append(attrs, addressAttributes(addr)...)
+	}
+	name := strings.TrimLeft(req.Spec.Procedure, "/")
+	protocol := protocolToSemConv(req.Peer.Protocol)
+	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
+	attrs = append(attrs, procedureAttributes(name)...)
+	return attrs
+}
+
 func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
 	codeKey := attribute.Key("rpc." + protocol + ".status_code")
 	// Following the respective specifications, use integers for gRPC codes and
@@ -117,4 +155,27 @@ func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
 		return codeKey.String(connect.CodeOf(serverErr).String())
 	}
 	return codeKey.String("success")
+}
+
+func addressAttributes(address string) []attribute.KeyValue {
+	if addrPort, err := netip.ParseAddrPort(address); err == nil {
+		return []attribute.KeyValue{
+			semconv.NetPeerIPKey.String(addrPort.Addr().String()),
+			semconv.NetPeerPortKey.Int(int(addrPort.Port())),
+		}
+	}
+	if host, port, err := net.SplitHostPort(address); err == nil {
+		portint, err := strconv.Atoi(port)
+		if err != nil {
+			return []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.Int(portint),
+			}
+		}
+	}
+	return []attribute.KeyValue{semconv.NetPeerNameKey.String(address)}
+}
+
+func formatkeys(interceptorType string, metricName string) string {
+	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
 }

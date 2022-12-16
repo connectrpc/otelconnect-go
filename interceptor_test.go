@@ -1031,6 +1031,7 @@ func TestHandlerFailCall(t *testing.T) {
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeKey.String(ReceivedString),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(0),
 					},
 				},
 			},

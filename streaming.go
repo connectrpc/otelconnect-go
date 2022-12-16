@@ -17,6 +17,7 @@ package otelconnect
 import (
 	"context"
 	"errors"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 	"sync"
 
@@ -25,10 +26,12 @@ import (
 )
 
 type streamingState struct {
-	protocol string
-	mu       sync.Mutex
-	attrs    []attribute.KeyValue
-	error    error
+	protocol   string
+	mu         sync.Mutex
+	attributes []attribute.KeyValue
+	error      error
+	name       string
+	tracer     trace.Tracer
 }
 
 type sendReceiver interface {
@@ -41,14 +44,14 @@ func (s *streamingState) receive(ctx context.Context, instr *instruments, msg an
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil && !errors.Is(err, io.EOF) {
-		s.attrs = append(s.attrs, statusCodeAttribute(s.protocol, err))
+		s.attributes = append(s.attributes, statusCodeAttribute(s.protocol, err))
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		instr.requestSize.Record(ctx, int64(size), s.attrs...)
+		instr.requestSize.Record(ctx, int64(size), s.attributes...)
 	}
-	instr.requestsPerRPC.Record(ctx, 1, s.attrs...)
-	instr.responsesPerRPC.Record(ctx, 1, s.attrs...)
+	instr.requestsPerRPC.Record(ctx, 1, s.attributes...)
+	instr.responsesPerRPC.Record(ctx, 1, s.attributes...)
 	return err
 }
 
@@ -57,11 +60,11 @@ func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil && !errors.Is(err, io.EOF) {
-		s.attrs = append(s.attrs, statusCodeAttribute(s.protocol, err))
+		s.attributes = append(s.attributes, statusCodeAttribute(s.protocol, err))
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
-		instr.responseSize.Record(ctx, int64(size), s.attrs...)
+		instr.responseSize.Record(ctx, int64(size), s.attributes...)
 	}
 	return err
 }

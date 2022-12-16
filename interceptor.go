@@ -17,17 +17,11 @@ package otelconnect
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"net"
-	"net/netip"
-	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/bufbuild/connect-go"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/instrument/syncint64"
@@ -47,6 +41,17 @@ const (
 	responseSize    = "response.size"
 	requestsPerRPC  = "requests_per_rpc"
 	responsesPerRPC = "responses_per_rpc"
+
+	messageKey = "message"
+	serverKey  = "server"
+	clientKey  = "client"
+
+	unaryIncrement = 1
+)
+
+var (
+	messageTypeReceivedAttribute = semconv.MessageTypeKey.String("RECEIVED")
+	messageTypeSentAttribute     = semconv.MessageTypeKey.String("SENT")
 )
 
 type instruments struct {
@@ -63,9 +68,9 @@ type instruments struct {
 func (i *instruments) init(meter metric.Meter, isClient bool) {
 	i.Do(func() {
 		intProvider := meter.SyncInt64()
-		interceptorType := "server"
+		interceptorType := serverKey
 		if isClient {
-			interceptorType = "client"
+			interceptorType = clientKey
 		}
 		i.duration, i.initErr = intProvider.Histogram(
 			formatkeys(interceptorType, duration),
@@ -128,11 +133,7 @@ func newInterceptor(cfg config) *interceptor {
 func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 		requestStartTime := i.config.now()
-		isClient := request.Spec().IsClient
-		instr, err := i.getAndInitInstrument(isClient)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
+
 		req := &Request{
 			Spec:   request.Spec(),
 			Peer:   request.Peer(),
@@ -143,70 +144,92 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				return next(ctx, request)
 			}
 		}
+
+		// Instrumentation setup
+		isClient := request.Spec().IsClient
 		tracer := i.config.Tracer()
-		carrier := propagation.HeaderCarrier(request.Header())
-		attrs := attributesFromRequest(req)
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
-		protocol := protocolToSemConv(request.Peer())
-		var span trace.Span
-		if request.Spec().IsClient {
-			ctx, span = tracer.Start(
-				ctx,
-				name,
-				trace.WithSpanKind(trace.SpanKindClient),
-				trace.WithAttributes(attrs...),
-			)
-		} else {
-			ctx = i.config.propagator.Extract(ctx, carrier)
-			spanCtx := trace.SpanContextFromContext(ctx)
-			ctx, span = tracer.Start(
-				trace.ContextWithRemoteSpanContext(ctx, spanCtx),
-				name,
-				trace.WithSpanKind(trace.SpanKindServer),
-				trace.WithAttributes(attrs...),
-			)
+		protocol := protocolToSemConv(request.Peer().Protocol)
+		attributes := requestAttributes(req)
+
+		instrumentation, err := i.getAndInitInstrument(isClient)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, err)
 		}
+
+		// Tracing setup
+		spanKind := trace.SpanKindClient
+		requestSpan, responseSpan := messageTypeSentAttribute, messageTypeReceivedAttribute
+		if !isClient {
+			spanKind = trace.SpanKindServer
+			requestSpan, responseSpan = responseSpan, requestSpan
+		}
+
+		// Configure context and carrier
+		carrier := propagation.HeaderCarrier(request.Header())
+		spanCtx := trace.SpanContextFromContext(ctx)
+		ctx = trace.ContextWithRemoteSpanContext(ctx, spanCtx)
+		ctx = i.config.propagator.Extract(ctx, carrier)
+		ctx, span := tracer.Start(
+			ctx,
+			name,
+			trace.WithSpanKind(spanKind),
+		)
 		i.config.propagator.Inject(ctx, carrier)
 		defer span.End()
-		reqSpanType, resSpanType := semconv.MessageTypeKey.String("RECEIVED"), semconv.MessageTypeKey.String("SENT")
-		if request.Spec().IsClient {
-			reqSpanType, resSpanType = resSpanType, reqSpanType
-		}
-		reqSpanAttrs := []attribute.KeyValue{reqSpanType, semconv.MessageIDKey.Int(1)}
-		if msg, ok := request.Any().(proto.Message); ok {
-			size := proto.Size(msg)
-			reqSpanAttrs = append(reqSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
-		}
-		span.AddEvent("message", trace.WithAttributes(reqSpanAttrs...))
+
+		requestsize := msgSize(request)
+
+		// Pre request span
+		span.AddEvent(messageKey,
+			trace.WithAttributes(
+				requestSpan,
+				semconv.MessageIDKey.Int(unaryIncrement),
+				semconv.MessageUncompressedSizeKey.Int(requestsize),
+			),
+		)
+
+		// Complete request
 		response, err := next(ctx, request)
-		codeAttr := statusCodeAttribute(protocol, err)
-		attrs = append(attrs, codeAttr)
-		if msg, ok := request.Any().(proto.Message); ok {
-			size := proto.Size(msg)
-			instr.requestSize.Record(ctx, int64(size), attrs...)
-		}
-		resSpanAttrs := []attribute.KeyValue{resSpanType, semconv.MessageIDKey.Int(1)}
-		if err == nil {
-			if msg, ok := response.Any().(proto.Message); ok {
-				size := proto.Size(msg)
-				instr.responseSize.Record(ctx, int64(size), attrs...)
-				resSpanAttrs = append(resSpanAttrs, semconv.MessageUncompressedSizeKey.Int(size))
-			}
-		}
-		span.AddEvent("message", trace.WithAttributes(resSpanAttrs...))
-		instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attrs...)
-		instr.requestsPerRPC.Record(ctx, 1, attrs...)
-		instr.responsesPerRPC.Record(ctx, 1, attrs...)
-		if err != nil {
-			if connectErr := new(connect.Error); errors.As(err, &connectErr) {
-				span.SetStatus(codes.Error, connectErr.Message())
-			} else {
-				span.SetStatus(codes.Error, err.Error())
-			}
-		}
-		span.SetAttributes(codeAttr)
+
+		// Update attributes
+		attributes = append(attributes, statusCodeAttribute(protocol, err))
+		responseSize := msgSize(response)
+
+		// Record metrics
+		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attributes...)
+		instrumentation.requestSize.Record(ctx, int64(requestsize), attributes...)
+		instrumentation.requestsPerRPC.Record(ctx, unaryIncrement, attributes...)
+		instrumentation.responseSize.Record(ctx, int64(responseSize), attributes...)
+		instrumentation.responsesPerRPC.Record(ctx, unaryIncrement, attributes...)
+
+		// Update spans
+		span.AddEvent(messageKey,
+			trace.WithAttributes(
+				responseSpan,
+				semconv.MessageIDKey.Int(unaryIncrement),
+				semconv.MessageUncompressedSizeKey.Int(responseSize),
+			),
+		)
+
+		span.SetStatus(spanStatus(err))
+		span.SetAttributes(attributes...)
 		return response, err
 	}
+}
+
+type anyer interface {
+	Any() any
+}
+
+func msgSize(msg anyer) int {
+	if msg == nil {
+		return 0
+	}
+	if msg, ok := msg.Any().(proto.Message); ok {
+		return proto.Size(msg)
+	}
+	return 0
 }
 
 // WrapStreamingClient implements otel tracing and metrics for streaming connect clients.
@@ -221,47 +244,52 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				err:                 connect.NewError(connect.CodeInternal, err),
 			}
 		}
+
 		req := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
 			Header: conn.RequestHeader(),
 		}
+
 		if i.config.filter != nil {
 			if !i.config.filter(ctx, req) {
 				return conn
 			}
 		}
+
 		state := streamingState{
-			protocol: protocolToSemConv(conn.Peer()),
-			attrs:    attributesFromRequest(req),
+			protocol:   protocolToSemConv(conn.Peer().Protocol),
+			attributes: requestAttributes(req),
 		}
+
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
-		ctx = i.config.propagator.Extract(ctx, carrier)
-		spanCtx := trace.SpanContextFromContext(ctx)
-		tracer := i.config.Tracer()
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
+		tracer := i.config.Tracer()
+
+		spanCtx := trace.SpanContextFromContext(ctx)
+		ctx = i.config.propagator.Extract(ctx, carrier)
 		ctx, span := tracer.Start(
 			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
 			name,
 			trace.WithSpanKind(trace.SpanKindServer),
-			trace.WithAttributes(state.attrs...),
+			trace.WithAttributes(state.attributes...),
 		)
 		i.config.propagator.Inject(ctx, carrier)
 		var receivedCounter, sentCounter int
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
-				state.attrs = append(state.attrs, statusCodeAttribute(state.protocol, state.error))
-				span.SetAttributes(state.attrs...)
+				state.attributes = append(state.attributes, statusCodeAttribute(state.protocol, state.error))
+				span.SetAttributes(state.attributes...)
 				span.SetStatus(spanStatus(state.error))
 				span.End()
-				instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
+				instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
 				receivedCounter++
 				err := state.receive(ctx, instr, msg, conn)
 				if !errors.Is(err, io.EOF) {
-					span.AddEvent("message", trace.WithAttributes(eventAttributes(msg, receivedCounter, semconv.MessageTypeKey.String("RECEIVED"))...))
+					span.AddEvent(messageKey, trace.WithAttributes(eventAttributes(msg, receivedCounter, messageTypeReceivedAttribute)...))
 					state.error = err
 				}
 				return err
@@ -270,7 +298,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				sentCounter++
 				err := state.send(ctx, instr, msg, conn)
 				if !errors.Is(err, io.EOF) {
-					span.AddEvent("message", trace.WithAttributes(eventAttributes(msg, sentCounter, semconv.MessageTypeKey.String("SENT"))...))
+					span.AddEvent(messageKey, trace.WithAttributes(eventAttributes(msg, sentCounter, messageTypeSentAttribute)...))
 					state.error = err
 				}
 				return err
@@ -285,111 +313,81 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		requestStartTime := i.config.now()
 		isClient := conn.Spec().IsClient
 		instr, err := i.getAndInitInstrument(isClient)
+
 		if err != nil {
 			return err
 		}
+
 		req := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
 			Header: conn.RequestHeader(),
 		}
+
 		if i.config.filter != nil {
 			if !i.config.filter(ctx, req) {
 				return next(ctx, conn)
 			}
 		}
+
 		state := streamingState{
-			protocol: protocolToSemConv(req.Peer),
-			attrs:    attributesFromRequest(req),
+			protocol:   protocolToSemConv(req.Peer.Protocol),
+			attributes: requestAttributes(req),
 		}
+
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
-		ctx = i.config.propagator.Extract(ctx, carrier)
-		spanCtx := trace.SpanContextFromContext(ctx)
-		tracer := i.config.Tracer()
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
+		tracer := i.config.Tracer()
+		spanCtx := trace.SpanContextFromContext(ctx)
+		ctx = i.config.propagator.Extract(ctx, carrier)
+
 		ctx, span := tracer.Start(
 			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
 			name,
 			trace.WithSpanKind(trace.SpanKindServer),
-			trace.WithAttributes(state.attrs...),
+			trace.WithAttributes(state.attributes...),
 		)
+
 		defer span.End()
 		i.config.propagator.Inject(ctx, carrier)
+
 		var receivedCounter, sentCounter int
+
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
+
 				receivedCounter++
 				err := state.receive(ctx, instr, msg, conn)
 				if !errors.Is(err, io.EOF) {
-					span.AddEvent("message", trace.WithAttributes(eventAttributes(msg, receivedCounter, semconv.MessageTypeKey.String("RECEIVED"))...))
+					span.AddEvent(messageKey, trace.WithAttributes(
+						eventAttributes(msg, receivedCounter, messageTypeReceivedAttribute)...),
+					)
 				}
 				return err
 			},
+
 			send: func(msg any, conn connect.StreamingHandlerConn) error {
+
 				sentCounter++
 				err := state.send(ctx, instr, msg, conn)
 				if !errors.Is(err, io.EOF) {
-					span.AddEvent("message", trace.WithAttributes(eventAttributes(msg, sentCounter, semconv.MessageTypeKey.String("SENT"))...))
+					span.AddEvent(messageKey, trace.WithAttributes(
+						eventAttributes(msg, sentCounter, messageTypeSentAttribute)...),
+					)
 				}
 				return err
 			},
 		}
+
 		err = next(ctx, streamingHandler)
-		state.attrs = append(state.attrs, statusCodeAttribute(state.protocol, err))
-		span.SetAttributes(state.attrs...)
+
+		state.attributes = append(state.attributes, statusCodeAttribute(state.protocol, err))
+
+		span.SetAttributes(state.attributes...)
 		span.SetStatus(spanStatus(err))
-		instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
+
+		instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
 		return err
 	}
-}
-
-func spanStatus(serverErr error) (codes.Code, string) {
-	if serverErr == nil {
-		return codes.Ok, ""
-	}
-	return codes.Error, connect.CodeOf(serverErr).String()
-}
-
-func eventAttributes(msg any, counter int, attributes ...attribute.KeyValue) []attribute.KeyValue {
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		attributes = append(attributes, semconv.MessageUncompressedSizeKey.Int(size))
-	}
-	return append(attributes, semconv.MessageIDKey.Int(counter))
-}
-
-func parseAddress(address string) []attribute.KeyValue {
-	if addrPort, err := netip.ParseAddrPort(address); err == nil {
-		return []attribute.KeyValue{
-			semconv.NetPeerIPKey.String(addrPort.Addr().String()),
-			semconv.NetPeerPortKey.Int(int(addrPort.Port())),
-		}
-	}
-	if host, port, err := net.SplitHostPort(address); err == nil {
-		portint, err := strconv.Atoi(port)
-		if err != nil {
-			return []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.Int(portint),
-			}
-		}
-	}
-	return []attribute.KeyValue{semconv.NetPeerNameKey.String(address)}
-}
-
-func attributesFromRequest(req *Request) []attribute.KeyValue {
-	var attrs []attribute.KeyValue
-	if addr := req.Peer.Addr; addr != "" {
-		attrs = append(attrs, parseAddress(addr)...)
-	}
-	name := strings.TrimLeft(req.Spec.Procedure, "/")
-	protocol := protocolToSemConv(req.Peer)
-	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
-	attrs = append(attrs, parseProcedure(name)...)
-	return attrs
-}
-
-func formatkeys(interceptorType string, metricName string) string {
-	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
 }
