@@ -967,7 +967,7 @@ func TestClientSimple(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{
 		{
 			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
@@ -1014,7 +1014,7 @@ func TestHandlerFailCall(t *testing.T) {
 	if err == nil {
 		t.Fatal("expecting error, got nil")
 	}
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{
 		{
 			spanName: "observability.ping.v1.PingService/Fail",
 			events: []trace.Event{
@@ -1062,8 +1062,8 @@ func TestClientHandlerOpts(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnarySpans(t, []wantSpans{}, serverSpanRecorder.Ended())
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{}, serverSpanRecorder.Ended())
+	assertSpans(t, []wantSpans{
 		{
 			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
@@ -1113,7 +1113,7 @@ func TestBasicFilter(t *testing.T) {
 	if len(spanRecorder.Ended()) != 0 {
 		t.Error("unexpected spans recorded")
 	}
-	checkUnarySpans(t, []wantSpans{}, spanRecorder.Ended())
+	assertSpans(t, []wantSpans{}, spanRecorder.Ended())
 }
 
 func TestFilterHeader(t *testing.T) {
@@ -1133,7 +1133,7 @@ func TestFilterHeader(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{
 		{
 			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
@@ -1180,7 +1180,7 @@ func TestInterceptors(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), RequestOfSize(2, largeMessageSize)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{
 		{
 			spanName: "observability.ping.v1.PingService/Ping",
 			events: []trace.Event{
@@ -1242,7 +1242,7 @@ func TestInterceptors(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
-func TestPropagation(t *testing.T) {
+func TestUnaryPropagation(t *testing.T) {
 	t.Parallel()
 	assertTraceParent := func(ctx context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 		assert.NotZero(t, req.Header().Get("traceparent"))
@@ -1259,13 +1259,90 @@ func TestPropagation(t *testing.T) {
 	assert.Equal(t, int64(1), resp.Msg.Id)
 }
 
+func TestStreamingHandlerPropagation(t *testing.T) {
+	t.Parallel()
+	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse]) error {
+		assert.NotZero(t, stream.RequestHeader().Get("traceparent"))
+		assert.NoError(t, stream.Send(&pingv1.CumSumResponse{Sum: 1}))
+		return nil
+	}
+	client, _, _ := startServer([]connect.HandlerOption{
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(trace.NewTracerProvider()),
+		),
+	}, nil, &pluggablePingServer{cumSum: assertTraceParent},
+	)
+	stream := client.CumSum(context.Background())
+	assert.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	assert.NoError(t, stream.CloseResponse())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Sum)
+}
+
+func TestStreamingHandlerTracing(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer([]connect.HandlerOption{
+		WithTelemetry(WithTracerProvider(traceProvider)),
+	}, nil, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: "observability.ping.v1.PingService/CumSum",
+			events: []trace.Event{
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: "message",
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String("buf_connect"),
+				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
+				semconv.RPCMethodKey.String("CumSum"),
+				attribute.Key("rpc.buf_connect.status_code").String("success"),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
 type wantSpans struct {
 	spanName string
 	events   []trace.Event
 	attrs    []attribute.KeyValue
 }
 
-func checkUnarySpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
+func assertSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 	t.Helper()
 	if len(want) != len(got) {
 		t.Errorf("unexpected spans: want %d spans, got %d", len(want), len(got))

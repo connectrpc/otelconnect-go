@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"strconv"
@@ -250,7 +251,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 	}
 }
 
-// TODO: implement tracing in WrapStreamingHandler.
+// WrapStreamingHandler implements otel tracing and metrics for streaming connect handlers.
 func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		requestStartTime := i.config.now()
@@ -273,20 +274,61 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			protocol: protocolToSemConv(req.Peer),
 			attrs:    attributesFromRequest(req),
 		}
+		carrier := propagation.HeaderCarrier(conn.RequestHeader())
+		ctx = i.config.propagator.Extract(ctx, carrier)
+		spanCtx := trace.SpanContextFromContext(ctx)
+		tracer := i.config.Tracer()
+		name := strings.TrimLeft(conn.Spec().Procedure, "/")
+		ctx, span := tracer.Start(
+			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
+			name,
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(state.attrs...),
+		)
+		defer span.End()
+		i.config.propagator.Inject(ctx, carrier)
+		var receivedCounter, sentCounter int
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
-				return state.receive(ctx, instr, msg, conn)
+				receivedCounter++
+				err := state.receive(ctx, instr, msg, conn)
+				if !errors.Is(err, io.EOF) {
+					span.AddEvent("message", trace.WithAttributes(eventAttributes(msg, receivedCounter, semconv.MessageTypeKey.String("RECEIVED"))...))
+				}
+				return err
 			},
 			send: func(msg any, conn connect.StreamingHandlerConn) error {
-				return state.send(ctx, instr, msg, conn)
+				sentCounter++
+				err := state.send(ctx, instr, msg, conn)
+				if !errors.Is(err, io.EOF) {
+					span.AddEvent("message", trace.WithAttributes(eventAttributes(msg, sentCounter, semconv.MessageTypeKey.String("SENT"))...))
+				}
+				return err
 			},
 		}
 		err = next(ctx, streamingHandler)
 		state.attrs = append(state.attrs, statusCodeAttribute(state.protocol, err))
+		span.SetAttributes(state.attrs...)
+		span.SetStatus(spanStatus(err))
 		instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attrs...)
 		return err
 	}
+}
+
+func spanStatus(serverErr error) (codes.Code, string) {
+	if serverErr == nil {
+		return codes.Ok, ""
+	}
+	return codes.Error, connect.CodeOf(serverErr).String()
+}
+
+func eventAttributes(msg any, counter int, attributes ...attribute.KeyValue) []attribute.KeyValue {
+	if msg, ok := msg.(proto.Message); ok {
+		size := proto.Size(msg)
+		attributes = append(attributes, semconv.MessageUncompressedSizeKey.Int(size))
+	}
+	return append(attributes, semconv.MessageIDKey.Int(counter))
 }
 
 func parseAddress(address string) []attribute.KeyValue {
