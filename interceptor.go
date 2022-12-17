@@ -142,17 +142,21 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		state := streamingState{
 			attributes: requestAttributes(req),
 		}
-		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		protocol := protocolToSemConv(conn.Peer().Protocol)
-		spanCtx := trace.SpanContextFromContext(ctx)
+		// extract any request headers into the context
+		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		ctx = i.config.propagator.Extract(ctx, carrier)
+		// get the span context
+		spanCtx := trace.SpanContextFromContext(ctx)
+		// start a new span with the possibly remote span context.
 		ctx, span := i.config.tracer.Start(
 			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
 			name,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(state.attributes...),
 		)
+		// with the newly created span, inject back into carrier
 		i.config.propagator.Inject(ctx, carrier)
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
@@ -230,18 +234,21 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			attributes: requestAttributes(req),
 		}
 		protocol := protocolToSemConv(req.Peer.Protocol)
-		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
-		spanCtx := trace.SpanContextFromContext(ctx)
+		// extract any request headers into the context
+		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		ctx = i.config.propagator.Extract(ctx, carrier)
+		// start a new span with any trace that is in the context
+		spanCtx := trace.SpanContextFromContext(ctx)
 		ctx, span := i.config.tracer.Start(
 			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
 			name,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(state.attributes...),
 		)
-		defer span.End()
+		// lastly, inject the context span to the carrier
 		i.config.propagator.Inject(ctx, carrier)
+		defer span.End()
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
