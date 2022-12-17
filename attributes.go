@@ -25,6 +25,23 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )
 
+type AttributeFilter func(*Request, attribute.KeyValue) bool
+
+func filterAttributes(request *Request, filter AttributeFilter) func(...attribute.KeyValue) []attribute.KeyValue {
+	return func(values ...attribute.KeyValue) []attribute.KeyValue {
+		if filter == nil {
+			return values
+		}
+		tmp := values[:0]
+		for _, attr := range values {
+			if filter(request, attr) {
+				tmp = append(tmp, attr)
+			}
+		}
+		return tmp
+	}
+}
+
 func procedureAttributes(procedure string) []attribute.KeyValue {
 	parts := strings.SplitN(procedure, "/", 2)
 	var attrs []attribute.KeyValue

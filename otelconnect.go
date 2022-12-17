@@ -45,11 +45,12 @@ type Request struct {
 }
 
 type config struct {
-	filter     func(context.Context, *Request) bool
-	meter      metric.Meter
-	tracer     trace.Tracer
-	propagator propagation.TextMapPropagator
-	now        func() time.Time
+	filter          func(context.Context, *Request) bool
+	filterAttribute AttributeFilter
+	meter           metric.Meter
+	tracer          trace.Tracer
+	propagator      propagation.TextMapPropagator
+	now             func() time.Time
 }
 
 // WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics

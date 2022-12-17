@@ -62,6 +62,21 @@ func WithoutMetrics() Option {
 	return WithMeterProvider(metric.NewNoopMeterProvider())
 }
 
+// WithAttributeFilter adds an attribute filter for metrics.
+func WithAttributeFilter(filter AttributeFilter) Option {
+	return &attributeFilterOption{filterAttribute: filter}
+}
+
+type attributeFilterOption struct {
+	filterAttribute AttributeFilter
+}
+
+func (o *attributeFilterOption) apply(c *config) {
+	if o.filterAttribute != nil {
+		c.filterAttribute = o.filterAttribute
+	}
+}
+
 type propagatorOption struct {
 	propagator propagation.TextMapPropagator
 }

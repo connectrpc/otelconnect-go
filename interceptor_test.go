@@ -1392,6 +1392,62 @@ func TestStreamingClientTracing(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
+func TestWithAttributeFilter(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer(nil, []connect.ClientOption{
+		WithTelemetry(
+			WithTracerProvider(traceProvider),
+			WithAttributeFilter(func(request *Request, value attribute.KeyValue) bool {
+				if value.Key == semconv.MessageIDKey {
+					return false
+				}
+				if value.Key == semconv.RPCServiceKey {
+					return false
+				}
+				return true
+			},
+			),
+		),
+	}, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
+			events: []trace.Event{
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeReceived,
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCMethodKey.String(CumSumMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
 type wantSpans struct {
 	spanName string
 	events   []trace.Event
