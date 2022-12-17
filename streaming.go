@@ -24,7 +24,6 @@ import (
 )
 
 type streamingState struct {
-	protocol        string
 	mu              sync.Mutex
 	attributes      []attribute.KeyValue
 	error           error
@@ -37,40 +36,38 @@ type sendReceiver interface {
 	Send(any) error
 }
 
-func (s *streamingState) receive(msg any, conn sendReceiver) (int, error) {
+func (s *streamingState) receive(msg any, conn sendReceiver) (int, func(), error) {
 	err := conn.Receive(msg)
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if errors.Is(err, io.EOF) {
-		return 0, err
+		return 0, s.mu.Unlock, err
 	}
 	if err != nil {
 		s.error = err
-		return 0, err
+		return 0, s.mu.Unlock, err
 	}
 	var size int
 	if msg, ok := msg.(proto.Message); ok {
 		size = proto.Size(msg)
 	}
 	s.receivedCounter++
-	return size, err
+	return size, s.mu.Unlock, err
 }
 
-func (s *streamingState) send(msg any, conn sendReceiver) (int, error) {
+func (s *streamingState) send(msg any, conn sendReceiver) (int, func(), error) {
 	err := conn.Send(msg)
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if errors.Is(err, io.EOF) {
-		return 0, err
+		return 0, s.mu.Unlock, err
 	}
 	if err != nil {
 		s.error = err
-		return 0, err
+		return 0, s.mu.Unlock, err
 	}
 	var size int
 	if msg, ok := msg.(proto.Message); ok {
 		size = proto.Size(msg)
 	}
 	s.sentCounter++
-	return size, err
+	return size, s.mu.Unlock, err
 }
