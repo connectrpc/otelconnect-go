@@ -21,12 +21,11 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel/propagation"
-
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 

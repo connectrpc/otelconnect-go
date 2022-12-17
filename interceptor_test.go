@@ -52,9 +52,7 @@ const (
 	CumSumMethod             = "CumSum"
 	PingMethod               = "Ping"
 	FailMethod               = "Fail"
-	SentString               = "SENT"
 	UnimplementedString      = "unimplemented"
-	ReceivedString           = "RECEIVED"
 	TraceParentKey           = "traceparent"
 	rpcClientDuration        = "rpc.client.duration"
 	rpcClientRequestSize     = "rpc.client.request.size"
@@ -960,7 +958,7 @@ func TestClientSimple(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -968,7 +966,7 @@ func TestClientSimple(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(ReceivedString),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1007,7 +1005,7 @@ func TestHandlerFailCall(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1015,7 +1013,7 @@ func TestHandlerFailCall(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(ReceivedString),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(0),
 					},
@@ -1057,7 +1055,7 @@ func TestClientHandlerOpts(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1065,7 +1063,7 @@ func TestClientHandlerOpts(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(ReceivedString),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1129,7 +1127,7 @@ func TestFilterHeader(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(ReceivedString),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1137,7 +1135,7 @@ func TestFilterHeader(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1176,7 +1174,7 @@ func TestInterceptors(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(ReceivedString),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1184,7 +1182,7 @@ func TestInterceptors(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1205,7 +1203,7 @@ func TestInterceptors(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(ReceivedString),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(1005),
 					},
@@ -1213,7 +1211,7 @@ func TestInterceptors(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(1005),
 					},
@@ -1313,7 +1311,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(ReceivedString),
+						semconv.MessageTypeReceived,
 						semconv.MessageUncompressedSizeKey.Int(2),
 						semconv.MessageIDKey.Int(1),
 					},
@@ -1321,7 +1319,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageUncompressedSizeKey.Int(2),
 						semconv.MessageIDKey.Int(1),
 					},
@@ -1329,7 +1327,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageUncompressedSizeKey.Int(2),
 						semconv.MessageIDKey.Int(2),
 					},
@@ -1368,7 +1366,7 @@ func TestStreamingClientTracing(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(SentString),
+						semconv.MessageTypeSent,
 						semconv.MessageUncompressedSizeKey.Int(2),
 						semconv.MessageIDKey.Int(1),
 					},
@@ -1376,7 +1374,7 @@ func TestStreamingClientTracing(t *testing.T) {
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String(ReceivedString),
+						semconv.MessageTypeReceived,
 						semconv.MessageUncompressedSizeKey.Int(2),
 						semconv.MessageIDKey.Int(1),
 					},
