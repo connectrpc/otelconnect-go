@@ -168,15 +168,10 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
-				size, f, err := state.receive(msg, conn)
-				defer f()
+				size, unlock, err := state.receive(msg, conn, protocol)
+				defer unlock()
 				if errors.Is(err, io.EOF) {
 					return err
-				}
-				if err != nil {
-					// If error add it to the attributes because the stream is about to terminate.
-					// If no error don't add anything because status only exists at end of stream.
-					state.attributes = append(state.attributes, statusCodeAttribute(protocol, err))
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
@@ -191,15 +186,10 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				return err
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				size, f, err := state.send(msg, conn)
-				defer f()
+				size, unlock, err := state.send(msg, conn, protocol)
+				defer unlock()
 				if errors.Is(err, io.EOF) {
 					return err
-				}
-				if err != nil {
-					// If error add it to the attributes because the stream is about to terminate.
-					// If no error don't add anything because status only exists at end of stream.
-					state.attributes = append(state.attributes, statusCodeAttribute(protocol, err))
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
@@ -255,15 +245,10 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
-				size, f, err := state.receive(msg, conn)
-				defer f()
+				size, unlock, err := state.receive(msg, conn, protocol)
+				defer unlock()
 				if errors.Is(err, io.EOF) {
 					return err
-				}
-				if err != nil {
-					// If error add it to the attributes because the stream is about to terminate.
-					// If no error don't add anything because status only exists at end of stream.
-					state.attributes = append(state.attributes, statusCodeAttribute(protocol, err))
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
@@ -278,15 +263,10 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return err
 			},
 			send: func(msg any, conn connect.StreamingHandlerConn) error {
-				size, f, err := state.send(msg, conn)
-				defer f()
+				size, unlock, err := state.send(msg, conn, protocol)
+				defer unlock()
 				if errors.Is(err, io.EOF) {
 					return err
-				}
-				if err != nil {
-					// If error add it to the attributes because the stream is about to terminate.
-					// If no error don't add anything because status only exists at end of stream.
-					state.attributes = append(state.attributes, statusCodeAttribute(protocol, err))
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(

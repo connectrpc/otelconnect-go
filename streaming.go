@@ -36,7 +36,7 @@ type sendReceiver interface {
 	Send(any) error
 }
 
-func (s *streamingState) receive(msg any, conn sendReceiver) (int, func(), error) {
+func (s *streamingState) receive(msg any, conn sendReceiver, protocol string) (int, func(), error) {
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	if errors.Is(err, io.EOF) {
@@ -44,6 +44,9 @@ func (s *streamingState) receive(msg any, conn sendReceiver) (int, func(), error
 	}
 	if err != nil {
 		s.error = err
+		// If error add it to the attributes because the stream is about to terminate.
+		// If no error don't add anything because status only exists at end of stream.
+		s.attributes = append(s.attributes, statusCodeAttribute(protocol, err))
 		return 0, s.mu.Unlock, err
 	}
 	var size int
@@ -54,7 +57,7 @@ func (s *streamingState) receive(msg any, conn sendReceiver) (int, func(), error
 	return size, s.mu.Unlock, err
 }
 
-func (s *streamingState) send(msg any, conn sendReceiver) (int, func(), error) {
+func (s *streamingState) send(msg any, conn sendReceiver, protocol string) (int, func(), error) {
 	err := conn.Send(msg)
 	s.mu.Lock()
 	if errors.Is(err, io.EOF) {
@@ -62,6 +65,9 @@ func (s *streamingState) send(msg any, conn sendReceiver) (int, func(), error) {
 	}
 	if err != nil {
 		s.error = err
+		// If error add it to the attributes because the stream is about to terminate.
+		// If no error don't add anything because status only exists at end of stream.
+		s.attributes = append(s.attributes, statusCodeAttribute(protocol, err))
 		return 0, s.mu.Unlock, err
 	}
 	var size int
