@@ -35,11 +35,11 @@ const (
 	metricKeyFormat = "rpc.%s.%s"
 
 	// Metrics as defined by https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/rpc-metrics.md
-	duration        = "duration"
-	requestSize     = "request.size"
-	responseSize    = "response.size"
-	requestsPerRPC  = "requests_per_rpc"
-	responsesPerRPC = "responses_per_rpc"
+	durationKey        = "duration"
+	requestSizeKey     = "request.size"
+	responseSizeKey    = "response.size"
+	requestsPerRPCKey  = "requests_per_rpc"
+	responsesPerRPCKey = "responses_per_rpc"
 
 	messageKey = "message"
 	serverKey  = "server"
@@ -65,35 +65,35 @@ func (i *instruments) init(meter metric.Meter, isClient bool) {
 			interceptorType = clientKey
 		}
 		i.duration, i.initErr = intProvider.Histogram(
-			formatkeys(interceptorType, duration),
+			formatkeys(interceptorType, durationKey),
 			instrument.WithUnit(unit.Milliseconds),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.requestSize, i.initErr = intProvider.Histogram(
-			formatkeys(interceptorType, requestSize),
+			formatkeys(interceptorType, requestSizeKey),
 			instrument.WithUnit(unit.Bytes),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.responseSize, i.initErr = intProvider.Histogram(
-			formatkeys(interceptorType, responseSize),
+			formatkeys(interceptorType, responseSizeKey),
 			instrument.WithUnit(unit.Bytes),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.requestsPerRPC, i.initErr = intProvider.Histogram(
-			formatkeys(interceptorType, requestsPerRPC),
+			formatkeys(interceptorType, requestsPerRPCKey),
 			instrument.WithUnit(unit.Dimensionless),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.responsesPerRPC, i.initErr = intProvider.Histogram(
-			formatkeys(interceptorType, responsesPerRPC),
+			formatkeys(interceptorType, responsesPerRPCKey),
 			instrument.WithUnit(unit.Dimensionless),
 		)
 	})
