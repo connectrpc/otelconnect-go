@@ -45,8 +45,8 @@ func (s *streamingState) receive(msg any, conn sendReceiver) (int, error) {
 		return 0, err
 	}
 	if err != nil {
-		s.attributes = append(s.attributes, statusCodeAttribute(s.protocol, err))
 		s.error = err
+		return 0, err
 	}
 	var size int
 	if msg, ok := msg.(proto.Message); ok {
@@ -64,8 +64,8 @@ func (s *streamingState) send(msg any, conn sendReceiver) (int, error) {
 		return 0, err
 	}
 	if err != nil {
-		s.attributes = append(s.attributes, statusCodeAttribute(s.protocol, err))
 		s.error = err
+		return 0, err
 	}
 	var size int
 	if msg, ok := msg.(proto.Message); ok {

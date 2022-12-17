@@ -441,10 +441,10 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(CumSumMethod),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -557,10 +557,10 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(CumSumMethod),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1,

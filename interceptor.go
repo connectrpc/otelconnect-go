@@ -157,6 +157,10 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
+				// state.attributes is updated with the final error that was recorded.
+				// If error is nil a "success" is recorded on the span and on the final duration
+				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
+				// streams because the error only exists when finishing the stream.
 				state.attributes = append(state.attributes, statusCodeAttribute(state.protocol, state.error))
 				span.SetAttributes(state.attributes...)
 				span.SetStatus(spanStatus(state.error))
@@ -167,6 +171,11 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				size, err := state.receive(msg, conn)
 				if errors.Is(err, io.EOF) {
 					return err
+				}
+				if err != nil {
+					// If error add it to the attributes because the stream is about to terminate.
+					// If no error don't add anything because status only exists at end of stream.
+					state.attributes = append(state.attributes, statusCodeAttribute(state.protocol, err))
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
@@ -184,6 +193,11 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				size, err := state.send(msg, conn)
 				if errors.Is(err, io.EOF) {
 					return err
+				}
+				if err != nil {
+					// If error add it to the attributes because the stream is about to terminate.
+					// If no error don't add anything because status only exists at end of stream.
+					state.attributes = append(state.attributes, statusCodeAttribute(state.protocol, err))
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
@@ -243,6 +257,11 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				if errors.Is(err, io.EOF) {
 					return err
 				}
+				if err != nil {
+					// If error add it to the attributes because the stream is about to terminate.
+					// If no error don't add anything because status only exists at end of stream.
+					state.attributes = append(state.attributes, statusCodeAttribute(state.protocol, err))
+				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
 						semconv.MessageTypeReceived,
@@ -259,6 +278,11 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				size, err := state.send(msg, conn)
 				if errors.Is(err, io.EOF) {
 					return err
+				}
+				if err != nil {
+					// If error add it to the attributes because the stream is about to terminate.
+					// If no error don't add anything because status only exists at end of stream.
+					state.attributes = append(state.attributes, statusCodeAttribute(state.protocol, err))
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
