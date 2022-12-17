@@ -24,7 +24,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-	time "time"
+	"time"
 
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel"

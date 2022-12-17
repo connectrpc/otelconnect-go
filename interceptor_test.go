@@ -272,7 +272,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 				Metrics: []metricdata.Metrics{
 					{
 						Name: rpcClientDuration,
-						Unit: "ms",
+						Unit: unit.Milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{

@@ -44,13 +44,6 @@ const (
 	messageKey = "message"
 	serverKey  = "server"
 	clientKey  = "client"
-
-	unaryIncrement = 1
-)
-
-var (
-	messageTypeReceivedAttribute = semconv.MessageTypeKey.String("RECEIVED") //nolint: gochecknoglobals
-	messageTypeSentAttribute     = semconv.MessageTypeKey.String("SENT")     //nolint: gochecknoglobals
 )
 
 type instruments struct {
@@ -129,6 +122,7 @@ func newInterceptor(cfg config) *interceptor {
 	}
 }
 
+// WrapUnary implements otel tracing for unary handlers.
 func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 		requestStartTime := i.config.now()
@@ -151,7 +145,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 		spanKind := trace.SpanKindClient
-		requestSpan, responseSpan := messageTypeSentAttribute, messageTypeReceivedAttribute
+		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
 		if !isClient {
 			spanKind = trace.SpanKindServer
 			requestSpan, responseSpan = responseSpan, requestSpan
@@ -167,12 +161,12 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		)
 		i.config.propagator.Inject(ctx, carrier)
 		defer span.End()
-		requestsize := msgSize(request)
+		requestSize := msgSize(request)
 		span.AddEvent(messageKey,
 			trace.WithAttributes(
 				requestSpan,
-				semconv.MessageIDKey.Int(unaryIncrement),
-				semconv.MessageUncompressedSizeKey.Int(requestsize),
+				semconv.MessageIDKey.Int(1),
+				semconv.MessageUncompressedSizeKey.Int(requestSize),
 			),
 		)
 		response, err := next(ctx, request)
@@ -181,17 +175,17 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		span.AddEvent(messageKey,
 			trace.WithAttributes(
 				responseSpan,
-				semconv.MessageIDKey.Int(unaryIncrement),
+				semconv.MessageIDKey.Int(1),
 				semconv.MessageUncompressedSizeKey.Int(responseSize),
 			),
 		)
 		span.SetStatus(spanStatus(err))
 		span.SetAttributes(attributes...)
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attributes...)
-		instrumentation.requestSize.Record(ctx, int64(requestsize), attributes...)
-		instrumentation.requestsPerRPC.Record(ctx, unaryIncrement, attributes...)
+		instrumentation.requestSize.Record(ctx, int64(requestSize), attributes...)
+		instrumentation.requestsPerRPC.Record(ctx, 1, attributes...)
 		instrumentation.responseSize.Record(ctx, int64(responseSize), attributes...)
-		instrumentation.responsesPerRPC.Record(ctx, unaryIncrement, attributes...)
+		instrumentation.responsesPerRPC.Record(ctx, 1, attributes...)
 		return response, err
 	}
 }
@@ -249,7 +243,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
-						messageTypeReceivedAttribute,
+						semconv.MessageTypeReceived,
 						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(state.receivedCounter),
 					),
@@ -266,7 +260,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
-						messageTypeSentAttribute,
+						semconv.MessageTypeSent,
 						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(state.sentCounter),
 					),
@@ -324,7 +318,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
-						messageTypeReceivedAttribute,
+						semconv.MessageTypeReceived,
 						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(state.receivedCounter),
 					),
@@ -341,7 +335,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				}
 				span.AddEvent(messageKey,
 					trace.WithAttributes(
-						messageTypeSentAttribute,
+						semconv.MessageTypeSent,
 						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(state.sentCounter),
 					),
