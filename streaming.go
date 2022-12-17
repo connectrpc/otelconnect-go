@@ -41,7 +41,7 @@ func (s *streamingState) receive(msg any, conn sendReceiver) (int, error) {
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if errors.Is(err, io.EOF){
+	if errors.Is(err, io.EOF) {
 		return 0, err
 	}
 	if err != nil {
@@ -60,7 +60,7 @@ func (s *streamingState) send(msg any, conn sendReceiver) (int, error) {
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if errors.Is(err, io.EOF){
+	if errors.Is(err, io.EOF) {
 		return 0, err
 	}
 	if err != nil {
