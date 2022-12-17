@@ -26,6 +26,8 @@ import (
 	"strings"
 	time "time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -52,9 +54,12 @@ func WithTelemetry(options ...Option) connect.Option {
 // and tracing.
 func NewInterceptor(options ...Option) connect.Interceptor {
 	cfg := config{
-		now:            time.Now,
-		tracerProvider: otel.GetTracerProvider(),
-		propagator:     otel.GetTextMapPropagator(),
+		now: time.Now,
+		tracer: otel.GetTracerProvider().Tracer(
+			instrumentationName,
+			trace.WithInstrumentationVersion(semanticVersion),
+		),
+		propagator: otel.GetTextMapPropagator(),
 		meter: global.MeterProvider().Meter(
 			instrumentationName,
 			metric.WithInstrumentationVersion(semanticVersion),

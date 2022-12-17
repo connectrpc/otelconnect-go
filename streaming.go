@@ -41,8 +41,10 @@ func (s *streamingState) receive(msg any, conn sendReceiver) (int, error) {
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.receivedCounter++
-	if err != nil && !errors.Is(err, io.EOF) {
+	if errors.Is(err, io.EOF){
+		return 0, err
+	}
+	if err != nil {
 		s.attributes = append(s.attributes, statusCodeAttribute(s.protocol, err))
 		s.error = err
 	}
@@ -50,6 +52,7 @@ func (s *streamingState) receive(msg any, conn sendReceiver) (int, error) {
 	if msg, ok := msg.(proto.Message); ok {
 		size = proto.Size(msg)
 	}
+	s.receivedCounter++
 	return size, err
 }
 
@@ -57,7 +60,10 @@ func (s *streamingState) send(msg any, conn sendReceiver) (int, error) {
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err != nil && !errors.Is(err, io.EOF) {
+	if errors.Is(err, io.EOF){
+		return 0, err
+	}
+	if err != nil {
 		s.attributes = append(s.attributes, statusCodeAttribute(s.protocol, err))
 		s.error = err
 	}
@@ -66,6 +72,5 @@ func (s *streamingState) send(msg any, conn sendReceiver) (int, error) {
 		size = proto.Size(msg)
 	}
 	s.sentCounter++
-
 	return size, err
 }

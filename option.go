@@ -78,7 +78,10 @@ type tracerProviderOption struct {
 
 func (o *tracerProviderOption) apply(c *config) {
 	if o.provider != nil {
-		c.tracerProvider = o.provider
+		c.tracer = o.provider.Tracer(
+			instrumentationName,
+			trace.WithInstrumentationVersion(semanticVersion),
+		)
 	}
 }
 
