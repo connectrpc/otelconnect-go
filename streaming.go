@@ -15,9 +15,7 @@
 package otelconnect
 
 import (
-	"context"
 	"errors"
-	"go.opentelemetry.io/otel/trace"
 	"io"
 	"sync"
 
@@ -30,8 +28,6 @@ type streamingState struct {
 	mu              sync.Mutex
 	attributes      []attribute.KeyValue
 	error           error
-	name            string
-	tracer          trace.Tracer
 	sentCounter     int
 	receivedCounter int
 }
@@ -41,7 +37,7 @@ type sendReceiver interface {
 	Send(any) error
 }
 
-func (s *streamingState) receive(ctx context.Context, instr *instruments, msg any, conn sendReceiver, span trace.Span) (error, int) {
+func (s *streamingState) receive(msg any, conn sendReceiver) (int, error) {
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -54,10 +50,10 @@ func (s *streamingState) receive(ctx context.Context, instr *instruments, msg an
 	if msg, ok := msg.(proto.Message); ok {
 		size = proto.Size(msg)
 	}
-	return err, size
+	return size, err
 }
 
-func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, conn sendReceiver, span trace.Span) (error, int) {
+func (s *streamingState) send(msg any, conn sendReceiver) (int, error) {
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -71,5 +67,5 @@ func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, 
 	}
 	s.sentCounter++
 
-	return err, size
+	return size, err
 }

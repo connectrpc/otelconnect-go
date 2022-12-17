@@ -29,7 +29,6 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -50,8 +49,8 @@ const (
 )
 
 var (
-	messageTypeReceivedAttribute = semconv.MessageTypeKey.String("RECEIVED")
-	messageTypeSentAttribute     = semconv.MessageTypeKey.String("SENT")
+	messageTypeReceivedAttribute = semconv.MessageTypeKey.String("RECEIVED") //nolint: gochecknoglobals
+	messageTypeSentAttribute     = semconv.MessageTypeKey.String("SENT")     //nolint: gochecknoglobals
 )
 
 type instruments struct {
@@ -218,20 +217,6 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	}
 }
 
-type anyer interface {
-	Any() any
-}
-
-func msgSize(msg anyer) int {
-	if msg == nil {
-		return 0
-	}
-	if msg, ok := msg.Any().(proto.Message); ok {
-		return proto.Size(msg)
-	}
-	return 0
-}
-
 // WrapStreamingClient implements otel tracing and metrics for streaming connect clients.
 func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
@@ -285,25 +270,31 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
-				err, size := state.receive(ctx, instrumentation, msg, conn, span)
+				size, err := state.receive(msg, conn)
 				instrumentation.responseSize.Record(ctx, int64(size), state.attributes...)
 				instrumentation.responsesPerRPC.Record(ctx, 1, state.attributes...)
-
-
 				if !errors.Is(err, io.EOF) {
-					span.AddEvent(messageKey, trace.WithAttributes(
-						eventAttributes(msg, state.receivedCounter, messageTypeReceivedAttribute)...),
+					span.AddEvent(messageKey,
+						trace.WithAttributes(
+							messageTypeReceivedAttribute,
+							semconv.MessageUncompressedSizeKey.Int(size),
+							semconv.MessageIDKey.Int(state.receivedCounter),
+						),
 					)
 				}
 				return err
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				err, size := state.send(ctx, instrumentation, msg, conn, span)
+				size, err := state.send(msg, conn)
 				instrumentation.requestSize.Record(ctx, int64(size), state.attributes...)
 				instrumentation.requestsPerRPC.Record(ctx, 1, state.attributes...)
 				if !errors.Is(err, io.EOF) {
-					span.AddEvent(messageKey, trace.WithAttributes(
-						eventAttributes(msg, state.sentCounter, messageTypeSentAttribute)...),
+					span.AddEvent(messageKey,
+						trace.WithAttributes(
+							messageTypeSentAttribute,
+							semconv.MessageUncompressedSizeKey.Int(size),
+							semconv.MessageIDKey.Int(state.sentCounter),
+						),
 					)
 				}
 				return err
@@ -358,23 +349,31 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
-				err, size := state.receive(ctx, instrumentation, msg, conn, span)
+				size, err := state.receive(msg, conn)
 				instrumentation.requestSize.Record(ctx, int64(size), state.attributes...)
 				instrumentation.requestsPerRPC.Record(ctx, 1, state.attributes...)
 				if !errors.Is(err, io.EOF) {
-					span.AddEvent(messageKey, trace.WithAttributes(
-						eventAttributes(msg, state.receivedCounter, messageTypeReceivedAttribute)...),
+					span.AddEvent(messageKey,
+						trace.WithAttributes(
+							messageTypeReceivedAttribute,
+							semconv.MessageUncompressedSizeKey.Int(size),
+							semconv.MessageIDKey.Int(state.receivedCounter),
+						),
 					)
 				}
 				return err
 			},
 			send: func(msg any, conn connect.StreamingHandlerConn) error {
-				err, size := state.send(ctx, instrumentation, msg, conn, span)
+				size, err := state.send(msg, conn)
 				instrumentation.responsesPerRPC.Record(ctx, 1, state.attributes...)
 				instrumentation.responseSize.Record(ctx, int64(size), state.attributes...)
 				if !errors.Is(err, io.EOF) {
-					span.AddEvent(messageKey, trace.WithAttributes(
-						eventAttributes(msg, state.sentCounter, messageTypeSentAttribute)...),
+					span.AddEvent(messageKey,
+						trace.WithAttributes(
+							messageTypeSentAttribute,
+							semconv.MessageUncompressedSizeKey.Int(size),
+							semconv.MessageIDKey.Int(state.sentCounter),
+						),
 					)
 				}
 				return err

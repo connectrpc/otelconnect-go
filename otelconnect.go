@@ -19,8 +19,6 @@ package otelconnect
 import (
 	"errors"
 	"fmt"
-	"go.opentelemetry.io/otel/codes"
-	"google.golang.org/protobuf/proto"
 	"net"
 	"net/http"
 	"net/netip"
@@ -31,9 +29,11 @@ import (
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -121,14 +121,6 @@ func spanStatus(err error) (codes.Code, string) {
 	return codes.Error, err.Error()
 }
 
-func eventAttributes(msg any, counter int, attributes ...attribute.KeyValue) []attribute.KeyValue {
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		attributes = append(attributes, semconv.MessageUncompressedSizeKey.Int(size))
-	}
-	return append(attributes, semconv.MessageIDKey.Int(counter))
-}
-
 func requestAttributes(req *Request) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
 	if addr := req.Peer.Addr; addr != "" {
@@ -177,4 +169,18 @@ func addressAttributes(address string) []attribute.KeyValue {
 
 func formatkeys(interceptorType string, metricName string) string {
 	return fmt.Sprintf(metricKeyFormat, interceptorType, metricName)
+}
+
+type anyer interface {
+	Any() any
+}
+
+func msgSize(msg anyer) int {
+	if msg == nil {
+		return 0
+	}
+	if msg, ok := msg.Any().(proto.Message); ok {
+		return proto.Size(msg)
+	}
+	return 0
 }
