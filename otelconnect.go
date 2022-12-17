@@ -122,9 +122,8 @@ func spanStatus(err error) (codes.Code, string) {
 }
 
 func eventAttributes(msg any, counter int, attributes ...attribute.KeyValue) []attribute.KeyValue {
-	var size int
 	if msg, ok := msg.(proto.Message); ok {
-		size = proto.Size(msg)
+		size := proto.Size(msg)
 		attributes = append(attributes, semconv.MessageUncompressedSizeKey.Int(size))
 	}
 	return append(attributes, semconv.MessageIDKey.Int(counter))

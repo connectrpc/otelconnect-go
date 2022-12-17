@@ -16,8 +16,6 @@ package otelconnect
 
 import (
 	"context"
-	"errors"
-	"io"
 	"strings"
 	"sync"
 
@@ -237,7 +235,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		requestStartTime := i.config.now()
 		conn := next(ctx, spec)
-		instr, err := i.getAndInitInstrument(spec.IsClient)
+		instrumentation, err := i.getAndInitInstrument(spec.IsClient)
 		if err != nil {
 			return &errorStreamingClientInterceptor{
 				StreamingClientConn: conn,
@@ -275,7 +273,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			trace.WithAttributes(state.attributes...),
 		)
 		i.config.propagator.Inject(ctx, carrier)
-		var receivedCounter, sentCounter int
+		//var receivedCounter, sentCounter int
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
@@ -283,24 +281,24 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				span.SetAttributes(state.attributes...)
 				span.SetStatus(spanStatus(state.error))
 				span.End()
-				instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
+				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
-				receivedCounter++
-				err := state.receive(ctx, instr, msg, conn)
-				if !errors.Is(err, io.EOF) {
-					span.AddEvent(messageKey, trace.WithAttributes(eventAttributes(msg, receivedCounter, messageTypeReceivedAttribute)...))
-					state.error = err
-				}
+				//receivedCounter++
+				err := state.receive(ctx, instrumentation, msg, conn, span)
+				//if !errors.Is(err, io.EOF) {
+				//	span.AddEvent(messageKey, trace.WithAttributes(eventAttributes(msg, receivedCounter, messageTypeReceivedAttribute)...))
+				//	state.error = err
+				//}
 				return err
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				sentCounter++
-				err := state.send(ctx, instr, msg, conn)
-				if !errors.Is(err, io.EOF) {
-					span.AddEvent(messageKey, trace.WithAttributes(eventAttributes(msg, sentCounter, messageTypeSentAttribute)...))
-					state.error = err
-				}
+				//sentCounter++
+				err := state.send(ctx, instrumentation, msg, conn, span)
+				//if !errors.Is(err, io.EOF) {
+				//	span.AddEvent(messageKey, trace.WithAttributes(eventAttributes(msg, sentCounter, messageTypeSentAttribute)...))
+				//	state.error = err
+				//}
 				return err
 			},
 		}
@@ -337,45 +335,40 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
+
 		tracer := i.config.Tracer()
 		spanCtx := trace.SpanContextFromContext(ctx)
 		ctx = i.config.propagator.Extract(ctx, carrier)
-
 		ctx, span := tracer.Start(
 			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
 			name,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(state.attributes...),
 		)
-
 		defer span.End()
 		i.config.propagator.Inject(ctx, carrier)
-
-		var receivedCounter, sentCounter int
 
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
-
-				receivedCounter++
-				err := state.receive(ctx, instr, msg, conn)
-				if !errors.Is(err, io.EOF) {
-					span.AddEvent(messageKey, trace.WithAttributes(
-						eventAttributes(msg, receivedCounter, messageTypeReceivedAttribute)...),
-					)
-				}
+				//receivedCounter++
+				err := state.receive(ctx, instr, msg, conn, span)
+				//if !errors.Is(err, io.EOF) {
+				//	span.AddEvent(messageKey, trace.WithAttributes(
+				//		eventAttributes(msg, receivedCounter, messageTypeReceivedAttribute)...),
+				//	)
+				//}
 				return err
 			},
 
 			send: func(msg any, conn connect.StreamingHandlerConn) error {
-
-				sentCounter++
-				err := state.send(ctx, instr, msg, conn)
-				if !errors.Is(err, io.EOF) {
-					span.AddEvent(messageKey, trace.WithAttributes(
-						eventAttributes(msg, sentCounter, messageTypeSentAttribute)...),
-					)
-				}
+				//sentCounter++
+				err := state.send(ctx, instr, msg, conn, span)
+				//if !errors.Is(err, io.EOF) {
+				//	span.AddEvent(messageKey, trace.WithAttributes(
+				//		eventAttributes(msg, sentCounter, messageTypeSentAttribute)...),
+				//	)
+				//}
 				return err
 			},
 		}
@@ -383,7 +376,6 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		err = next(ctx, streamingHandler)
 
 		state.attributes = append(state.attributes, statusCodeAttribute(state.protocol, err))
-
 		span.SetAttributes(state.attributes...)
 		span.SetStatus(spanStatus(err))
 

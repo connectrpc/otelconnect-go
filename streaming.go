@@ -26,12 +26,14 @@ import (
 )
 
 type streamingState struct {
-	protocol   string
-	mu         sync.Mutex
-	attributes []attribute.KeyValue
-	error      error
-	name       string
-	tracer     trace.Tracer
+	protocol        string
+	mu              sync.Mutex
+	attributes      []attribute.KeyValue
+	error           error
+	name            string
+	tracer          trace.Tracer
+	sentCounter     int
+	receivedCounter int
 }
 
 type sendReceiver interface {
@@ -39,32 +41,46 @@ type sendReceiver interface {
 	Send(any) error
 }
 
-func (s *streamingState) receive(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
+func (s *streamingState) receive(ctx context.Context, instr *instruments, msg any, conn sendReceiver, span trace.Span) error {
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil && !errors.Is(err, io.EOF) {
 		s.attributes = append(s.attributes, statusCodeAttribute(s.protocol, err))
+		s.error = err
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
 		instr.requestSize.Record(ctx, int64(size), s.attributes...)
+	}
+	s.receivedCounter++
+	if !errors.Is(err, io.EOF) {
+		span.AddEvent(messageKey, trace.WithAttributes(
+			eventAttributes(msg, s.receivedCounter, messageTypeReceivedAttribute)...),
+		)
 	}
 	instr.requestsPerRPC.Record(ctx, 1, s.attributes...)
 	instr.responsesPerRPC.Record(ctx, 1, s.attributes...)
 	return err
 }
 
-func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
+func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, conn sendReceiver, span trace.Span) error {
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil && !errors.Is(err, io.EOF) {
 		s.attributes = append(s.attributes, statusCodeAttribute(s.protocol, err))
+		s.error = err
 	}
 	if msg, ok := msg.(proto.Message); ok {
 		size := proto.Size(msg)
 		instr.responseSize.Record(ctx, int64(size), s.attributes...)
+	}
+	s.sentCounter++
+	if !errors.Is(err, io.EOF) {
+		span.AddEvent(messageKey, trace.WithAttributes(
+			eventAttributes(msg, s.sentCounter, messageTypeSentAttribute)...),
+		)
 	}
 	return err
 }
