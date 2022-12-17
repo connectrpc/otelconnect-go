@@ -16,6 +16,8 @@ package otelconnect
 
 import (
 	"context"
+	"errors"
+	"io"
 	"strings"
 	"sync"
 
@@ -273,7 +275,6 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			trace.WithAttributes(state.attributes...),
 		)
 		i.config.propagator.Inject(ctx, carrier)
-		//var receivedCounter, sentCounter int
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
@@ -284,21 +285,27 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
-				//receivedCounter++
-				err := state.receive(ctx, instrumentation, msg, conn, span)
-				//if !errors.Is(err, io.EOF) {
-				//	span.AddEvent(messageKey, trace.WithAttributes(eventAttributes(msg, receivedCounter, messageTypeReceivedAttribute)...))
-				//	state.error = err
-				//}
+				err, size := state.receive(ctx, instrumentation, msg, conn, span)
+				instrumentation.responseSize.Record(ctx, int64(size), state.attributes...)
+				instrumentation.responsesPerRPC.Record(ctx, 1, state.attributes...)
+
+
+				if !errors.Is(err, io.EOF) {
+					span.AddEvent(messageKey, trace.WithAttributes(
+						eventAttributes(msg, state.receivedCounter, messageTypeReceivedAttribute)...),
+					)
+				}
 				return err
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				//sentCounter++
-				err := state.send(ctx, instrumentation, msg, conn, span)
-				//if !errors.Is(err, io.EOF) {
-				//	span.AddEvent(messageKey, trace.WithAttributes(eventAttributes(msg, sentCounter, messageTypeSentAttribute)...))
-				//	state.error = err
-				//}
+				err, size := state.send(ctx, instrumentation, msg, conn, span)
+				instrumentation.requestSize.Record(ctx, int64(size), state.attributes...)
+				instrumentation.requestsPerRPC.Record(ctx, 1, state.attributes...)
+				if !errors.Is(err, io.EOF) {
+					span.AddEvent(messageKey, trace.WithAttributes(
+						eventAttributes(msg, state.sentCounter, messageTypeSentAttribute)...),
+					)
+				}
 				return err
 			},
 		}
@@ -310,7 +317,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		requestStartTime := i.config.now()
 		isClient := conn.Spec().IsClient
-		instr, err := i.getAndInitInstrument(isClient)
+		instrumentation, err := i.getAndInitInstrument(isClient)
 
 		if err != nil {
 			return err
@@ -351,24 +358,25 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {
-				//receivedCounter++
-				err := state.receive(ctx, instr, msg, conn, span)
-				//if !errors.Is(err, io.EOF) {
-				//	span.AddEvent(messageKey, trace.WithAttributes(
-				//		eventAttributes(msg, receivedCounter, messageTypeReceivedAttribute)...),
-				//	)
-				//}
+				err, size := state.receive(ctx, instrumentation, msg, conn, span)
+				instrumentation.requestSize.Record(ctx, int64(size), state.attributes...)
+				instrumentation.requestsPerRPC.Record(ctx, 1, state.attributes...)
+				if !errors.Is(err, io.EOF) {
+					span.AddEvent(messageKey, trace.WithAttributes(
+						eventAttributes(msg, state.receivedCounter, messageTypeReceivedAttribute)...),
+					)
+				}
 				return err
 			},
-
 			send: func(msg any, conn connect.StreamingHandlerConn) error {
-				//sentCounter++
-				err := state.send(ctx, instr, msg, conn, span)
-				//if !errors.Is(err, io.EOF) {
-				//	span.AddEvent(messageKey, trace.WithAttributes(
-				//		eventAttributes(msg, sentCounter, messageTypeSentAttribute)...),
-				//	)
-				//}
+				err, size := state.send(ctx, instrumentation, msg, conn, span)
+				instrumentation.responsesPerRPC.Record(ctx, 1, state.attributes...)
+				instrumentation.responseSize.Record(ctx, int64(size), state.attributes...)
+				if !errors.Is(err, io.EOF) {
+					span.AddEvent(messageKey, trace.WithAttributes(
+						eventAttributes(msg, state.sentCounter, messageTypeSentAttribute)...),
+					)
+				}
 				return err
 			},
 		}
@@ -379,7 +387,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		span.SetAttributes(state.attributes...)
 		span.SetStatus(spanStatus(err))
 
-		instr.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
+		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
 		return err
 	}
 }

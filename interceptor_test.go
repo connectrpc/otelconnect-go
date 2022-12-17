@@ -16,7 +16,9 @@ package otelconnect
 
 import (
 	"context"
+	"fmt"
 	"go.opentelemetry.io/otel"
+	"google.golang.org/protobuf/proto"
 	"math/rand"
 	"net"
 	"net/http"
@@ -393,6 +395,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 	}
 }
 
+func TestFoo(t *testing.T){
+	fmt.Println(proto.Size(&pingv1.CumSumRequest{Number: 12}))
+}
 func TestStreamingMetricsClientFail(t *testing.T) {
 	t.Parallel()
 	metricReader, meterProvider := setupMetrics()
@@ -470,6 +475,28 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(CumSumMethod),
 									),
+									Count: 1,
+									Sum:   2.0,
+									Min:   ptr(2.0),
+									Max:   ptr(2.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: rpcClientResponseSize,
+						Unit: unit.Bytes,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
+									),
 									Count: 2,
 									Sum:   4.0,
 									Min:   ptr(2.0),
@@ -494,28 +521,6 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponseSize,
-						Unit: unit.Bytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
-								{
-									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
-										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
-										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(CumSumMethod),
-									),
-									Count: 1,
-									Sum:   2.0,
-									Min:   ptr(2.0),
-									Max:   ptr(2.0),
-								},
-							},
-							Temporality: metricdata.CumulativeTemporality,
-						},
-					},
-					{
 						Name: rpcClientRequestsPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
@@ -524,20 +529,6 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
-										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(CumSumMethod),
-									),
-									Count: 2,
-									Sum:   2,
-									Min:   ptr(1.0),
-									Max:   ptr(1.0),
-								},
-								{
-									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
-										semconv.NetPeerPortKey.Int(port),
-										attribute.Key(rpcBufConnectStatus_code).String("data_loss"),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(CumSumMethod),
@@ -741,8 +732,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(CumSumMethod),
 									),
-									Count: 1,
-									Sum:   1,
+									Count: 2,
+									Sum:   2,
 									Min:   ptr(1.0),
 									Max:   ptr(1.0),
 								},
