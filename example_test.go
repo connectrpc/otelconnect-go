@@ -33,8 +33,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// ExampleOtelGlobals shows how to set up opentelemetry tracing and metrics
-// Using the global otel variables.
+// ExampleOtelGlobals shows how to set up opentelemetry tracing and metrics.
 func ExampleWithTelemetry() {
 	// Set the global trace providers.
 	spanRecorder := tracetest.NewSpanRecorder()
@@ -53,9 +52,7 @@ func ExampleWithTelemetry() {
 	// Start up a new test server.
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{}, otelconnect.WithTelemetry())) // Enable opentelemetry with otelconnect.WithTelemetry()
-	server := httptest.NewUnstartedServer(mux)
-	server.EnableHTTP2 = true
-	server.StartTLS()
+	server := httptest.NewServer(mux)
 	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, otelconnect.WithTelemetry()) // Enable opentelemetry with otelconnect.WithTelemetry()
 	// ping the server
 	_, err := pingClient.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{}))
@@ -78,16 +75,14 @@ func ExampleWithTelemetry() {
 	// Use telemetry with specified providers instead of otel globals
 	mux = http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{},
-		otelconnect.WithTelemetry( // Enable opentelemetry with otelconnect.WithTelemetry()
+		otelconnect.WithTelemetry(
 			otelconnect.WithPropagator(tracePropagator),
 			otelconnect.WithTracerProvider(traceProvider),
 			otelconnect.WithMeterProvider(meterProvider),
 		),
 	),
 	)
-	server = httptest.NewUnstartedServer(mux)
-	server.EnableHTTP2 = true
-	server.StartTLS()
+	server = httptest.NewServer(mux)
 	pingClient = pingv1connect.NewPingServiceClient(server.Client(), server.URL)
 	// ping the server
 	_, err = pingClient.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{}))
