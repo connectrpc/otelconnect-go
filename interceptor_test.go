@@ -759,7 +759,7 @@ func TestMetrics(t *testing.T) {
 	pingClient, host, port := startServer(nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
 		t.Errorf(err.Error())
 	}
 	metrics, err := metricReader.Collect(context.Background())
@@ -914,7 +914,7 @@ func TestWithoutMetrics(t *testing.T) {
 	pingClient, _, _ := startServer(nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
 		t.Errorf(err.Error())
 	}
 	metrics, err := metricReader.Collect(context.Background())
@@ -933,7 +933,7 @@ func TestWithoutTracing(t *testing.T) {
 	pingClient, _, _ := startServer([]connect.HandlerOption{
 		WithTelemetry(WithTracerProvider(traceProvider), WithoutTracing()),
 	}, nil, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
 	if len(spanRecorder.Ended()) != 0 {
@@ -948,7 +948,7 @@ func TestClientSimple(t *testing.T) {
 	pingClient, host, port := startServer(nil, []connect.ClientOption{
 		WithTelemetry(WithTracerProvider(clientTraceProvider)),
 	}, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
 	assertSpans(t, []wantSpans{
@@ -1044,7 +1044,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	}, []connect.ClientOption{
 		WithTelemetry(WithTracerProvider(clientTraceProvider)),
 	}, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
 	assertSpans(t, []wantSpans{}, serverSpanRecorder.Ended())
@@ -1091,7 +1091,7 @@ func TestBasicFilter(t *testing.T) {
 			return false
 		})),
 	}, nil, happyPingServer())
-	req := RequestOfSize(1, 0)
+	req := requestOfSize(1, 0)
 	req.Header().Set(headerKey, headerVal)
 	if _, err := pingClient.Ping(context.Background(), req); err != nil {
 		t.Errorf(err.Error())
@@ -1112,12 +1112,12 @@ func TestFilterHeader(t *testing.T) {
 			return request.Header.Get(headerKey) == headerVal
 		})),
 	}, nil, happyPingServer())
-	req := RequestOfSize(1, 0)
+	req := requestOfSize(1, 0)
 	req.Header().Set(headerKey, headerVal)
 	if _, err := pingClient.Ping(context.Background(), req); err != nil {
 		t.Errorf(err.Error())
 	}
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
 	assertSpans(t, []wantSpans{
@@ -1161,10 +1161,10 @@ func TestInterceptors(t *testing.T) {
 	pingClient, host, port := startServer([]connect.HandlerOption{
 		WithTelemetry(WithTracerProvider(traceProvider)),
 	}, nil, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(2, largeMessageSize)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(2, largeMessageSize)); err != nil {
 		t.Errorf(err.Error())
 	}
 	assertSpans(t, []wantSpans{
@@ -1511,7 +1511,7 @@ func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.Clien
 	return pingClient, host, portint
 }
 
-func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
+func requestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 	body := make([]byte, dataSize)
 	for i := range body {
 		body[i] = byte(rand.Intn(128)) //nolint: gosec
