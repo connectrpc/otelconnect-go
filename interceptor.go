@@ -89,7 +89,13 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		)
 		i.config.propagator.Inject(ctx, carrier)
 		defer span.End()
-		requestSize := msgSize(request)
+
+		var requestSize int
+		if request != nil {
+			if msg, ok := request.Any().(proto.Message); ok {
+				requestSize = proto.Size(msg)
+			}
+		}
 		span.AddEvent(messageKey,
 			trace.WithAttributes(
 				requestSpan,
@@ -99,7 +105,12 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		)
 		response, err := next(ctx, request)
 		attributes = append(attributes, statusCodeAttribute(protocol, err))
-		responseSize := msgSize(response)
+		var responseSize int
+		if err == nil {
+			if msg, ok := response.Any().(proto.Message); ok {
+				responseSize = proto.Size(msg)
+			}
+		}
 		span.AddEvent(messageKey,
 			trace.WithAttributes(
 				responseSpan,
@@ -330,18 +341,4 @@ func spanStatus(err error) (codes.Code, string) {
 		return codes.Error, connectErr.Message()
 	}
 	return codes.Error, err.Error()
-}
-
-type anyer interface {
-	Any() any
-}
-
-func msgSize(msg anyer) int {
-	if msg == nil {
-		return 0
-	}
-	if msg, ok := msg.Any().(proto.Message); ok {
-		return proto.Size(msg)
-	}
-	return 0
 }
