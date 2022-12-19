@@ -67,11 +67,7 @@ func ExampleWithTelemetry() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("Metrics collected:")
-	for _, metricName := range metrics.ScopeMetrics[0].Metrics {
-		fmt.Println(metricName.Name)
-	}
-
+	fmt.Println("Metrics collected:", len(metrics.ScopeMetrics[0].Metrics))
 	// Use telemetry with specified providers instead of otel globals
 	mux = http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(&PingServer{},
@@ -93,17 +89,7 @@ func ExampleWithTelemetry() {
 	// output:
 	// number of spans:  2
 	// TraceIDs equal: true
-	// Metrics collected:
-	// rpc.client.duration
-	// rpc.client.request.size
-	// rpc.client.response.size
-	// rpc.client.requests_per_rpc
-	// rpc.client.responses_per_rpc
-	// rpc.server.duration
-	// rpc.server.request.size
-	// rpc.server.response.size
-	// rpc.server.requests_per_rpc
-	// rpc.server.responses_per_rpc
+	// Metrics collected: 10
 }
 
 type PingServer struct {
