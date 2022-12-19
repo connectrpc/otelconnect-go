@@ -25,6 +25,8 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )
 
+// AttributeFilter is used to filter attributes out based on the [Request] and [attribute.KeyValue].
+// If the filter returns true the attribute will be kept else it will be removed.
 type AttributeFilter func(*Request, attribute.KeyValue) bool
 
 func filterAttributes(request *Request, filter AttributeFilter) func(...attribute.KeyValue) []attribute.KeyValue {
@@ -32,13 +34,15 @@ func filterAttributes(request *Request, filter AttributeFilter) func(...attribut
 		if filter == nil {
 			return values
 		}
-		tmp := values[:0]
+		// Assign a new slice of zero length with the same underlying
+		// array as the values slice. This avoids unnecessary memory allocations.
+		filteredValues := values[:0]
 		for _, attr := range values {
 			if filter(request, attr) {
-				tmp = append(tmp, attr)
+				filteredValues = append(filteredValues, attr)
 			}
 		}
-		return tmp
+		return filteredValues
 	}
 }
 
