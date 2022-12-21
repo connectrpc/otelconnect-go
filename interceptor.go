@@ -63,7 +63,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				return next(ctx, request)
 			}
 		}
-		attributeFilter := filterAttributes(req, i.config.filterAttribute)
+		attributeFilter := i.config.filterAttribute.filter
 		isClient := request.Spec().IsClient
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol)
@@ -118,7 +118,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				semconv.MessageUncompressedSizeKey.Int(responseSize),
 			),
 		)
-		attributes = attributeFilter(attributes...)
+		attributes = attributeFilter(req, attributes...)
 		span.SetStatus(spanStatus(err))
 		span.SetAttributes(attributes...)
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attributes...)
@@ -152,9 +152,9 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				return conn
 			}
 		}
-		attributeFilter := filterAttributes(req, i.config.filterAttribute)
+		attributeFilter := i.config.filterAttribute.filter
 		state := streamingState{
-			attributes: attributeFilter(requestAttributes(req)...),
+			attributes: attributeFilter(req, requestAttributes(req)...),
 		}
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		protocol := protocolToSemConv(conn.Peer().Protocol)
@@ -180,7 +180,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
 				// streams because the error only exists when finishing the stream.
 				state.attributes = append(state.attributes, statusCodeAttribute(protocol, state.error))
-				state.attributes = attributeFilter(state.attributes...)
+				state.attributes = attributeFilter(req, state.attributes...)
 				span.SetAttributes(state.attributes...)
 				span.SetStatus(spanStatus(state.error))
 				span.End()
@@ -193,14 +193,14 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 					return err
 				}
 				span.AddEvent(messageKey,
-					trace.WithAttributes(attributeFilter(
+					trace.WithAttributes(attributeFilter(req,
 						semconv.MessageTypeReceived,
 						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(state.receivedCounter),
 					)...),
 				)
 				// In WrapStreamingClient the 'receive' is a response message.
-				state.attributes = attributeFilter(state.attributes...)
+				state.attributes = attributeFilter(req, state.attributes...)
 				instrumentation.responseSize.Record(ctx, int64(size), state.attributes...)
 				instrumentation.responsesPerRPC.Record(ctx, 1, state.attributes...)
 				return err
@@ -212,14 +212,14 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 					return err
 				}
 				span.AddEvent(messageKey,
-					trace.WithAttributes(attributeFilter(
+					trace.WithAttributes(attributeFilter(req,
 						semconv.MessageTypeSent,
 						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(state.sentCounter),
 					)...),
 				)
 				// In WrapStreamingClient the 'send' is a request message.
-				state.attributes = attributeFilter(state.attributes...)
+				state.attributes = attributeFilter(req, state.attributes...)
 				instrumentation.requestSize.Record(ctx, int64(size), state.attributes...)
 				instrumentation.requestsPerRPC.Record(ctx, 1, state.attributes...)
 				return err
@@ -247,9 +247,9 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return next(ctx, conn)
 			}
 		}
-		attributeFilter := filterAttributes(req, i.config.filterAttribute)
+		attributeFilter := i.config.filterAttribute.filter
 		state := streamingState{
-			attributes: attributeFilter(requestAttributes(req)...),
+			attributes: attributeFilter(req, requestAttributes(req)...),
 		}
 		protocol := protocolToSemConv(req.Peer.Protocol)
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
@@ -276,7 +276,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 					return err
 				}
 				span.AddEvent(messageKey,
-					trace.WithAttributes(attributeFilter(
+					trace.WithAttributes(attributeFilter(req,
 						semconv.MessageTypeReceived,
 						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(state.receivedCounter),
@@ -284,7 +284,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 					),
 				)
 				// In WrapStreamingHandler the 'receive' is a request message.
-				state.attributes = attributeFilter(state.attributes...)
+				state.attributes = attributeFilter(req, state.attributes...)
 				instrumentation.requestSize.Record(ctx, int64(size), state.attributes...)
 				instrumentation.requestsPerRPC.Record(ctx, 1, state.attributes...)
 				return err
@@ -296,7 +296,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 					return err
 				}
 				span.AddEvent(messageKey,
-					trace.WithAttributes(attributeFilter(
+					trace.WithAttributes(attributeFilter(req,
 						semconv.MessageTypeSent,
 						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(state.sentCounter),
@@ -304,7 +304,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 					),
 				)
 				// In WrapStreamingHandler the 'send' is a response message.
-				state.attributes = attributeFilter(state.attributes...)
+				state.attributes = attributeFilter(req, state.attributes...)
 				instrumentation.responsesPerRPC.Record(ctx, 1, state.attributes...)
 				instrumentation.responseSize.Record(ctx, int64(size), state.attributes...)
 				return err
@@ -312,7 +312,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		}
 		err = next(ctx, streamingHandler)
 		state.attributes = append(state.attributes, statusCodeAttribute(protocol, err))
-		state.attributes = attributeFilter(state.attributes...)
+		state.attributes = attributeFilter(req, state.attributes...)
 		span.SetAttributes(state.attributes...)
 		span.SetStatus(spanStatus(err))
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)

@@ -29,21 +29,22 @@ import (
 // If the filter returns true the attribute will be kept else it will be removed.
 type AttributeFilter func(*Request, attribute.KeyValue) bool
 
-func filterAttributes(request *Request, filter AttributeFilter) func(...attribute.KeyValue) []attribute.KeyValue {
-	return func(values ...attribute.KeyValue) []attribute.KeyValue {
-		if filter == nil {
-			return values
-		}
-		// Assign a new slice of zero length with the same underlying
-		// array as the values slice. This avoids unnecessary memory allocations.
-		filteredValues := values[:0]
-		for _, attr := range values {
-			if filter(request, attr) {
-				filteredValues = append(filteredValues, attr)
-			}
-		}
-		return filteredValues
+func (filter AttributeFilter) filter(request *Request, values ...attribute.KeyValue) []attribute.KeyValue {
+	if filter == nil {
+		return values
 	}
+	// Assign a new slice of zero length with the same underlying
+	// array as the values slice. This avoids unnecessary memory allocations.
+	filteredValues := values[:0]
+	for _, attr := range values {
+		if filter(request, attr) {
+			filteredValues = append(filteredValues, attr)
+		}
+	}
+	for i := len(filteredValues); i < len(values); i++ {
+		values[i] = attribute.KeyValue{}
+	}
+	return filteredValues
 }
 
 func procedureAttributes(procedure string) []attribute.KeyValue {
