@@ -37,8 +37,7 @@ const (
 )
 
 type instruments struct {
-	sync.Once
-
+	initOnce        sync.Once
 	initErr         error
 	duration        syncint64.Histogram
 	requestSize     syncint64.Histogram
@@ -48,7 +47,7 @@ type instruments struct {
 }
 
 func (i *instruments) init(meter metric.Meter, isClient bool) {
-	i.Do(func() {
+	i.initOnce.Do(func() {
 		intProvider := meter.SyncInt64()
 		interceptorType := serverKey
 		if isClient {
