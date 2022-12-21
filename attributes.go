@@ -27,6 +27,7 @@ import (
 
 // AttributeFilter is used to filter attributes out based on the [Request] and [attribute.KeyValue].
 // If the filter returns true the attribute will be kept else it will be removed.
+// AttributeFilter must be safe to call concurrently.
 type AttributeFilter func(*Request, attribute.KeyValue) bool
 
 func (filter AttributeFilter) filter(request *Request, values ...attribute.KeyValue) []attribute.KeyValue {
