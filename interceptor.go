@@ -72,24 +72,25 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
+		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
 		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
 		if !isClient {
 			spanKind = trace.SpanKindServer
-			requestSpan, responseSpan = responseSpan, requestSpan
+			requestSpan, responseSpan = semconv.MessageTypeReceived, semconv.MessageTypeSent
+			// if a span already exists in ctx then there must have already been another interceptor
+			// that set it, so don't extract from carrier.
+			if !trace.SpanContextFromContext(ctx).IsValid() {
+				ctx = i.config.propagator.Extract(ctx, carrier)
+			}
 		}
-		carrier := propagation.HeaderCarrier(request.Header())
-		spanCtx := trace.SpanContextFromContext(ctx)
-		ctx = trace.ContextWithRemoteSpanContext(ctx, spanCtx)
-		ctx = i.config.propagator.Extract(ctx, carrier)
 		ctx, span := i.config.tracer.Start(
 			ctx,
 			name,
 			trace.WithSpanKind(spanKind),
 		)
-		i.config.propagator.Inject(ctx, carrier)
 		defer span.End()
-
+		i.config.propagator.Inject(ctx, carrier)
 		var requestSize int
 		if request != nil {
 			if msg, ok := request.Any().(proto.Message); ok {
@@ -158,19 +159,14 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		}
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		protocol := protocolToSemConv(conn.Peer().Protocol)
-		// extract any request headers into the context
-		carrier := propagation.HeaderCarrier(conn.RequestHeader())
-		ctx = i.config.propagator.Extract(ctx, carrier)
-		// get the span context
-		spanCtx := trace.SpanContextFromContext(ctx)
-		// start a new span with the possibly remote span context.
 		ctx, span := i.config.tracer.Start(
-			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
+			ctx,
 			name,
-			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithSpanKind(trace.SpanKindClient),
 			trace.WithAttributes(state.attributes...),
 		)
-		// with the newly created span, inject back into carrier
+		// inject the newly created span into the carrier
+		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		i.config.propagator.Inject(ctx, carrier)
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
@@ -255,11 +251,12 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
-		ctx = i.config.propagator.Extract(ctx, carrier)
+		if !trace.SpanContextFromContext(ctx).IsValid() {
+			ctx = i.config.propagator.Extract(ctx, carrier)
+		}
 		// start a new span with any trace that is in the context
-		spanCtx := trace.SpanContextFromContext(ctx)
 		ctx, span := i.config.tracer.Start(
-			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
+			ctx,
 			name,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(state.attributes...),
