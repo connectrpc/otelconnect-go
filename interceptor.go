@@ -90,7 +90,9 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			trace.WithSpanKind(spanKind),
 		)
 		defer span.End()
-		i.config.propagator.Inject(ctx, carrier)
+		if isClient {
+			i.config.propagator.Inject(ctx, carrier)
+		}
 		var requestSize int
 		if request != nil {
 			if msg, ok := request.Any().(proto.Message); ok {
@@ -261,8 +263,6 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(state.attributes...),
 		)
-		// lastly, inject the context span to the carrier
-		i.config.propagator.Inject(ctx, carrier)
 		defer span.End()
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,

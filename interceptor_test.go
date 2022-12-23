@@ -1229,10 +1229,10 @@ func TestInterceptors(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
-func TestUnaryPropagation(t *testing.T) {
+func TestUnaryHandlerNoTraceParent(t *testing.T) {
 	t.Parallel()
 	assertTraceParent := func(ctx context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-		assert.NotZero(t, req.Header().Get(TraceParentKey))
+		assert.Zero(t, req.Header().Get(TraceParentKey))
 		return connect.NewResponse(&pingv1.PingResponse{Id: req.Msg.Id}), nil
 	}
 	client, _, _ := startServer([]connect.HandlerOption{
@@ -1246,10 +1246,10 @@ func TestUnaryPropagation(t *testing.T) {
 	assert.Equal(t, int64(1), resp.Msg.Id)
 }
 
-func TestStreamingHandlerPropagation(t *testing.T) {
+func TestStreamingHandlerNoTraceParent(t *testing.T) {
 	t.Parallel()
 	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse]) error {
-		assert.NotZero(t, stream.RequestHeader().Get(TraceParentKey))
+		assert.Zero(t, stream.RequestHeader().Get(TraceParentKey))
 		assert.NoError(t, stream.Send(&pingv1.CumSumResponse{Sum: 1}))
 		return nil
 	}
