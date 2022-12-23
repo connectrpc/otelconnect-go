@@ -317,8 +317,8 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	}
 }
 
-func protocolToSemConv(peer string) string {
-	switch peer {
+func protocolToSemConv(protocol string) string {
+	switch protocol {
 	case "grpcweb":
 		return "grpc_web"
 	case "grpc":
@@ -326,7 +326,7 @@ func protocolToSemConv(peer string) string {
 	case "connect":
 		return "buf_connect"
 	default:
-		return peer
+		return protocol
 	}
 }
 
