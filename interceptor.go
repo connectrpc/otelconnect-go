@@ -88,6 +88,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			ctx,
 			name,
 			trace.WithSpanKind(spanKind),
+			trace.WithAttributes(attributes...),
 		)
 		defer span.End()
 		if isClient {
