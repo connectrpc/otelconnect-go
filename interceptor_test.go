@@ -43,6 +43,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	traceapi "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -1268,6 +1269,114 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 	assert.Equal(t, int64(1), resp.Sum)
 }
 
+func TestUnaryPropagation(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	client, _, _ := startServer(
+		[]connect.HandlerOption{WithTelemetry(
+			WithPropagator(propagator),
+			WithTracerProvider(handlerTraceProvider),
+		)}, []connect.ClientOption{
+			WithTelemetry(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+			),
+		}, happyPingServer())
+	_, err := client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	assert.NoError(t, err)
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	assertSpanParent(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestUnaryInterceptorPropagation(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	var ctx context.Context
+	var span traceapi.Span
+	client, _, _ := startServer([]connect.HandlerOption{
+		connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
+			return func(_ context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+				ctx, span = trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+				return unaryFunc(ctx, request)
+			}
+		})),
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(traceProvider),
+		),
+	}, nil, happyPingServer())
+	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Msg.Id)
+	assert.Equal(t, len(spanRecorder.Ended()), 1)
+	recordedSpan := spanRecorder.Ended()[0]
+	assert.True(t, recordedSpan.Parent().IsValid())
+	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
+}
+
+func TestStreamingHandlerInterceptorPropagation(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	var span traceapi.Span
+	ctx := context.Background()
+	client, _, _ := startServer([]connect.HandlerOption{
+		connect.WithInterceptors(streamingHandlerInterceptorFunc(func(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+			return func(_ context.Context, conn connect.StreamingHandlerConn) error {
+				ctx, span = trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
+				return handlerFunc(ctx, conn)
+			}
+		})),
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(traceProvider),
+		),
+	}, nil, happyPingServer(),
+	)
+	stream := client.CumSum(context.Background())
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assert.Equal(t, len(spanRecorder.Ended()), 1)
+	recordedSpan := spanRecorder.Ended()[0]
+	assert.True(t, recordedSpan.Parent().IsValid())
+	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
+}
+
+func TestStreamingPropagation(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	client, _, _ := startServer(
+		[]connect.HandlerOption{WithTelemetry(
+			WithPropagator(propagator),
+			WithTracerProvider(handlerTraceProvider),
+		)}, []connect.ClientOption{
+			WithTelemetry(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+			),
+		}, happyPingServer())
+	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	assertSpanParent(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
 func TestStreamingClientPropagation(t *testing.T) {
 	t.Parallel()
 	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse]) error {
@@ -1448,6 +1557,25 @@ func TestWithAttributeFilter(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
+// streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
+// wraps streaming handler RPCs. It has no effect on unary or streaming client RPCs.
+type streamingHandlerInterceptorFunc func(connect.StreamingHandlerFunc) connect.StreamingHandlerFunc
+
+// WrapUnary implements [Interceptor] with a no-op.
+func (f streamingHandlerInterceptorFunc) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return next
+}
+
+// WrapStreamingClient implements [Interceptor] with a no-op.
+func (f streamingHandlerInterceptorFunc) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+// WrapStreamingHandler implements [Interceptor] by applying the interceptor function.
+func (f streamingHandlerInterceptorFunc) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return f(next)
+}
+
 type wantSpans struct {
 	spanName string
 	events   []trace.Event
@@ -1497,6 +1625,16 @@ func assertSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 			t.Error(diff)
 		}
 	}
+}
+
+func assertSpanParent(t *testing.T, rootSpan traceapi.Span, clientSpan trace.ReadOnlySpan, handlerSpan trace.ReadOnlySpan) {
+	t.Helper()
+	assert.True(t, handlerSpan.Parent().IsRemote())
+	assert.False(t, clientSpan.SpanContext().IsRemote())
+	assert.True(t, clientSpan.SpanContext().IsValid())
+	assert.True(t, clientSpan.SpanContext().IsValid())
+	assert.True(t, clientSpan.Parent().Equal(rootSpan.SpanContext()))
+	assert.Equal(t, clientSpan.SpanContext().TraceID(), handlerSpan.SpanContext().TraceID())
 }
 
 func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption, svc pingv1connect.PingServiceHandler) (pingv1connect.PingServiceClient, string, int) {
