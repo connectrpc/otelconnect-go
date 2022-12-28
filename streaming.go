@@ -36,7 +36,6 @@ type streamingState struct {
 	error           error
 	sentCounter     int
 	receivedCounter int
-	span            trace.Span
 	receiveSize     syncint64.Histogram
 	receivesPerRPC  syncint64.Histogram
 	sendSize        syncint64.Histogram
@@ -53,6 +52,7 @@ func (s *streamingState) addAttributes(attributes ...attribute.KeyValue) {
 }
 
 func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver) error {
+	span := trace.SpanFromContext(ctx)
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -70,7 +70,7 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 		size = proto.Size(msg)
 	}
 	s.receivedCounter++
-	s.span.AddEvent(messageKey,
+	span.AddEvent(messageKey,
 		trace.WithAttributes(s.attributeFilter.filter(s.req,
 			semconv.MessageTypeReceived,
 			semconv.MessageUncompressedSizeKey.Int(size),
@@ -83,6 +83,7 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 }
 
 func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) error {
+	span := trace.SpanFromContext(ctx)
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -100,7 +101,7 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 		size = proto.Size(msg)
 	}
 	s.sentCounter++
-	s.span.AddEvent(messageKey,
+	span.AddEvent(messageKey,
 		trace.WithAttributes(s.attributeFilter.filter(s.req,
 			semconv.MessageTypeSent,
 			semconv.MessageUncompressedSizeKey.Int(size),
