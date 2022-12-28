@@ -155,26 +155,23 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				return conn
 			}
 		}
-		attributeFilter := i.config.filterAttribute.filter
-		reqAttributes := attributeFilter(req, requestAttributes(req)...)
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		protocol := protocolToSemConv(conn.Peer().Protocol)
+		state := newStreamingState(
+			req,
+			i.config.filterAttribute,
+			requestAttributes(req),
+			instrumentation.responseSize,
+			instrumentation.responsesPerRPC,
+			instrumentation.requestSize,
+			instrumentation.requestsPerRPC,
+		)
 		ctx, span := i.config.tracer.Start(
 			ctx,
 			name,
 			trace.WithSpanKind(trace.SpanKindClient),
-			trace.WithAttributes(reqAttributes...),
+			trace.WithAttributes(state.attributes...),
 		)
-		state := streamingState{
-			attributes:      reqAttributes,
-			protocol:        protocol,
-			req:             req,
-			attributeFilter: i.config.filterAttribute,
-			receiveSize:     instrumentation.responseSize,
-			receivesPerRPC:  instrumentation.responsesPerRPC,
-			sendSize:        instrumentation.requestSize,
-			sendsPerRPC:     instrumentation.requestsPerRPC,
-		}
 		// inject the newly created span into the carrier
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		i.config.propagator.Inject(ctx, carrier)
@@ -220,10 +217,17 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return next(ctx, conn)
 			}
 		}
-		attributeFilter := i.config.filterAttribute.filter
-		reqAttributes := attributeFilter(req, requestAttributes(req)...)
 		protocol := protocolToSemConv(req.Peer.Protocol)
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
+		state := newStreamingState(
+			req,
+			i.config.filterAttribute,
+			requestAttributes(req),
+			instrumentation.requestSize,
+			instrumentation.requestsPerRPC,
+			instrumentation.responseSize,
+			instrumentation.responsesPerRPC,
+		)
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		if !trace.SpanContextFromContext(ctx).IsValid() {
@@ -234,19 +238,9 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			ctx,
 			name,
 			trace.WithSpanKind(trace.SpanKindServer),
-			trace.WithAttributes(reqAttributes...),
+			trace.WithAttributes(state.attributes...),
 		)
 		defer span.End()
-		state := streamingState{
-			attributes:      reqAttributes,
-			protocol:        protocol,
-			req:             req,
-			attributeFilter: i.config.filterAttribute,
-			receiveSize:     instrumentation.requestSize,
-			receivesPerRPC:  instrumentation.requestsPerRPC,
-			sendSize:        instrumentation.responseSize,
-			sendsPerRPC:     instrumentation.responsesPerRPC,
-		}
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {

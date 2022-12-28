@@ -42,6 +42,25 @@ type streamingState struct {
 	sendsPerRPC     syncint64.Histogram
 }
 
+func newStreamingState(
+	req *Request,
+	attributeFilter AttributeFilter,
+	attributes []attribute.KeyValue,
+	receiveSize, receivesPerRPC, sendSize, sendsPerRPC syncint64.Histogram,
+) *streamingState {
+	attributes = attributeFilter.filter(req, attributes...)
+	return &streamingState{
+		protocol:        protocolToSemConv(req.Peer.Protocol),
+		attributeFilter: attributeFilter,
+		req:             req,
+		attributes:      attributes,
+		receiveSize:     receiveSize,
+		receivesPerRPC:  receivesPerRPC,
+		sendSize:        sendSize,
+		sendsPerRPC:     sendsPerRPC,
+	}
+}
+
 type sendReceiver interface {
 	Receive(any) error
 	Send(any) error
