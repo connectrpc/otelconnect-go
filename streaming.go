@@ -71,7 +71,6 @@ func (s *streamingState) addAttributes(attributes ...attribute.KeyValue) {
 }
 
 func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver) error {
-	span := trace.SpanFromContext(ctx)
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -84,25 +83,16 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 		// If no error don't add anything because status only exists at end of stream.
 		s.addAttributes(statusCodeAttribute(s.protocol, err))
 	}
-	var size int
-	if msg, ok := msg.(proto.Message); ok {
-		size = proto.Size(msg)
-	}
+	protomsg, ok := msg.(proto.Message)
+	size := proto.Size(protomsg)
 	s.receivedCounter++
-	span.AddEvent(messageKey,
-		trace.WithAttributes(s.attributeFilter.filter(s.req,
-			semconv.MessageTypeReceived,
-			semconv.MessageUncompressedSizeKey.Int(size),
-			semconv.MessageIDKey.Int(s.receivedCounter),
-		)...),
-	)
+	s.event(ctx, semconv.MessageTypeReceived, s.receivedCounter, ok, size)
 	s.receiveSize.Record(ctx, int64(size), s.attributes...)
 	s.receivesPerRPC.Record(ctx, 1, s.attributes...)
 	return err
 }
 
 func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) error {
-	span := trace.SpanFromContext(ctx)
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -115,19 +105,29 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 		// If no error don't add anything because status only exists at end of stream.
 		s.addAttributes(statusCodeAttribute(s.protocol, err))
 	}
-	var size int
-	if msg, ok := msg.(proto.Message); ok {
-		size = proto.Size(msg)
-	}
+	protomsg, ok := msg.(proto.Message)
+	size := proto.Size(protomsg)
 	s.sentCounter++
-	span.AddEvent(messageKey,
-		trace.WithAttributes(s.attributeFilter.filter(s.req,
-			semconv.MessageTypeSent,
-			semconv.MessageUncompressedSizeKey.Int(size),
-			semconv.MessageIDKey.Int(s.sentCounter),
-		)...),
-	)
+	s.event(ctx, semconv.MessageTypeSent, s.sentCounter, ok, size)
 	s.sendSize.Record(ctx, int64(size), s.attributes...)
 	s.sendsPerRPC.Record(ctx, 1, s.attributes...)
 	return err
+}
+
+func (s *streamingState) event(ctx context.Context, messageType attribute.KeyValue, messageID int, msgOk bool, size int) {
+	span := trace.SpanFromContext(ctx)
+	if msgOk {
+		span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
+			s.req,
+			messageType,
+			semconv.MessageUncompressedSizeKey.Int(size),
+			semconv.MessageIDKey.Int(messageID),
+		)...))
+	} else {
+		span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
+			s.req,
+			messageType,
+			semconv.MessageIDKey.Int(messageID),
+		)...))
+	}
 }
