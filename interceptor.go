@@ -186,8 +186,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				// If error is nil a "success" is recorded on the span and on the final duration
 				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
 				// streams because the error only exists when finishing the stream.
-				state.attributes = append(state.attributes, statusCodeAttribute(protocol, state.error))
-				state.attributes = attributeFilter(req, state.attributes...)
+				state.addAttributes(statusCodeAttribute(protocol, state.error))
 				span.SetAttributes(state.attributes...)
 				span.SetStatus(spanStatus(state.error))
 				span.End()
@@ -260,8 +259,7 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			},
 		}
 		err = next(ctx, streamingHandler)
-		state.attributes = append(state.attributes, statusCodeAttribute(protocol, err))
-		state.attributes = attributeFilter(req, state.attributes...)
+		state.addAttributes(statusCodeAttribute(protocol, err))
 		span.SetAttributes(state.attributes...)
 		span.SetStatus(spanStatus(err))
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)

@@ -48,6 +48,10 @@ type sendReceiver interface {
 	Send(any) error
 }
 
+func (s *streamingState) addAttributes(attributes ...attribute.KeyValue) {
+	s.attributes = append(s.attributes, s.attributeFilter.filter(s.req, attributes...)...)
+}
+
 func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver) error {
 	err := conn.Receive(msg)
 	s.mu.Lock()
@@ -59,7 +63,7 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 		s.error = err
 		// If error add it to the attributes because the stream is about to terminate.
 		// If no error don't add anything because status only exists at end of stream.
-		s.attributes = append(s.attributes, s.attributeFilter.filter(s.req, statusCodeAttribute(s.protocol, err))...)
+		s.addAttributes(statusCodeAttribute(s.protocol, err))
 	}
 	var size int
 	if msg, ok := msg.(proto.Message); ok {
@@ -89,7 +93,7 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 		s.error = err
 		// If error add it to the attributes because the stream is about to terminate.
 		// If no error don't add anything because status only exists at end of stream.
-		s.attributes = append(s.attributes, s.attributeFilter.filter(s.req, statusCodeAttribute(s.protocol, err))...)
+		s.addAttributes(statusCodeAttribute(s.protocol, err))
 	}
 	var size int
 	if msg, ok := msg.(proto.Message); ok {
