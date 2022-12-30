@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package otelconnect provides opentelemetry support for connect-go through an interceptor.
-// The specification followed can be found [here](https://github.com/open-telemetry/opentelemetry-specification).
-// Metrics specifications can be found [here](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/rpc-metrics.md).
-// Trace specifications can be found [here](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md).
+// Package otelconnect provides OpenTelemetry tracing and metrics for
+// [github.com/bufbuild/connect-go] servers and clients.
+// The specification followed was the [OpenTelemetry specification] with both the [rpc metrics specification] and [rpc trace specification] implemented.
+//
+// [OpenTelemetry specification]: https://github.com/open-telemetry/opentelemetry-specification
+// [rpc metrics specification]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/semantic_conventions/rpc-metrics.md
+// [rpc trace specification]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md
 package otelconnect
