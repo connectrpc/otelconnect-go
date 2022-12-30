@@ -63,3 +63,8 @@ issues:
     # a lot of duplications
     - path: interceptor_test.go
       linters: [dupl]
+    # non runnable examples are a feature of godoc
+    # These linters complain because these files are testing long
+    # running servers without timeouts
+    - path: example*
+      linters: [ testableexamples, gosec ]
