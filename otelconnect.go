@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package otelconnect provides OpenTelemetry tracing and metrics for
-// [github.com/bufbuild/connect-go] servers and clients.
 package otelconnect
 
 import (
@@ -53,14 +51,13 @@ type config struct {
 	now             func() time.Time
 }
 
-// WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
-// and tracing to Connect clients and handlers.
+// WithTelemetry returns a [connect.Option] that adds OpenTelemetry metrics
+// and tracing to Connect handlers and clients.
 func WithTelemetry(options ...Option) connect.Option {
 	return connect.WithInterceptors(NewInterceptor(options...))
 }
 
-// NewInterceptor constructs and returns OpenTelemetry Interceptors for metrics
-// and tracing.
+// NewInterceptor constructs and returns a [connect.Interceptor] for metrics and tracing.
 func NewInterceptor(options ...Option) connect.Interceptor {
 	cfg := config{
 		now: time.Now,

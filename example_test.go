@@ -33,8 +33,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// ExampleOtelGlobals shows how to set up opentelemetry tracing and metrics.
-func ExampleWithTelemetry() {
+// Example shows a full example of how to set up OpenTelemetry tracing and metrics.
+func Example() {
 	// Set the global trace providers.
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
