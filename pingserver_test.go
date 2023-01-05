@@ -50,7 +50,6 @@ func cumSumHappy(
 		} else if err != nil {
 			return fmt.Errorf("receive request: %w", err)
 		}
-		// client
 		for i := 0; i < messagesPerRequest; i++ {
 			if err := stream.Send(&pingv1.CumSumResponse{Sum: request.Number}); err != nil {
 				return fmt.Errorf("send response: %w", err)

@@ -21,13 +21,44 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric/instrument/syncint64"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
 
 type streamingState struct {
-	protocol string
-	mu       sync.Mutex
-	attrs    []attribute.KeyValue
+	mu              sync.Mutex
+	protocol        string
+	req             *Request
+	attributeFilter AttributeFilter
+	attributes      []attribute.KeyValue
+	error           error
+	sentCounter     int
+	receivedCounter int
+	receiveSize     syncint64.Histogram
+	receivesPerRPC  syncint64.Histogram
+	sendSize        syncint64.Histogram
+	sendsPerRPC     syncint64.Histogram
+}
+
+func newStreamingState(
+	req *Request,
+	attributeFilter AttributeFilter,
+	attributes []attribute.KeyValue,
+	receiveSize, receivesPerRPC, sendSize, sendsPerRPC syncint64.Histogram,
+) *streamingState {
+	attributes = attributeFilter.filter(req, attributes...)
+	return &streamingState{
+		protocol:        protocolToSemConv(req.Peer.Protocol),
+		attributeFilter: attributeFilter,
+		req:             req,
+		attributes:      attributes,
+		receiveSize:     receiveSize,
+		receivesPerRPC:  receivesPerRPC,
+		sendSize:        sendSize,
+		sendsPerRPC:     sendsPerRPC,
+	}
 }
 
 type sendReceiver interface {
@@ -35,32 +66,68 @@ type sendReceiver interface {
 	Send(any) error
 }
 
-func (s *streamingState) receive(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
+func (s *streamingState) addAttributes(attributes ...attribute.KeyValue) {
+	s.attributes = append(s.attributes, s.attributeFilter.filter(s.req, attributes...)...)
+}
+
+func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver) error {
 	err := conn.Receive(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err != nil && !errors.Is(err, io.EOF) {
-		s.attrs = append(s.attrs, statusCodeAttribute(s.protocol, err))
+	if errors.Is(err, io.EOF) {
+		return err
 	}
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		instr.requestSize.Record(ctx, int64(size), s.attrs...)
+	if err != nil {
+		s.error = err
+		// If error add it to the attributes because the stream is about to terminate.
+		// If no error don't add anything because status only exists at end of stream.
+		s.addAttributes(statusCodeAttribute(s.protocol, err))
 	}
-	instr.requestsPerRPC.Record(ctx, 1, s.attrs...)
-	instr.responsesPerRPC.Record(ctx, 1, s.attrs...)
+	protomsg, ok := msg.(proto.Message)
+	size := proto.Size(protomsg)
+	s.receivedCounter++
+	s.event(ctx, semconv.MessageTypeReceived, s.receivedCounter, ok, size)
+	s.receiveSize.Record(ctx, int64(size), s.attributes...)
+	s.receivesPerRPC.Record(ctx, 1, s.attributes...)
 	return err
 }
 
-func (s *streamingState) send(ctx context.Context, instr *instruments, msg any, conn sendReceiver) error {
+func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) error {
 	err := conn.Send(msg)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err != nil && !errors.Is(err, io.EOF) {
-		s.attrs = append(s.attrs, statusCodeAttribute(s.protocol, err))
+	if errors.Is(err, io.EOF) {
+		return err
 	}
-	if msg, ok := msg.(proto.Message); ok {
-		size := proto.Size(msg)
-		instr.responseSize.Record(ctx, int64(size), s.attrs...)
+	if err != nil {
+		s.error = err
+		// If error add it to the attributes because the stream is about to terminate.
+		// If no error don't add anything because status only exists at end of stream.
+		s.addAttributes(statusCodeAttribute(s.protocol, err))
 	}
+	protomsg, ok := msg.(proto.Message)
+	size := proto.Size(protomsg)
+	s.sentCounter++
+	s.event(ctx, semconv.MessageTypeSent, s.sentCounter, ok, size)
+	s.sendSize.Record(ctx, int64(size), s.attributes...)
+	s.sendsPerRPC.Record(ctx, 1, s.attributes...)
 	return err
+}
+
+func (s *streamingState) event(ctx context.Context, messageType attribute.KeyValue, messageID int, msgOk bool, size int) {
+	span := trace.SpanFromContext(ctx)
+	if msgOk {
+		span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
+			s.req,
+			messageType,
+			semconv.MessageUncompressedSizeKey.Int(size),
+			semconv.MessageIDKey.Int(messageID),
+		)...))
+	} else {
+		span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
+			s.req,
+			messageType,
+			semconv.MessageIDKey.Int(messageID),
+		)...))
+	}
 }

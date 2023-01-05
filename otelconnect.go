@@ -12,21 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package otelconnect provides OpenTelemetry tracing and metrics for
-// [connectrpc.com/connect] servers and clients.
 package otelconnect
 
 import (
+	"context"
 	"net/http"
-	"strings"
-	time "time"
+	"time"
 
 	"connectrpc.com/connect"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
-	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -34,31 +32,6 @@ const (
 	semanticVersion     = "semver:" + version
 	instrumentationName = "connectrpc.com/otelconnect"
 )
-
-// WithTelemetry constructs a connect.Option that adds OpenTelemetry metrics
-// and tracing to Connect clients and handlers.
-func WithTelemetry(options ...Option) connect.Option {
-	return connect.WithInterceptors(NewInterceptor(options...))
-}
-
-// NewInterceptor constructs and returns OpenTelemetry Interceptors for metrics
-// and tracing.
-func NewInterceptor(options ...Option) connect.Interceptor {
-	cfg := config{
-		now:            time.Now,
-		tracerProvider: otel.GetTracerProvider(),
-		propagator:     otel.GetTextMapPropagator(),
-		meter: global.MeterProvider().Meter(
-			instrumentationName,
-			metric.WithInstrumentationVersion(semanticVersion),
-		),
-	}
-	for _, opt := range options {
-		opt.apply(&cfg)
-	}
-	intercept := newInterceptor(cfg)
-	return intercept
-}
 
 // Request is the information about each RPC available to filter functions. It
 // contains the common subset of [connect.AnyRequest],
@@ -69,52 +42,38 @@ type Request struct {
 	Header http.Header
 }
 
-func protocolToSemConv(peer connect.Peer) string {
-	switch peer.Protocol {
-	case "grpcweb":
-		return "grpc_web"
-	case "grpc":
-		return "grpc"
-	case "connect":
-		return "buf_connect"
-	default:
-		return peer.Protocol
-	}
+type config struct {
+	filter          func(context.Context, *Request) bool
+	filterAttribute AttributeFilter
+	meter           metric.Meter
+	tracer          trace.Tracer
+	propagator      propagation.TextMapPropagator
+	now             func() time.Time
 }
 
-func parseProcedure(procedure string) []attribute.KeyValue {
-	parts := strings.SplitN(procedure, "/", 2)
-	var attrs []attribute.KeyValue
-	switch len(parts) {
-	case 0:
-		return attrs // invalid
-	case 1:
-		// fall back to treating the whole string as the method
-		if method := parts[0]; method != "" {
-			attrs = append(attrs, semconv.RPCMethodKey.String(method))
-		}
-	default:
-		if svc := parts[0]; svc != "" {
-			attrs = append(attrs, semconv.RPCServiceKey.String(svc))
-		}
-		if method := parts[1]; method != "" {
-			attrs = append(attrs, semconv.RPCMethodKey.String(method))
-		}
-	}
-	return attrs
+// WithTelemetry returns a [connect.Option] that adds OpenTelemetry metrics
+// and tracing to Connect handlers and clients.
+func WithTelemetry(options ...Option) connect.Option {
+	return connect.WithInterceptors(NewInterceptor(options...))
 }
 
-func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
-	codeKey := attribute.Key("rpc." + protocol + ".status_code")
-	// Following the respective specifications, use integers for gRPC codes and
-	// strings for Connect codes.
-	if strings.HasPrefix(protocol, "grpc") {
-		if serverErr != nil {
-			return codeKey.Int64(int64(connect.CodeOf(serverErr)))
-		}
-		return codeKey.Int64(0) // gRPC uses 0 for success
-	} else if serverErr != nil {
-		return codeKey.String(connect.CodeOf(serverErr).String())
+// NewInterceptor constructs and returns a [connect.Interceptor] for metrics and tracing.
+func NewInterceptor(options ...Option) connect.Interceptor {
+	cfg := config{
+		now: time.Now,
+		tracer: otel.GetTracerProvider().Tracer(
+			instrumentationName,
+			trace.WithInstrumentationVersion(semanticVersion),
+		),
+		propagator: otel.GetTextMapPropagator(),
+		meter: global.MeterProvider().Meter(
+			instrumentationName,
+			metric.WithInstrumentationVersion(semanticVersion),
+		),
 	}
-	return codeKey.String("success")
+	for _, opt := range options {
+		opt.apply(&cfg)
+	}
+	intercept := newInterceptor(cfg)
+	return intercept
 }

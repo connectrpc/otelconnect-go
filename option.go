@@ -34,20 +34,22 @@ func WithPropagator(propagator propagation.TextMapPropagator) Option {
 	return &propagatorOption{propagator}
 }
 
+// WithMeterProvider configures the instrumentation to use the supplied [metric.MeterProvider]
+// when extracting and injecting trace context. By default, the instrumentation
+// uses global.MeterProvider().
 func WithMeterProvider(provider metric.MeterProvider) Option {
 	return &meterProviderOption{provider: provider}
 }
 
 // WithTracerProvider configures the instrumentation to use the supplied
-// provider when creating a tracer. By default, the instrumentation uses
-// otel.GetTracerProvider().
+// provider when creating a tracer. By default, the instrumentation
+// uses otel.GetTracerProvider().
 func WithTracerProvider(provider trace.TracerProvider) Option {
 	return &tracerProviderOption{provider}
 }
 
 // WithFilter configures the instrumentation to emit traces and metrics only
-// when the filter function returns true. Filter functions must be safe to call
-// concurrently.
+// when the filter function returns true. Filter functions must be safe to call concurrently.
 func WithFilter(filter func(context.Context, *Request) bool) Option {
 	return &filterOption{filter}
 }
@@ -60,6 +62,21 @@ func WithoutTracing() Option {
 // WithoutMetrics disables metrics.
 func WithoutMetrics() Option {
 	return WithMeterProvider(metric.NewNoopMeterProvider())
+}
+
+// WithAttributeFilter sets the attribute filter for all metrics and trace attributes.
+func WithAttributeFilter(filter AttributeFilter) Option {
+	return &attributeFilterOption{filterAttribute: filter}
+}
+
+type attributeFilterOption struct {
+	filterAttribute AttributeFilter
+}
+
+func (o *attributeFilterOption) apply(c *config) {
+	if o.filterAttribute != nil {
+		c.filterAttribute = o.filterAttribute
+	}
 }
 
 type propagatorOption struct {
@@ -78,7 +95,10 @@ type tracerProviderOption struct {
 
 func (o *tracerProviderOption) apply(c *config) {
 	if o.provider != nil {
-		c.tracerProvider = o.provider
+		c.tracer = o.provider.Tracer(
+			instrumentationName,
+			trace.WithInstrumentationVersion(semanticVersion),
+		)
 	}
 }
 
