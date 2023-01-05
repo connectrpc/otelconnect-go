@@ -32,6 +32,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/propagation"
@@ -42,31 +43,30 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	traceapi "go.opentelemetry.io/otel/trace"
 )
 
-const messagesPerRequest = 2
-
-/*
-
-| Attribute  | Type |
-|---|---|---|---|---|
-| rpc.system | string |
-| rpc.service | string |
-| rpc.method | string |
-| net.peer.name | string |
-| net.peer.port | int |
-
-Bellow aren't added as per [specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/span-general.md#netsock-attributes)
-"Higher-level instrumentations such as HTTP don't always have access to the
-socket-level information and may not be able to populate socket-level attributes."
-
-| net.transport | string |
-| net.sock.family | string |
-| net.sock.peer.addr | string |
-| net.sock.peer.name | string |
-| net.sock.peer.port | int |
-
-*/
+const (
+	messagesPerRequest       = 2
+	successString            = "success"
+	bufConnect               = "buf_connect"
+	CumSumMethod             = "CumSum"
+	PingMethod               = "Ping"
+	FailMethod               = "Fail"
+	UnimplementedString      = "unimplemented"
+	TraceParentKey           = "traceparent"
+	rpcClientDuration        = "rpc.client.duration"
+	rpcClientRequestSize     = "rpc.client.request.size"
+	rpcClientResponseSize    = "rpc.client.response.size"
+	rpcClientRequestsPerRPC  = "rpc.client.requests_per_rpc"
+	rpcClientResponsesPerRPC = "rpc.client.responses_per_rpc"
+	rpcServerRequestSize     = "rpc.server.request.size"
+	rpcServerDuration        = "rpc.server.duration"
+	rpcServerResponseSize    = "rpc.server.response.size"
+	rpcServerRequestsPerRPC  = "rpc.server.requests_per_rpc"
+	rpcServerResponsesPerRPC = "rpc.server.responses_per_rpc"
+	rpcBufConnectStatusCode  = "rpc.buf_connect.status_code"
+)
 
 func TestStreamingMetrics(t *testing.T) {
 	t.Parallel()
@@ -97,7 +97,6 @@ func TestStreamingMetrics(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
 	diff := cmp.Diff(metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
@@ -108,18 +107,18 @@ func TestStreamingMetrics(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: "rpc.server.duration",
-						Unit: "ms",
+						Name: rpcServerDuration,
+						Unit: unit.Milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										attribute.Key(rpcBufConnectStatusCode).String(successString),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -131,7 +130,7 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.request.size",
+						Name: rpcServerRequestSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -139,13 +138,13 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
-									Count: 2,
+									Count: 1,
 									Sum:   2.0,
-									Min:   ptr(0.0),
+									Min:   ptr(2.0),
 									Max:   ptr(2.0),
 								},
 							},
@@ -153,7 +152,7 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.response.size",
+						Name: rpcServerResponseSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -161,9 +160,9 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 2,
 									Sum:   4.0,
@@ -175,7 +174,7 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.requests_per_rpc",
+						Name: rpcServerRequestsPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -183,12 +182,12 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
-									Count: 2,
-									Sum:   2,
+									Count: 1,
+									Sum:   1,
 									Min:   ptr(1.0),
 									Max:   ptr(1.0),
 								},
@@ -197,7 +196,7 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.responses_per_rpc",
+						Name: rpcServerResponsesPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -205,9 +204,9 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 2,
 									Sum:   2,
@@ -271,18 +270,18 @@ func TestStreamingMetricsClient(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: "rpc.client.duration",
-						Unit: "ms",
+						Name: rpcClientDuration,
+						Unit: unit.Milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
+										attribute.Key(rpcBufConnectStatusCode).String(successString),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -294,7 +293,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.request.size",
+						Name: rpcClientRequestSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -302,9 +301,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   2.0,
@@ -316,7 +315,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.response.size",
+						Name: rpcClientResponseSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -324,9 +323,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   2.0,
@@ -338,7 +337,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.requests_per_rpc",
+						Name: rpcClientRequestsPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -346,9 +345,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   1,
@@ -360,7 +359,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.responses_per_rpc",
+						Name: rpcClientResponsesPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -368,9 +367,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   1,
@@ -435,7 +434,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: "rpc.client.duration",
+						Name: rpcClientDuration,
 						Unit: "ms",
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -443,10 +442,10 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -458,7 +457,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.request.size",
+						Name: rpcClientRequestSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -466,45 +465,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
-									),
-									Count: 2,
-									Sum:   4.0,
-									Min:   ptr(2.0),
-									Max:   ptr(2.0),
-								},
-								{
-									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
-										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("data_loss"),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
-									),
-									Count: 1,
-									Sum:   0.0,
-									Min:   ptr(0.0),
-									Max:   ptr(0.0),
-								},
-							},
-							Temporality: metricdata.CumulativeTemporality,
-						},
-					},
-					{
-						Name: "rpc.client.response.size",
-						Unit: unit.Bytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
-								{
-									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
-										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   2.0,
@@ -516,7 +479,43 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.requests_per_rpc",
+						Name: rpcClientResponseSize,
+						Unit: unit.Bytes,
+						Data: metricdata.Histogram{
+							DataPoints: []metricdata.HistogramDataPoint{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
+									),
+									Count: 2,
+									Sum:   4.0,
+									Min:   ptr(2.0),
+									Max:   ptr(2.0),
+								},
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
+									),
+									Count: 1,
+									Sum:   0.0,
+									Min:   ptr(0.0),
+									Max:   ptr(0.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name: rpcClientRequestsPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -524,23 +523,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
-									),
-									Count: 2,
-									Sum:   2,
-									Min:   ptr(1.0),
-									Max:   ptr(1.0),
-								},
-								{
-									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
-										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("data_loss"),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   1,
@@ -552,7 +537,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.responses_per_rpc",
+						Name: rpcClientResponsesPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -560,9 +545,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 2,
 									Sum:   2,
@@ -573,10 +558,10 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("data_loss"),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1,
@@ -640,18 +625,18 @@ func TestStreamingMetricsFail(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: "rpc.server.duration",
-						Unit: "ms",
+						Name: rpcServerDuration,
+						Unit: unit.Milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("data_loss"),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -663,7 +648,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.request.size",
+						Name: rpcServerRequestSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -671,9 +656,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   2.0,
@@ -685,7 +670,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.response.size",
+						Name: rpcServerResponseSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -693,9 +678,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 2,
 									Sum:   4.0,
@@ -707,7 +692,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.requests_per_rpc",
+						Name: rpcServerRequestsPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -715,9 +700,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
 									Count: 1,
 									Sum:   1,
@@ -729,7 +714,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.server.responses_per_rpc",
+						Name: rpcServerResponsesPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -737,12 +722,12 @@ func TestStreamingMetricsFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String("buf_connect"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCMethodKey.String("CumSum"),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(CumSumMethod),
 									),
-									Count: 1,
-									Sum:   1,
+									Count: 2,
+									Sum:   2,
 									Min:   ptr(1.0),
 									Max:   ptr(1.0),
 								},
@@ -775,7 +760,7 @@ func TestMetrics(t *testing.T) {
 	pingClient, host, port := startServer(nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
 		t.Errorf(err.Error())
 	}
 	metrics, err := metricReader.Collect(context.Background())
@@ -792,18 +777,18 @@ func TestMetrics(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: "rpc.client.duration",
-						Unit: "ms",
+						Name: rpcClientDuration,
+						Unit: unit.Milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
-										semconv.RPCMethodKey.String("Ping"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCSystemKey.String("buf_connect"),
+										attribute.Key(rpcBufConnectStatusCode).String(successString),
+										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCSystemKey.String(bufConnect),
 									),
 									Count: 1,
 									Sum:   float64(time.Second.Milliseconds()),
@@ -815,7 +800,7 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.request.size",
+						Name: rpcClientRequestSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -823,10 +808,10 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
-										semconv.RPCMethodKey.String("Ping"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCSystemKey.String("buf_connect"),
+										attribute.Key(rpcBufConnectStatusCode).String(successString),
+										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCSystemKey.String(bufConnect),
 									),
 									Count: 1,
 									Sum:   16,
@@ -838,7 +823,7 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.response.size",
+						Name: rpcClientResponseSize,
 						Unit: unit.Bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -846,10 +831,10 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
-										semconv.RPCMethodKey.String("Ping"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCSystemKey.String("buf_connect"),
+										attribute.Key(rpcBufConnectStatusCode).String(successString),
+										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCSystemKey.String(bufConnect),
 									),
 									Count: 1,
 									Sum:   16,
@@ -861,7 +846,7 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.requests_per_rpc",
+						Name: rpcClientRequestsPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -869,10 +854,10 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
-										semconv.RPCMethodKey.String("Ping"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCSystemKey.String("buf_connect"),
+										attribute.Key(rpcBufConnectStatusCode).String(successString),
+										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCSystemKey.String(bufConnect),
 									),
 									Count: 1,
 									Sum:   1,
@@ -884,7 +869,7 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: "rpc.client.responses_per_rpc",
+						Name: rpcClientResponsesPerRPC,
 						Unit: unit.Dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
@@ -892,10 +877,10 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerIPKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key("rpc.buf_connect.status_code").String("success"),
-										semconv.RPCMethodKey.String("Ping"),
-										semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-										semconv.RPCSystemKey.String("buf_connect"),
+										attribute.Key(rpcBufConnectStatusCode).String(successString),
+										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCSystemKey.String(bufConnect),
 									),
 									Count: 1,
 									Sum:   1,
@@ -930,7 +915,7 @@ func TestWithoutMetrics(t *testing.T) {
 	pingClient, _, _ := startServer(nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 12)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
 		t.Errorf(err.Error())
 	}
 	metrics, err := metricReader.Collect(context.Background())
@@ -949,7 +934,7 @@ func TestWithoutTracing(t *testing.T) {
 	pingClient, _, _ := startServer([]connect.HandlerOption{
 		WithTelemetry(WithTracerProvider(traceProvider), WithoutTracing()),
 	}, nil, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
 	if len(spanRecorder.Ended()) != 0 {
@@ -964,25 +949,25 @@ func TestClientSimple(t *testing.T) {
 	pingClient, host, port := startServer(nil, []connect.ClientOption{
 		WithTelemetry(WithTracerProvider(clientTraceProvider)),
 	}, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{
 		{
-			spanName: "observability.ping.v1.PingService/Ping",
+			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
 			events: []trace.Event{
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -991,10 +976,10 @@ func TestClientSimple(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String("buf_connect"),
-				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.buf_connect.status_code").String("success"),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(PingMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -1014,33 +999,34 @@ func TestHandlerFailCall(t *testing.T) {
 	if err == nil {
 		t.Fatal("expecting error, got nil")
 	}
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{
 		{
-			spanName: "observability.ping.v1.PingService/Fail",
+			spanName: pingv1connect.PingServiceName + "/" + FailMethod,
 			events: []trace.Event{
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(0),
 					},
 				},
 			},
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String("buf_connect"),
-				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-				semconv.RPCMethodKey.String("Fail"),
-				attribute.Key("rpc.buf_connect.status_code").String("unimplemented"),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(FailMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(UnimplementedString),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -1059,26 +1045,26 @@ func TestClientHandlerOpts(t *testing.T) {
 	}, []connect.ClientOption{
 		WithTelemetry(WithTracerProvider(clientTraceProvider)),
 	}, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnarySpans(t, []wantSpans{}, serverSpanRecorder.Ended())
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{}, serverSpanRecorder.Ended())
+	assertSpans(t, []wantSpans{
 		{
-			spanName: "observability.ping.v1.PingService/Ping",
+			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
 			events: []trace.Event{
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1087,10 +1073,10 @@ func TestClientHandlerOpts(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String("buf_connect"),
-				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.buf_connect.status_code").String("success"),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(PingMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -1098,6 +1084,7 @@ func TestClientHandlerOpts(t *testing.T) {
 
 func TestBasicFilter(t *testing.T) {
 	t.Parallel()
+	headerKey, headerVal := "Some-Header", "foobar"
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, _, _ := startServer([]connect.HandlerOption{
@@ -1105,50 +1092,51 @@ func TestBasicFilter(t *testing.T) {
 			return false
 		})),
 	}, nil, happyPingServer())
-	req := RequestOfSize(1, 0)
-	req.Header().Set("Some-Header", "foobar")
+	req := requestOfSize(1, 0)
+	req.Header().Set(headerKey, headerVal)
 	if _, err := pingClient.Ping(context.Background(), req); err != nil {
 		t.Errorf(err.Error())
 	}
 	if len(spanRecorder.Ended()) != 0 {
 		t.Error("unexpected spans recorded")
 	}
-	checkUnarySpans(t, []wantSpans{}, spanRecorder.Ended())
+	assertSpans(t, []wantSpans{}, spanRecorder.Ended())
 }
 
 func TestFilterHeader(t *testing.T) {
 	t.Parallel()
+	headerKey, headerVal := "Some-Header", "foobar"
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer([]connect.HandlerOption{
 		WithTelemetry(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
-			return request.Header.Get("Some-Header") == "foobar"
+			return request.Header.Get(headerKey) == headerVal
 		})),
 	}, nil, happyPingServer())
-	req := RequestOfSize(1, 0)
-	req.Header().Set("Some-Header", "foobar")
+	req := requestOfSize(1, 0)
+	req.Header().Set(headerKey, headerVal)
 	if _, err := pingClient.Ping(context.Background(), req); err != nil {
 		t.Errorf(err.Error())
 	}
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{
 		{
-			spanName: "observability.ping.v1.PingService/Ping",
+			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
 			events: []trace.Event{
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1157,10 +1145,10 @@ func TestFilterHeader(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String("buf_connect"),
-				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.buf_connect.status_code").String("success"),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(PingMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1174,28 +1162,28 @@ func TestInterceptors(t *testing.T) {
 	pingClient, host, port := startServer([]connect.HandlerOption{
 		WithTelemetry(WithTracerProvider(traceProvider)),
 	}, nil, happyPingServer())
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(1, 0)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
-	if _, err := pingClient.Ping(context.Background(), RequestOfSize(2, largeMessageSize)); err != nil {
+	if _, err := pingClient.Ping(context.Background(), requestOfSize(2, largeMessageSize)); err != nil {
 		t.Errorf(err.Error())
 	}
-	checkUnarySpans(t, []wantSpans{
+	assertSpans(t, []wantSpans{
 		{
-			spanName: "observability.ping.v1.PingService/Ping",
+			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
 			events: []trace.Event{
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
 				},
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(2),
 					},
@@ -1204,27 +1192,27 @@ func TestInterceptors(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String("buf_connect"),
-				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.buf_connect.status_code").String("success"),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(PingMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
 			},
 		},
 		{
-			spanName: "observability.ping.v1.PingService/Ping",
+			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
 			events: []trace.Event{
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("RECEIVED"),
+						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(1005),
 					},
 				},
 				{
-					Name: "message",
+					Name: messageKey,
 					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeKey.String("SENT"),
+						semconv.MessageTypeSent,
 						semconv.MessageIDKey.Int(1),
 						semconv.MessageUncompressedSizeKey.Int(1005),
 					},
@@ -1233,19 +1221,19 @@ func TestInterceptors(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerIPKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String("buf_connect"),
-				semconv.RPCServiceKey.String("observability.ping.v1.PingService"),
-				semconv.RPCMethodKey.String("Ping"),
-				attribute.Key("rpc.buf_connect.status_code").String("success"),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(PingMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
 			},
 		},
 	}, spanRecorder.Ended())
 }
 
-func TestPropagation(t *testing.T) {
+func TestUnaryHandlerNoTraceParent(t *testing.T) {
 	t.Parallel()
 	assertTraceParent := func(ctx context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-		assert.NotZero(t, req.Header().Get("traceparent"))
+		assert.Zero(t, req.Header().Get(TraceParentKey))
 		return connect.NewResponse(&pingv1.PingResponse{Id: req.Msg.Id}), nil
 	}
 	client, _, _ := startServer([]connect.HandlerOption{
@@ -1259,13 +1247,342 @@ func TestPropagation(t *testing.T) {
 	assert.Equal(t, int64(1), resp.Msg.Id)
 }
 
+func TestStreamingHandlerNoTraceParent(t *testing.T) {
+	t.Parallel()
+	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse]) error {
+		assert.Zero(t, stream.RequestHeader().Get(TraceParentKey))
+		assert.NoError(t, stream.Send(&pingv1.CumSumResponse{Sum: 1}))
+		return nil
+	}
+	client, _, _ := startServer([]connect.HandlerOption{
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(trace.NewTracerProvider()),
+		),
+	}, nil, &pluggablePingServer{cumSum: assertTraceParent},
+	)
+	stream := client.CumSum(context.Background())
+	assert.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	assert.NoError(t, stream.CloseResponse())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Sum)
+}
+
+func TestUnaryPropagation(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	client, _, _ := startServer(
+		[]connect.HandlerOption{WithTelemetry(
+			WithPropagator(propagator),
+			WithTracerProvider(handlerTraceProvider),
+		)}, []connect.ClientOption{
+			WithTelemetry(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+			),
+		}, happyPingServer())
+	_, err := client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	assert.NoError(t, err)
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	assertSpanParent(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestUnaryInterceptorPropagation(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	var ctx context.Context
+	var span traceapi.Span
+	client, _, _ := startServer([]connect.HandlerOption{
+		connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
+			return func(_ context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+				ctx, span = trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+				return unaryFunc(ctx, request)
+			}
+		})),
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(traceProvider),
+		),
+	}, nil, happyPingServer())
+	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Msg.Id)
+	assert.Equal(t, len(spanRecorder.Ended()), 1)
+	recordedSpan := spanRecorder.Ended()[0]
+	assert.True(t, recordedSpan.Parent().IsValid())
+	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
+}
+
+func TestStreamingHandlerInterceptorPropagation(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	var span traceapi.Span
+	ctx := context.Background()
+	client, _, _ := startServer([]connect.HandlerOption{
+		connect.WithInterceptors(streamingHandlerInterceptorFunc(func(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+			return func(_ context.Context, conn connect.StreamingHandlerConn) error {
+				ctx, span = trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
+				return handlerFunc(ctx, conn)
+			}
+		})),
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(traceProvider),
+		),
+	}, nil, happyPingServer(),
+	)
+	stream := client.CumSum(context.Background())
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assert.Equal(t, len(spanRecorder.Ended()), 1)
+	recordedSpan := spanRecorder.Ended()[0]
+	assert.True(t, recordedSpan.Parent().IsValid())
+	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
+}
+
+func TestStreamingPropagation(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	client, _, _ := startServer(
+		[]connect.HandlerOption{WithTelemetry(
+			WithPropagator(propagator),
+			WithTracerProvider(handlerTraceProvider),
+		)}, []connect.ClientOption{
+			WithTelemetry(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+			),
+		}, happyPingServer())
+	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	assertSpanParent(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestStreamingClientPropagation(t *testing.T) {
+	t.Parallel()
+	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse]) error {
+		assert.NotZero(t, stream.RequestHeader().Get(TraceParentKey))
+		assert.NoError(t, stream.Send(&pingv1.CumSumResponse{Sum: 1}))
+		return nil
+	}
+	client, _, _ := startServer(nil, []connect.ClientOption{
+		WithTelemetry(
+			WithPropagator(propagation.TraceContext{}),
+			WithTracerProvider(trace.NewTracerProvider()),
+		),
+	}, &pluggablePingServer{cumSum: assertTraceParent},
+	)
+	stream := client.CumSum(context.Background())
+	assert.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	assert.NoError(t, stream.CloseResponse())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Sum)
+}
+
+func TestStreamingHandlerTracing(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer([]connect.HandlerOption{
+		WithTelemetry(WithTracerProvider(traceProvider)),
+	}, nil, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
+			events: []trace.Event{
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeReceived,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(CumSumMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestStreamingClientTracing(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer(nil, []connect.ClientOption{
+		WithTelemetry(WithTracerProvider(traceProvider)),
+	}, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
+			events: []trace.Event{
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeReceived,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(CumSumMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestWithAttributeFilter(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer(nil, []connect.ClientOption{
+		WithTelemetry(
+			WithTracerProvider(traceProvider),
+			WithAttributeFilter(func(request *Request, value attribute.KeyValue) bool {
+				if value.Key == semconv.MessageIDKey {
+					return false
+				}
+				if value.Key == semconv.RPCServiceKey {
+					return false
+				}
+				return true
+			},
+			),
+		),
+	}, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
+			events: []trace.Event{
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeReceived,
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCMethodKey.String(CumSumMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+// streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
+// wraps streaming handler RPCs. It has no effect on unary or streaming client RPCs.
+type streamingHandlerInterceptorFunc func(connect.StreamingHandlerFunc) connect.StreamingHandlerFunc
+
+// WrapUnary implements [Interceptor] with a no-op.
+func (f streamingHandlerInterceptorFunc) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return next
+}
+
+// WrapStreamingClient implements [Interceptor] with a no-op.
+func (f streamingHandlerInterceptorFunc) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+// WrapStreamingHandler implements [Interceptor] by applying the interceptor function.
+func (f streamingHandlerInterceptorFunc) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return f(next)
+}
+
 type wantSpans struct {
 	spanName string
 	events   []trace.Event
 	attrs    []attribute.KeyValue
 }
 
-func checkUnarySpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
+func assertSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 	t.Helper()
 	if len(want) != len(got) {
 		t.Errorf("unexpected spans: want %d spans, got %d", len(want), len(got))
@@ -1310,6 +1627,16 @@ func checkUnarySpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 	}
 }
 
+func assertSpanParent(t *testing.T, rootSpan traceapi.Span, clientSpan trace.ReadOnlySpan, handlerSpan trace.ReadOnlySpan) {
+	t.Helper()
+	assert.True(t, handlerSpan.Parent().IsRemote())
+	assert.False(t, clientSpan.SpanContext().IsRemote())
+	assert.True(t, clientSpan.SpanContext().IsValid())
+	assert.True(t, clientSpan.SpanContext().IsValid())
+	assert.True(t, clientSpan.Parent().Equal(rootSpan.SpanContext()))
+	assert.Equal(t, clientSpan.SpanContext().TraceID(), handlerSpan.SpanContext().TraceID())
+}
+
 func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption, svc pingv1connect.PingServiceHandler) (pingv1connect.PingServiceClient, string, int) {
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(svc, handlerOpts...))
@@ -1322,7 +1649,7 @@ func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.Clien
 	return pingClient, host, portint
 }
 
-func RequestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
+func requestOfSize(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
 	body := make([]byte, dataSize)
 	for i := range body {
 		body[i] = byte(rand.Intn(128)) //nolint: gosec
@@ -1375,6 +1702,6 @@ func metricResource() *resource.Resource {
 		attribute.String("service.name", "test"),
 		attribute.String("telemetry.sdk.language", "go"),
 		attribute.String("telemetry.sdk.name", "opentelemetry"),
-		attribute.String("telemetry.sdk.version", "1.11.1"),
+		attribute.String("telemetry.sdk.version", otel.Version()),
 	)
 }
