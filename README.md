@@ -71,20 +71,14 @@ func makeRequest() {
 
 ## Status
 
-`connect-opentelemetry-go` is available as an untagged alpha release. It's
-missing tracing support for streaming RPCs, but otherwise supports metrics and
-tracing for both clients and handlers.
+`connect-opentelemetry-go` is available as an untagged alpha release.
 
 |         | Unary | Streaming Client | Streaming Handler |
 |---------|:-----:|:----------------:|:-----------------:|
 | Metrics | ✅    | ✅               | ✅                |
-| Tracing | ✅    | ❌               | ❌                |
+| Tracing | ✅    | ✅               | ✅                |
 
-For progress on streaming tracing, see [this
-issue](https://connectrpc.com/otelconnect/issues/28).
-
-We plan to tag a production-ready beta release, with tracing for streaming
-RPCs, by the end of 2022. Users of this package should expect breaking changes
+Users of this package should expect breaking changes
 as [the underlying OpenTelemetry
 APIs](https://opentelemetry.io/docs/instrumentation/go/#status-and-releases)
 change. Once the Go OpenTelemetry metrics SDK stabilizes, we'll
