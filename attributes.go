@@ -16,7 +16,6 @@ package otelconnect
 
 import (
 	"net"
-	"net/netip"
 	"strconv"
 	"strings"
 
@@ -83,18 +82,12 @@ func requestAttributes(req *Request) []attribute.KeyValue {
 }
 
 func addressAttributes(address string) []attribute.KeyValue {
-	if addrPort, err := netip.ParseAddrPort(address); err == nil {
-		return []attribute.KeyValue{
-			semconv.NetPeerIPKey.String(addrPort.Addr().String()),
-			semconv.NetPeerPortKey.Int(int(addrPort.Port())),
-		}
-	}
 	if host, port, err := net.SplitHostPort(address); err == nil {
-		portint, err := strconv.Atoi(port)
-		if err != nil {
+		portInt, err := strconv.Atoi(port)
+		if err == nil {
 			return []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.Int(portint),
+				semconv.NetPeerPortKey.Int(portInt),
 			}
 		}
 	}
