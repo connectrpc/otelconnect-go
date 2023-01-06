@@ -1557,6 +1557,61 @@ func TestWithAttributeFilter(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
+func TestWithLowerCardinality(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, _, _ := startServer([]connect.HandlerOption{
+		WithTelemetry(
+			WithTracerProvider(traceProvider),
+			WithLowerServerCardinality(),
+		),
+	}, nil, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
+			events: []trace.Event{
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeReceived,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(CumSumMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
 // streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
 // wraps streaming handler RPCs. It has no effect on unary or streaming client RPCs.
 type streamingHandlerInterceptorFunc func(connect.StreamingHandlerFunc) connect.StreamingHandlerFunc

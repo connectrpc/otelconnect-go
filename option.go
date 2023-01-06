@@ -17,8 +17,10 @@ package otelconnect
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -67,6 +69,26 @@ func WithoutMetrics() Option {
 // WithAttributeFilter sets the attribute filter for all metrics and trace attributes.
 func WithAttributeFilter(filter AttributeFilter) Option {
 	return &attributeFilterOption{filterAttribute: filter}
+}
+
+// WithLowerServerCardinality removes net.peer.port and net.peer.name attributes from server trace and span attributes.
+// This is recommended to use as net.peer server attributes have high cardinality.
+func WithLowerServerCardinality() Option {
+	return &withLowerServerCardinality{}
+}
+
+type withLowerServerCardinality struct{}
+
+func (o *withLowerServerCardinality) apply(c *config) {
+	c.filterAttribute = func(request *Request, value attribute.KeyValue) bool {
+		if request.Spec.IsClient {
+			return true
+		}
+		if value.Key != semconv.NetPeerPortKey && value.Key != semconv.NetPeerNameKey {
+			return true
+		}
+		return false
+	}
 }
 
 type attributeFilterOption struct {
