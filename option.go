@@ -84,10 +84,13 @@ func (o *withLowerServerCardinality) apply(c *config) {
 		if request.Spec.IsClient {
 			return true
 		}
-		if value.Key != semconv.NetPeerPortKey && value.Key != semconv.NetPeerNameKey {
-			return true
+		if value.Key == semconv.NetPeerPortKey {
+			return false
 		}
-		return false
+		if value.Key == semconv.NetPeerNameKey {
+			return false
+		}
+		return true
 	}
 }
 
