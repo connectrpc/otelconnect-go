@@ -113,7 +113,7 @@ func TestStreamingMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										attribute.Key(rpcBufConnectStatusCode).String(successString),
 										semconv.RPCSystemKey.String(bufConnect),
@@ -136,7 +136,7 @@ func TestStreamingMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -158,7 +158,7 @@ func TestStreamingMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -180,7 +180,7 @@ func TestStreamingMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -202,7 +202,7 @@ func TestStreamingMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -276,7 +276,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -299,7 +299,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -321,7 +321,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -343,7 +343,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -365,7 +365,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -440,7 +440,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -463,7 +463,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -485,7 +485,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -498,7 +498,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 								},
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 										semconv.RPCSystemKey.String(bufConnect),
@@ -521,7 +521,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -543,7 +543,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -556,7 +556,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 								},
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -631,7 +631,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 										semconv.RPCSystemKey.String(bufConnect),
@@ -654,7 +654,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -676,7 +676,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -698,7 +698,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -720,7 +720,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -783,7 +783,7 @@ func TestMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										attribute.Key(rpcBufConnectStatusCode).String(successString),
 										semconv.RPCMethodKey.String(PingMethod),
@@ -806,7 +806,7 @@ func TestMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										attribute.Key(rpcBufConnectStatusCode).String(successString),
 										semconv.RPCMethodKey.String(PingMethod),
@@ -829,7 +829,7 @@ func TestMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										attribute.Key(rpcBufConnectStatusCode).String(successString),
 										semconv.RPCMethodKey.String(PingMethod),
@@ -852,7 +852,7 @@ func TestMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										attribute.Key(rpcBufConnectStatusCode).String(successString),
 										semconv.RPCMethodKey.String(PingMethod),
@@ -875,7 +875,7 @@ func TestMetrics(t *testing.T) {
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
 									Attributes: attribute.NewSet(
-										semconv.NetPeerIPKey.String(host),
+										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
 										attribute.Key(rpcBufConnectStatusCode).String(successString),
 										semconv.RPCMethodKey.String(PingMethod),
@@ -974,7 +974,7 @@ func TestClientSimple(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -1021,7 +1021,7 @@ func TestHandlerFailCall(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -1071,7 +1071,7 @@ func TestClientHandlerOpts(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -1143,7 +1143,7 @@ func TestFilterHeader(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -1190,7 +1190,7 @@ func TestInterceptors(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -1219,7 +1219,7 @@ func TestInterceptors(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -1443,7 +1443,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -1490,7 +1490,7 @@ func TestStreamingClientTracing(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
@@ -1547,9 +1547,64 @@ func TestWithAttributeFilter(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.NetPeerIPKey.String(host),
+				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCMethodKey.String(CumSumMethod),
+				attribute.Key(rpcBufConnectStatusCode).String(successString),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestWithoutServerPeerAttributes(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, _, _ := startServer([]connect.HandlerOption{
+		WithTelemetry(
+			WithTracerProvider(traceProvider),
+			WithoutServerPeerAttributes(),
+		),
+	}, nil, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
+			events: []trace.Event{
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeReceived,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(1),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageIDKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(CumSumMethod),
 				attribute.Key(rpcBufConnectStatusCode).String(successString),
 			},
