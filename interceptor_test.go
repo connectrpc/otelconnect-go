@@ -1557,7 +1557,7 @@ func TestWithAttributeFilter(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
-func TestWithLowerCardinality(t *testing.T) {
+func TestWithoutServerPeerAttributes(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
