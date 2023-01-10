@@ -1564,7 +1564,7 @@ func TestWithLowerCardinality(t *testing.T) {
 	pingClient, _, _ := startServer([]connect.HandlerOption{
 		WithTelemetry(
 			WithTracerProvider(traceProvider),
-			WithoutServerNetPeer(),
+			WithoutServerPeerAttributes(),
 		),
 	}, nil, happyPingServer())
 	stream := pingClient.CumSum(context.Background())

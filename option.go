@@ -71,16 +71,10 @@ func WithAttributeFilter(filter AttributeFilter) Option {
 	return &attributeFilterOption{filterAttribute: filter}
 }
 
-// WithoutServerNetPeer removes net.peer.port and net.peer.name attributes from server trace and span attributes.
+// WithoutServerPeerAttributes removes net.peer.port and net.peer.name attributes from server trace and span attributes.
 // This is recommended to use as net.peer server attributes have high cardinality.
-func WithoutServerNetPeer() Option {
-	return &withoutServerNetPeerOption{}
-}
-
-type withoutServerNetPeerOption struct{}
-
-func (o *withoutServerNetPeerOption) apply(c *config) {
-	c.filterAttribute = func(request *Request, value attribute.KeyValue) bool {
+func WithoutServerPeerAttributes() Option {
+	return WithAttributeFilter(func(request *Request, value attribute.KeyValue) bool {
 		if request.Spec.IsClient {
 			return true
 		}
@@ -91,7 +85,7 @@ func (o *withoutServerNetPeerOption) apply(c *config) {
 			return false
 		}
 		return true
-	}
+	})
 }
 
 type attributeFilterOption struct {
