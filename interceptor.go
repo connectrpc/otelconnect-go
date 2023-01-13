@@ -237,15 +237,24 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		)
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
+		traceOpts := []trace.SpanStartOption{
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(state.attributes...),
+		}
 		if !trace.SpanContextFromContext(ctx).IsValid() {
 			ctx = i.config.propagator.Extract(ctx, carrier)
+			if !i.config.trustRemote {
+				traceOpts = append(traceOpts,
+					trace.WithNewRoot(),
+					trace.WithLinks(trace.LinkFromContext(ctx)),
+				)
+			}
 		}
 		// start a new span with any trace that is in the context
 		ctx, span := i.config.tracer.Start(
 			ctx,
 			name,
-			trace.WithSpanKind(trace.SpanKindServer),
-			trace.WithAttributes(state.attributes...),
+			traceOpts...,
 		)
 		defer span.End()
 		streamingHandler := &streamingHandlerInterceptor{

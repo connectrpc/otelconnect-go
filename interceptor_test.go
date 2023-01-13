@@ -1391,6 +1391,7 @@ func TestStreamingPropagation(t *testing.T) {
 		[]connect.HandlerOption{WithTelemetry(
 			WithPropagator(propagator),
 			WithTracerProvider(handlerTraceProvider),
+			WithTrustRemote(),
 		)}, []connect.ClientOption{
 			WithTelemetry(
 				WithPropagator(propagator),
@@ -1403,6 +1404,33 @@ func TestStreamingPropagation(t *testing.T) {
 	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
 	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
 	assertSpanParent(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestWithUntrustedRemoteStreaming(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	client, _, _ := startServer(
+		[]connect.HandlerOption{WithTelemetry(
+			WithPropagator(propagator),
+			WithTracerProvider(handlerTraceProvider),
+		)}, []connect.ClientOption{
+			WithTelemetry(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+			),
+		}, happyPingServer())
+	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	assertSpanLink(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
 }
 
 func TestStreamingClientPropagation(t *testing.T) {
