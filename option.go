@@ -88,6 +88,14 @@ func WithoutServerPeerAttributes() Option {
 	})
 }
 
+// WithTrustRemote sets the interceptor to trust remote spans.
+// By default, all incoming server spans are untrusted and will be linked
+// with a [trace.Link] and will not be a child span.
+// By default, all client spans are trusted and no change occurs when WithTrustRemote is used.
+func WithTrustRemote() Option {
+	return &trustRemoteOption{}
+}
+
 type attributeFilterOption struct {
 	filterAttribute AttributeFilter
 }
@@ -140,4 +148,10 @@ func (m meterProviderOption) apply(c *config) {
 		instrumentationName,
 		metric.WithInstrumentationVersion(semanticVersion),
 	)
+}
+
+type trustRemoteOption struct{}
+
+func (o *trustRemoteOption) apply(c *config) {
+	c.trustRemote = true
 }
