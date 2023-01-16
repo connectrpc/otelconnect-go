@@ -1282,6 +1282,7 @@ func TestUnaryPropagation(t *testing.T) {
 		[]connect.HandlerOption{WithTelemetry(
 			WithPropagator(propagator),
 			WithTracerProvider(handlerTraceProvider),
+			WithTrustRemote(),
 		)}, []connect.ClientOption{
 			WithTelemetry(
 				WithPropagator(propagator),
@@ -1311,6 +1312,7 @@ func TestUnaryInterceptorPropagation(t *testing.T) {
 		WithTelemetry(
 			WithPropagator(propagation.TraceContext{}),
 			WithTracerProvider(traceProvider),
+			WithTrustRemote(),
 		),
 	}, nil, happyPingServer())
 	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
@@ -1320,6 +1322,32 @@ func TestUnaryInterceptorPropagation(t *testing.T) {
 	recordedSpan := spanRecorder.Ended()[0]
 	assert.True(t, recordedSpan.Parent().IsValid())
 	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
+}
+
+func TestWithUntrustedRemoteUnary(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	client, _, _ := startServer(
+		[]connect.HandlerOption{WithTelemetry(
+			WithPropagator(propagator),
+			WithTracerProvider(handlerTraceProvider),
+		)}, []connect.ClientOption{
+			WithTelemetry(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+			),
+		}, happyPingServer())
+	_, err := client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	assert.NoError(t, err)
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	assertSpanLink(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
 }
 
 func TestStreamingHandlerInterceptorPropagation(t *testing.T) {
@@ -1363,6 +1391,7 @@ func TestStreamingPropagation(t *testing.T) {
 		[]connect.HandlerOption{WithTelemetry(
 			WithPropagator(propagator),
 			WithTracerProvider(handlerTraceProvider),
+			WithTrustRemote(),
 		)}, []connect.ClientOption{
 			WithTelemetry(
 				WithPropagator(propagator),
@@ -1375,6 +1404,33 @@ func TestStreamingPropagation(t *testing.T) {
 	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
 	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
 	assertSpanParent(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestWithUntrustedRemoteStreaming(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	client, _, _ := startServer(
+		[]connect.HandlerOption{WithTelemetry(
+			WithPropagator(propagator),
+			WithTracerProvider(handlerTraceProvider),
+		)}, []connect.ClientOption{
+			WithTelemetry(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+			),
+		}, happyPingServer())
+	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	assertSpanLink(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
 }
 
 func TestStreamingClientPropagation(t *testing.T) {
@@ -1690,6 +1746,20 @@ func assertSpanParent(t *testing.T, rootSpan traceapi.Span, clientSpan trace.Rea
 	assert.True(t, clientSpan.SpanContext().IsValid())
 	assert.True(t, clientSpan.Parent().Equal(rootSpan.SpanContext()))
 	assert.Equal(t, clientSpan.SpanContext().TraceID(), handlerSpan.SpanContext().TraceID())
+}
+
+func assertSpanLink(t *testing.T, rootSpan traceapi.Span, clientSpan trace.ReadOnlySpan, handlerSpan trace.ReadOnlySpan) {
+	t.Helper()
+	assert.False(t, handlerSpan.Parent().IsValid())
+	assert.False(t, clientSpan.SpanContext().IsRemote())
+	assert.True(t, clientSpan.SpanContext().IsValid())
+	assert.True(t, clientSpan.Parent().Equal(rootSpan.SpanContext()))
+	// The client was the invoker, so the root TraceID and the client TraceID should be the same.
+	assert.Equal(t, rootSpan.SpanContext().TraceID(), clientSpan.SpanContext().TraceID())
+	assert.NotEqual(t, clientSpan.SpanContext().TraceID(), handlerSpan.SpanContext().TraceID())
+	assert.Len(t, handlerSpan.Links(), 1)
+	assert.Equal(t, handlerSpan.Links()[0].SpanContext.TraceID(), clientSpan.SpanContext().TraceID())
+	assert.Equal(t, handlerSpan.Links()[0].SpanContext.SpanID(), clientSpan.SpanContext().SpanID())
 }
 
 func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption, svc pingv1connect.PingServiceHandler) (pingv1connect.PingServiceClient, string, int) {

@@ -74,6 +74,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
 		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
+		traceOpts := []trace.SpanStartOption{trace.WithAttributes(attributes...)}
 		if !isClient {
 			spanKind = trace.SpanKindServer
 			requestSpan, responseSpan = semconv.MessageTypeReceived, semconv.MessageTypeSent
@@ -81,13 +82,19 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			// that set it, so don't extract from carrier.
 			if !trace.SpanContextFromContext(ctx).IsValid() {
 				ctx = i.config.propagator.Extract(ctx, carrier)
+				if !i.config.trustRemote {
+					traceOpts = append(traceOpts,
+						trace.WithNewRoot(),
+						trace.WithLinks(trace.LinkFromContext(ctx)),
+					)
+				}
 			}
 		}
+		traceOpts = append(traceOpts, trace.WithSpanKind(spanKind))
 		ctx, span := i.config.tracer.Start(
 			ctx,
 			name,
-			trace.WithSpanKind(spanKind),
-			trace.WithAttributes(attributes...),
+			traceOpts...,
 		)
 		defer span.End()
 		if isClient {
@@ -230,15 +237,24 @@ func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		)
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
+		traceOpts := []trace.SpanStartOption{
+			trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(state.attributes...),
+		}
 		if !trace.SpanContextFromContext(ctx).IsValid() {
 			ctx = i.config.propagator.Extract(ctx, carrier)
+			if !i.config.trustRemote {
+				traceOpts = append(traceOpts,
+					trace.WithNewRoot(),
+					trace.WithLinks(trace.LinkFromContext(ctx)),
+				)
+			}
 		}
 		// start a new span with any trace that is in the context
 		ctx, span := i.config.tracer.Start(
 			ctx,
 			name,
-			trace.WithSpanKind(trace.SpanKindServer),
-			trace.WithAttributes(state.attributes...),
+			traceOpts...,
 		)
 		defer span.End()
 		streamingHandler := &streamingHandlerInterceptor{
