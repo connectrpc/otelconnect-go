@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
@@ -952,6 +953,8 @@ func TestClientSimple(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
 		t.Errorf(err.Error())
 	}
+	require.Len(t, clientSpanRecorder.Ended(), 1)
+	require.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Unset)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
@@ -999,6 +1002,8 @@ func TestHandlerFailCall(t *testing.T) {
 	if err == nil {
 		t.Fatal("expecting error, got nil")
 	}
+	require.Len(t, clientSpanRecorder.Ended(), 1)
+	require.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Error)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + FailMethod,
@@ -1049,6 +1054,8 @@ func TestClientHandlerOpts(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 	assertSpans(t, []wantSpans{}, serverSpanRecorder.Ended())
+	require.Len(t, clientSpanRecorder.Ended(), 1)
+	require.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Unset)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
@@ -1469,6 +1476,8 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, stream.CloseRequest())
 	assert.NoError(t, stream.CloseResponse())
+	require.Len(t, spanRecorder.Ended(), 1)
+	require.Equal(t, spanRecorder.Ended()[0].Status().Code, codes.Unset)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
@@ -1524,6 +1533,8 @@ func TestStreamingClientTracing(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, stream.CloseRequest())
 	assert.NoError(t, stream.CloseResponse())
+	require.Len(t, spanRecorder.Ended(), 1)
+	require.Equal(t, spanRecorder.Ended()[0].Status().Code, codes.Unset)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
@@ -1666,6 +1677,41 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 			},
 		},
 	}, spanRecorder.Ended())
+}
+
+func TestStreamingSpanStatus(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	client, _, _ := startServer(
+		[]connect.HandlerOption{WithTelemetry(
+			WithPropagator(propagator),
+			WithTracerProvider(handlerTraceProvider),
+		)}, []connect.ClientOption{
+			WithTelemetry(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+			),
+		}, failPingServer())
+	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	_, err = stream.Receive()
+	assert.NoError(t, err)
+	_, err = stream.Receive()
+	assert.Error(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	assert.Equal(t, handlerSpanRecorder.Ended()[0].Status().Code, codes.Error)
+	assert.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Error)
 }
 
 // streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
