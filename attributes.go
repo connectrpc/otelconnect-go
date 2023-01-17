@@ -15,7 +15,9 @@
 package otelconnect
 
 import (
+	"fmt"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -107,4 +109,37 @@ func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
 		return codeKey.String(connect.CodeOf(serverErr).String())
 	}
 	return codeKey.String("success")
+}
+
+func headerAttributes(protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
+	var attributes []attribute.KeyValue
+	for _, allowedKey := range allowedKeys {
+		if val, ok := metadata[allowedKey]; ok {
+			keyValue := attribute.String(
+				formatHeaderAttributes(protocol, eventType, formatHeaderAttributeKey(allowedKey)),
+				formatHeaderAttributeValue(val),
+			)
+			attributes = append(attributes, keyValue)
+		}
+	}
+	return attributes
+}
+
+func formatHeaderAttributes(protocol, eventType, key string) string {
+	return fmt.Sprintf("rpc.%s.%s.metadata.%s", protocol, eventType, key)
+}
+
+func formatHeaderAttributeKey(key string) string {
+	return strings.ReplaceAll(strings.ToLower(key), "-", "_")
+}
+
+func formatHeaderAttributeValue(val []string) string {
+	var stringVal string
+	for i, elem := range val {
+		stringVal += fmt.Sprintf(`"%s"`, elem)
+		if i != len(val)-1 {
+			stringVal += ", "
+		}
+	}
+	return "[" + stringVal + "]"
 }
