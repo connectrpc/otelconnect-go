@@ -50,6 +50,8 @@ type config struct {
 	propagator      propagation.TextMapPropagator
 	now             func() time.Time
 	trustRemote     bool
+	metadataReqKeys []string
+	metadataResKeys []string
 }
 
 // WithTelemetry returns a [connect.Option] that adds OpenTelemetry metrics

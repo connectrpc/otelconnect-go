@@ -16,6 +16,7 @@ package otelconnect
 
 import (
 	"context"
+	"net/http"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -96,6 +97,15 @@ func WithTrustRemote() Option {
 	return &trustRemoteOption{}
 }
 
+// WithTraceMetadataAttributes enables metadata attributes for the metadata keys provided.
+// Attributes will be added as Trace attributes only.
+func WithTraceMetadataAttributes(requestKeys, responseKeys []string) Option {
+	return &traceMetadataAttributeOption{
+		metadataReqKeys: requestKeys,
+		metadataResKeys: responseKeys,
+	}
+}
+
 type attributeFilterOption struct {
 	filterAttribute AttributeFilter
 }
@@ -154,4 +164,18 @@ type trustRemoteOption struct{}
 
 func (o *trustRemoteOption) apply(c *config) {
 	c.trustRemote = true
+}
+
+type traceMetadataAttributeOption struct {
+	metadataReqKeys []string
+	metadataResKeys []string
+}
+
+func (o *traceMetadataAttributeOption) apply(c *config) {
+	for _, key := range o.metadataReqKeys {
+		c.metadataReqKeys = append(c.metadataReqKeys, http.CanonicalHeaderKey(key))
+	}
+	for _, key := range o.metadataResKeys {
+		c.metadataResKeys = append(c.metadataResKeys, http.CanonicalHeaderKey(key))
+	}
 }
