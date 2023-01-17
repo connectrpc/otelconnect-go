@@ -36,19 +36,19 @@ func BenchmarkStreamingServerNoOptions(b *testing.B) {
 }
 
 func BenchmarkStreamingServerClientOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{WithTelemetry()}, []connect.ClientOption{WithTelemetry()})
+	testStreaming(b, []connect.HandlerOption{connect.WithInterceptors(New())}, []connect.ClientOption{connect.WithInterceptors(New())})
 }
 
 func BenchmarkStreamingServerOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{WithTelemetry()}, []connect.ClientOption{})
+	testStreaming(b, []connect.HandlerOption{connect.WithInterceptors(New())}, []connect.ClientOption{})
 }
 
 func BenchmarkStreamingClientOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{}, []connect.ClientOption{WithTelemetry()})
+	testStreaming(b, []connect.HandlerOption{}, []connect.ClientOption{connect.WithInterceptors(New())})
 }
 
 func BenchmarkUnaryOtel(b *testing.B) {
-	benchUnary(b, []connect.HandlerOption{WithTelemetry()}, []connect.ClientOption{WithTelemetry()})
+	benchUnary(b, []connect.HandlerOption{connect.WithInterceptors(New())}, []connect.ClientOption{connect.WithInterceptors(New())})
 }
 
 func BenchmarkUnary(b *testing.B) {
