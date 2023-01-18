@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/propagation"
@@ -1274,6 +1275,41 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 	assert.NoError(t, stream.CloseResponse())
 	assert.NoError(t, err)
 	assert.Equal(t, int64(1), resp.Sum)
+}
+
+func TestPropagationBaggage(t *testing.T) {
+	t.Parallel()
+	propagator := propagation.NewCompositeTextMapPropagator(propagation.Baggage{}, propagation.TraceContext{})
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	assertBaggage := connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+			assert.Equal(t, "foo=bar", request.Header().Get("Baggage"))
+			return next(ctx, request)
+		}
+	}))
+	client, _, _ := startServer(
+		[]connect.HandlerOption{
+			connect.WithInterceptors(
+				NewInterceptor(
+					WithPropagator(propagator),
+					WithTracerProvider(traceProvider),
+					WithTrustRemote()),
+			),
+			assertBaggage,
+		}, []connect.ClientOption{
+			connect.WithInterceptors(
+				NewInterceptor(
+					WithPropagator(propagator),
+					WithTracerProvider(traceProvider),
+				),
+			),
+			assertBaggage,
+		}, happyPingServer())
+	bag, _ := baggage.Parse("foo=bar")
+	ctx := baggage.ContextWithBaggage(context.Background(), bag)
+	_, err := client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	assert.NoError(t, err)
 }
 
 func TestUnaryPropagation(t *testing.T) {
