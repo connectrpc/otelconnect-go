@@ -134,12 +134,14 @@ func formatHeaderAttributeKey(key string) string {
 }
 
 func formatHeaderAttributeValue(val []string) string {
-	var stringVal string
+	var builder strings.Builder
+	builder.WriteString("[")
 	for i, elem := range val {
-		stringVal += fmt.Sprintf(`"%s"`, elem)
+		builder.WriteString(fmt.Sprintf(`"%s"`, elem))
 		if i != len(val)-1 {
-			stringVal += ", "
+			builder.WriteString(", ")
 		}
 	}
-	return "[" + stringVal + "]"
+	builder.WriteString("]")
+	return builder.String()
 }
