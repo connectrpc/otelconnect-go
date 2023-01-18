@@ -1687,15 +1687,17 @@ func TestStreamingSpanStatus(t *testing.T) {
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	client, _, _ := startServer(
-		[]connect.HandlerOption{WithTelemetry(
-			WithPropagator(propagator),
-			WithTracerProvider(handlerTraceProvider),
-		)}, []connect.ClientOption{
-			WithTelemetry(
-				WithPropagator(propagator),
-				WithTracerProvider(clientTraceProvider),
-			),
-		}, failPingServer())
+		[]connect.HandlerOption{
+			connect.WithInterceptors(
+				NewInterceptor(
+					WithPropagator(propagator),
+					WithTracerProvider(handlerTraceProvider),
+				))}, []connect.ClientOption{
+			connect.WithInterceptors(
+				NewInterceptor(
+					WithPropagator(propagator),
+					WithTracerProvider(clientTraceProvider),
+				))}, failPingServer())
 	stream := client.CumSum(context.Background())
 	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
 	_, err := stream.Receive()
