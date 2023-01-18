@@ -16,7 +16,6 @@ package otelconnect
 
 import (
 	"context"
-	"go.opentelemetry.io/otel/baggage"
 	"math/rand"
 	"net"
 	"net/http"
@@ -35,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/propagation"
@@ -1290,15 +1290,19 @@ func TestPropagationBaggage(t *testing.T) {
 	}))
 	client, _, _ := startServer(
 		[]connect.HandlerOption{
-			WithTelemetry(
-				WithPropagator(propagator),
-				WithTracerProvider(traceProvider),
-				WithTrustRemote()),
+			connect.WithInterceptors(
+				NewInterceptor(
+					WithPropagator(propagator),
+					WithTracerProvider(traceProvider),
+					WithTrustRemote()),
+			),
 			assertBaggage,
 		}, []connect.ClientOption{
-			WithTelemetry(
-				WithPropagator(propagator),
-				WithTracerProvider(traceProvider),
+			connect.WithInterceptors(
+				NewInterceptor(
+					WithPropagator(propagator),
+					WithTracerProvider(traceProvider),
+				),
 			),
 			assertBaggage,
 		}, happyPingServer())
