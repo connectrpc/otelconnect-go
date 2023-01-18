@@ -18,28 +18,53 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/bufbuild/connect-go"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
 
-type interceptor struct {
+// Interceptor implements [connect.Interceptor] that adds
+// OpenTelemetry metrics and tracing to connect handlers and clients.
+type Interceptor struct {
 	config             config
 	clientInstruments  instruments
 	handlerInstruments instruments
 }
 
-func newInterceptor(cfg config) *interceptor {
-	return &interceptor{
+var _ connect.Interceptor = &Interceptor{}
+
+// NewInterceptor constructs and returns an Interceptor which implements [connect.Interceptor]
+// that adds OpenTelemetry metrics and tracing to Connect handlers and clients.
+func NewInterceptor(options ...Option) *Interceptor {
+	cfg := config{
+		now: time.Now,
+		tracer: otel.GetTracerProvider().Tracer(
+			instrumentationName,
+			trace.WithInstrumentationVersion(semanticVersion),
+		),
+		propagator: otel.GetTextMapPropagator(),
+		meter: global.MeterProvider().Meter(
+			instrumentationName,
+			metric.WithInstrumentationVersion(semanticVersion),
+		),
+	}
+	for _, opt := range options {
+		opt.apply(&cfg)
+	}
+	return &Interceptor{
 		config: cfg,
 	}
 }
 
-func (i *interceptor) getAndInitInstrument(isClient bool) (*instruments, error) {
+func (i *Interceptor) getAndInitInstrument(isClient bool) (*instruments, error) {
 	if isClient {
 		i.clientInstruments.init(i.config.meter, isClient)
 		return &i.clientInstruments, i.clientInstruments.initErr
@@ -49,7 +74,7 @@ func (i *interceptor) getAndInitInstrument(isClient bool) (*instruments, error) 
 }
 
 // WrapUnary implements otel tracing and metrics for unary handlers.
-func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 		requestStartTime := i.config.now()
 		req := &Request{
@@ -145,7 +170,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 }
 
 // WrapStreamingClient implements otel tracing and metrics for streaming connect clients.
-func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		requestStartTime := i.config.now()
 		conn := next(ctx, spec)
@@ -215,7 +240,7 @@ func (i *interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 }
 
 // WrapStreamingHandler implements otel tracing and metrics for streaming connect handlers.
-func (i *interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		requestStartTime := i.config.now()
 		isClient := conn.Spec().IsClient
@@ -301,7 +326,7 @@ func protocolToSemConv(protocol string) string {
 
 func spanStatus(err error) (codes.Code, string) {
 	if err == nil {
-		return codes.Ok, ""
+		return codes.Unset, ""
 	}
 	if connectErr := new(connect.Error); errors.As(err, &connectErr) {
 		return codes.Error, connectErr.Message()

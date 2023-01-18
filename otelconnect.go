@@ -20,9 +20,7 @@ import (
 	"time"
 
 	"github.com/bufbuild/connect-go"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -52,31 +50,4 @@ type config struct {
 	trustRemote     bool
 	metadataReqKeys []string
 	metadataResKeys []string
-}
-
-// WithTelemetry returns a [connect.Option] that adds OpenTelemetry metrics
-// and tracing to Connect handlers and clients.
-func WithTelemetry(options ...Option) connect.Option {
-	return connect.WithInterceptors(NewInterceptor(options...))
-}
-
-// NewInterceptor constructs and returns a [connect.Interceptor] for metrics and tracing.
-func NewInterceptor(options ...Option) connect.Interceptor {
-	cfg := config{
-		now: time.Now,
-		tracer: otel.GetTracerProvider().Tracer(
-			instrumentationName,
-			trace.WithInstrumentationVersion(semanticVersion),
-		),
-		propagator: otel.GetTextMapPropagator(),
-		meter: global.MeterProvider().Meter(
-			instrumentationName,
-			metric.WithInstrumentationVersion(semanticVersion),
-		),
-	}
-	for _, opt := range options {
-		opt.apply(&cfg)
-	}
-	intercept := newInterceptor(cfg)
-	return intercept
 }
