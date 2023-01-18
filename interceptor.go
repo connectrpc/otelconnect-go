@@ -315,7 +315,7 @@ func protocolToSemConv(protocol string) string {
 
 func spanStatus(err error) (codes.Code, string) {
 	if err == nil {
-		return codes.Ok, ""
+		return codes.Unset, ""
 	}
 	if connectErr := new(connect.Error); errors.As(err, &connectErr) {
 		return codes.Error, connectErr.Message()
