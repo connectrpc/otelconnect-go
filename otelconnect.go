@@ -52,9 +52,9 @@ type config struct {
 	trustRemote     bool
 }
 
-// New constructs and returns a [connect.Interceptor] that adds OpenTelemetry metrics
+// NewInterceptor constructs and returns a [connect.Interceptor] that adds OpenTelemetry metrics
 // and tracing to Connect handlers and clients.
-func New(options ...Option) connect.Interceptor {
+func NewInterceptor(options ...Option) connect.Interceptor {
 	cfg := config{
 		now: time.Now,
 		tracer: otel.GetTracerProvider().Tracer(
