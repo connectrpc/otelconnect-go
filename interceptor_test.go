@@ -1182,16 +1182,17 @@ func TestHeaderAttribute(t *testing.T) {
 	attributeCumsumRes := attribute.String(cumsumResKey, attributeValue)
 	metadataOption := WithTraceMetadataAttributes([]string{pingReq, cumsumReq}, []string{pingRes, cumsumRes})
 	client, _, _ := startServer(
-		[]connect.HandlerOption{WithTelemetry(
-			WithPropagator(propagator),
-			WithTracerProvider(handlerTraceProvider),
-			metadataOption,
-		)}, []connect.ClientOption{
-			WithTelemetry(
+		[]connect.HandlerOption{
+			connect.WithInterceptors(NewInterceptor(
+				WithPropagator(propagator),
+				WithTracerProvider(handlerTraceProvider),
+				metadataOption,
+			))}, []connect.ClientOption{
+			connect.WithInterceptors(NewInterceptor(
 				WithPropagator(propagator),
 				WithTracerProvider(clientTraceProvider),
 				metadataOption,
-			),
+			)),
 		}, &pluggablePingServer{
 			ping: func(ctx context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 				response := connect.NewResponse(&pingv1.PingResponse{})
