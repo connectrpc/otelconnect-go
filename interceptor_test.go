@@ -1174,12 +1174,12 @@ func TestHeaderAttribute(t *testing.T) {
 	cumsumReqKey := "rpc.buf_connect.request.metadata.cumsumreq"
 	cumsumResKey := "rpc.buf_connect.response.metadata.cumsumres"
 	value := "value"
-	attributeValue := `["value"]`
-	attributeValueLong := `["value", "value"]`
-	attributePingReq := attribute.String(pingReqKey, attributeValue)
-	attributeCumsumReq := attribute.String(cumsumReqKey, attributeValue)
-	attributePingRes := attribute.String(pingResKey, attributeValueLong)
-	attributeCumsumRes := attribute.String(cumsumResKey, attributeValue)
+	attributeValue := []string{value}
+	attributeValueLong := []string{value, value}
+	attributePingReq := attribute.StringSlice(pingReqKey, attributeValue)
+	attributeCumsumReq := attribute.StringSlice(cumsumReqKey, attributeValue)
+	attributePingRes := attribute.StringSlice(pingResKey, attributeValueLong)
+	attributeCumsumRes := attribute.StringSlice(cumsumResKey, attributeValue)
 	metadataOption := WithTraceMetadataAttributes([]string{pingReq, cumsumReq}, []string{pingRes, cumsumRes})
 	client, _, _ := startServer(
 		[]connect.HandlerOption{

@@ -115,9 +115,9 @@ func headerAttributes(protocol, eventType string, metadata http.Header, allowedK
 	var attributes []attribute.KeyValue
 	for _, allowedKey := range allowedKeys {
 		if val, ok := metadata[allowedKey]; ok {
-			keyValue := attribute.String(
+			keyValue := attribute.StringSlice(
 				formatHeaderAttributes(protocol, eventType, formatHeaderAttributeKey(allowedKey)),
-				formatHeaderAttributeValue(val),
+				val,
 			)
 			attributes = append(attributes, keyValue)
 		}
@@ -131,17 +131,4 @@ func formatHeaderAttributes(protocol, eventType, key string) string {
 
 func formatHeaderAttributeKey(key string) string {
 	return strings.ReplaceAll(strings.ToLower(key), "-", "_")
-}
-
-func formatHeaderAttributeValue(val []string) string {
-	var builder strings.Builder
-	builder.WriteString("[")
-	for i, elem := range val {
-		builder.WriteString(fmt.Sprintf(`"%s"`, elem))
-		if i != len(val)-1 {
-			builder.WriteString(", ")
-		}
-	}
-	builder.WriteString("]")
-	return builder.String()
 }
