@@ -51,7 +51,7 @@ import (
 const (
 	messagesPerRequest       = 2
 	successString            = "success"
-	bufConnect               = "buf_connect"
+	bufConnect               = "connect_rpc"
 	CumSumMethod             = "CumSum"
 	PingMethod               = "Ping"
 	FailMethod               = "Fail"
@@ -67,7 +67,7 @@ const (
 	rpcServerResponseSize    = "rpc.server.response.size"
 	rpcServerRequestsPerRPC  = "rpc.server.requests_per_rpc"
 	rpcServerResponsesPerRPC = "rpc.server.responses_per_rpc"
-	rpcBufConnectStatusCode  = "rpc.buf_connect.status_code"
+	rpcBufConnectStatusCode  = "rpc.connect_rpc.status_code"
 )
 
 func TestStreamingMetrics(t *testing.T) {

@@ -307,7 +307,7 @@ func protocolToSemConv(protocol string) string {
 	case "grpc":
 		return "grpc"
 	case "connect":
-		return "buf_connect"
+		return "connect_rpc"
 	default:
 		return protocol
 	}
