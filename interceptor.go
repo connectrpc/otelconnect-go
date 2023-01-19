@@ -308,12 +308,12 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 
 func protocolToSemConv(protocol string) string {
 	switch protocol {
-	case "grpcweb":
-		return "grpc_web"
-	case "grpc":
-		return "grpc"
-	case "connect":
-		return "connect_rpc"
+	case grpcwebString:
+		return grpcwebProtocol
+	case grpcProtocol:
+		return grpcProtocol
+	case connectString:
+		return connectProtocol
 	default:
 		return protocol
 	}

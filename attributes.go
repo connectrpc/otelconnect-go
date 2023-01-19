@@ -98,13 +98,13 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 	// Following the respective specifications, use integers and "status_code" for
 	// gRPC codes in contrast to strings and "error_code" for Connect codes.
 	switch protocol {
-	case "grpc", "grpc_web":
+	case grpcProtocol, grpcwebProtocol:
 		codeKey := attribute.Key("rpc." + protocol + ".status_code")
 		if serverErr != nil {
 			return codeKey.Int64(int64(connect.CodeOf(serverErr))), true
 		}
 		return codeKey.Int64(0), true // gRPC uses 0 for success
-	case "connect_rpc":
+	case connectProtocol:
 		codeKey := attribute.Key("rpc." + protocol + ".error_code")
 		if serverErr != nil {
 			return codeKey.String(connect.CodeOf(serverErr).String()), true
