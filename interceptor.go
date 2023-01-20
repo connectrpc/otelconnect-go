@@ -139,7 +139,9 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			),
 		)
 		response, err := next(ctx, request)
-		attributes = append(attributes, statusCodeAttribute(protocol, err))
+		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
+			attributes = append(attributes, statusCode)
+		}
 		var responseSize int
 		if err == nil {
 			if msg, ok := response.Any().(proto.Message); ok {
@@ -214,7 +216,9 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				// If error is nil a "success" is recorded on the span and on the final duration
 				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
 				// streams because the error only exists when finishing the stream.
-				state.addAttributes(statusCodeAttribute(protocol, state.error))
+				if statusCode, ok := statusCodeAttribute(protocol, state.error); ok {
+					state.addAttributes(statusCode)
+				}
 				span.SetAttributes(state.attributes...)
 				span.SetStatus(spanStatus(state.error))
 				span.End()
@@ -292,7 +296,9 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			},
 		}
 		err = next(ctx, streamingHandler)
-		state.addAttributes(statusCodeAttribute(protocol, err))
+		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
+			state.addAttributes(statusCode)
+		}
 		span.SetAttributes(state.attributes...)
 		span.SetStatus(spanStatus(err))
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
@@ -302,12 +308,12 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 
 func protocolToSemConv(protocol string) string {
 	switch protocol {
-	case "grpcweb":
-		return "grpc_web"
-	case "grpc":
-		return "grpc"
-	case "connect":
-		return "buf_connect"
+	case grpcwebString:
+		return grpcwebProtocol
+	case grpcProtocol:
+		return grpcProtocol
+	case connectString:
+		return connectProtocol
 	default:
 		return protocol
 	}
