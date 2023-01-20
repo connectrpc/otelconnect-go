@@ -1159,10 +1159,10 @@ func TestHeaderAttribute(t *testing.T) {
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	pingReq, pingRes, cumsumReq, cumsumRes := "pingReq", "pingRes", "cumsumReq", "cumsumRes"
-	pingReqKey := "rpc.buf_connect.request.metadata.pingreq"
-	pingResKey := "rpc.buf_connect.response.metadata.pingres"
-	cumsumReqKey := "rpc.buf_connect.request.metadata.cumsumreq"
-	cumsumResKey := "rpc.buf_connect.response.metadata.cumsumres"
+	pingReqKey := "rpc.connect_rpc.request.metadata.pingreq"
+	pingResKey := "rpc.connect_rpc.response.metadata.pingres"
+	cumsumReqKey := "rpc.connect_rpc.request.metadata.cumsumreq"
+	cumsumResKey := "rpc.connect_rpc.response.metadata.cumsumres"
 	value := "value"
 	attributeValue := []string{value}
 	attributeValueLong := []string{value, value}
