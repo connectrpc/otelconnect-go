@@ -116,11 +116,11 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 }
 
 func headerAttributes(protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
-	var attributes []attribute.KeyValue
+	attributes := make([]attribute.KeyValue, 0, len(allowedKeys))
 	for _, allowedKey := range allowedKeys {
 		if val, ok := metadata[allowedKey]; ok {
 			keyValue := attribute.StringSlice(
-				formatHeaderAttributes(protocol, eventType, formatHeaderAttributeKey(allowedKey)),
+				formatHeaderAttributeKey(protocol, eventType, allowedKey),
 				val,
 			)
 			attributes = append(attributes, keyValue)
@@ -129,10 +129,9 @@ func headerAttributes(protocol, eventType string, metadata http.Header, allowedK
 	return attributes
 }
 
-func formatHeaderAttributes(protocol, eventType, key string) string {
+// formatHeaderAttributeKey formats header attributes as suggested by the OpenTelemetry specification:
+// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md#grpc-request-and-response-metadata
+func formatHeaderAttributeKey(protocol, eventType, key string) string {
+	key = strings.ReplaceAll(strings.ToLower(key), "-", "_")
 	return fmt.Sprintf("rpc.%s.%s.metadata.%s", protocol, eventType, key)
-}
-
-func formatHeaderAttributeKey(key string) string {
-	return strings.ReplaceAll(strings.ToLower(key), "-", "_")
 }
