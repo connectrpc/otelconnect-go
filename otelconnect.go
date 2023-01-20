@@ -29,6 +29,11 @@ const (
 	version             = "0.0.1-dev"
 	semanticVersion     = "semver:" + version
 	instrumentationName = "github.com/bufbuild/connect-opentelemetry-go"
+	grpcProtocol        = "grpc"
+	grpcwebString       = "grpcweb"
+	grpcwebProtocol     = "grpc_web"
+	connectString       = "connect"
+	connectProtocol     = "connect_rpc"
 )
 
 // Request is the information about each RPC available to filter functions. It

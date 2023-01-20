@@ -96,19 +96,23 @@ func addressAttributes(address string) []attribute.KeyValue {
 	return []attribute.KeyValue{semconv.NetPeerNameKey.String(address)}
 }
 
-func statusCodeAttribute(protocol string, serverErr error) attribute.KeyValue {
-	codeKey := attribute.Key("rpc." + protocol + ".status_code")
-	// Following the respective specifications, use integers for gRPC codes and
-	// strings for Connect codes.
-	if strings.HasPrefix(protocol, "grpc") {
+func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, bool) {
+	// Following the respective specifications, use integers and "status_code" for
+	// gRPC codes in contrast to strings and "error_code" for Connect codes.
+	switch protocol {
+	case grpcProtocol, grpcwebProtocol:
+		codeKey := attribute.Key("rpc." + protocol + ".status_code")
 		if serverErr != nil {
-			return codeKey.Int64(int64(connect.CodeOf(serverErr)))
+			return codeKey.Int64(int64(connect.CodeOf(serverErr))), true
 		}
-		return codeKey.Int64(0) // gRPC uses 0 for success
-	} else if serverErr != nil {
-		return codeKey.String(connect.CodeOf(serverErr).String())
+		return codeKey.Int64(0), true // gRPC uses 0 for success
+	case connectProtocol:
+		codeKey := attribute.Key("rpc." + protocol + ".error_code")
+		if serverErr != nil {
+			return codeKey.String(connect.CodeOf(serverErr).String()), true
+		}
 	}
-	return codeKey.String("success")
+	return attribute.KeyValue{}, false
 }
 
 func headerAttributes(protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
