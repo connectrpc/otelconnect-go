@@ -97,12 +97,19 @@ func WithTrustRemote() Option {
 	return &trustRemoteOption{}
 }
 
-// WithTraceMetadataAttributes enables metadata attributes for the metadata keys provided.
+// WithTraceRequestHeader enables header attributes for the request header keys provided.
 // Attributes will be added as Trace attributes only.
-func WithTraceMetadataAttributes(requestKeys, responseKeys []string) Option {
-	return &traceMetadataAttributeOption{
-		metadataReqKeys: requestKeys,
-		metadataResKeys: responseKeys,
+func WithTraceRequestHeader(keys ...string) Option {
+	return &traceRequestHeaderOption{
+		keys: keys,
+	}
+}
+
+// WithTraceResponseHeader enables header attributes for the response header keys provided.
+// Attributes will be added as Trace attributes only.
+func WithTraceResponseHeader(keys ...string) Option {
+	return &traceResponseHeaderOption{
+		keys: keys,
 	}
 }
 
@@ -166,16 +173,22 @@ func (o *trustRemoteOption) apply(c *config) {
 	c.trustRemote = true
 }
 
-type traceMetadataAttributeOption struct {
-	metadataReqKeys []string
-	metadataResKeys []string
+type traceRequestHeaderOption struct {
+	keys []string
 }
 
-func (o *traceMetadataAttributeOption) apply(c *config) {
-	for _, key := range o.metadataReqKeys {
-		c.metadataReqKeys = append(c.metadataReqKeys, http.CanonicalHeaderKey(key))
+func (o *traceRequestHeaderOption) apply(c *config) {
+	for _, key := range o.keys {
+		c.requestHeaderKeys = append(c.requestHeaderKeys, http.CanonicalHeaderKey(key))
 	}
-	for _, key := range o.metadataResKeys {
-		c.metadataResKeys = append(c.metadataResKeys, http.CanonicalHeaderKey(key))
+}
+
+type traceResponseHeaderOption struct {
+	keys []string
+}
+
+func (o *traceResponseHeaderOption) apply(c *config) {
+	for _, key := range o.keys {
+		c.responseHeaderKeys = append(c.responseHeaderKeys, http.CanonicalHeaderKey(key))
 	}
 }

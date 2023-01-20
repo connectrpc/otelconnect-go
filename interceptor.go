@@ -101,7 +101,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
 		traceOpts := []trace.SpanStartOption{
 			trace.WithAttributes(attributes...),
-			trace.WithAttributes(headerAttributes(protocol, requestKey, req.Header, i.config.metadataReqKeys)...),
+			trace.WithAttributes(headerAttributes(protocol, requestKey, req.Header, i.config.requestHeaderKeys)...),
 		}
 		if !isClient {
 			spanKind = trace.SpanKindServer
@@ -150,7 +150,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			if msg, ok := response.Any().(proto.Message); ok {
 				responseSize = proto.Size(msg)
 			}
-			span.SetAttributes(headerAttributes(protocol, responseKey, response.Header(), i.config.metadataResKeys)...)
+			span.SetAttributes(headerAttributes(protocol, responseKey, response.Header(), i.config.responseHeaderKeys)...)
 		}
 		span.AddEvent(messageKey,
 			trace.WithAttributes(
@@ -227,8 +227,8 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				// request metadata attributes are added here because connect interceptors don't have access to request
 				// metadata until the send function is called. This means that traces are created without the request
 				// metadata attributes, so samplers don't have access to metadata attributes in streaming clients.
-				span.SetAttributes(headerAttributes(protocol, requestKey, conn.RequestHeader(), i.config.metadataReqKeys)...)
-				span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.metadataResKeys)...)
+				span.SetAttributes(headerAttributes(protocol, requestKey, conn.RequestHeader(), i.config.requestHeaderKeys)...)
+				span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 				span.SetStatus(spanStatus(state.error))
 				span.End()
 				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
@@ -278,7 +278,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		traceOpts := []trace.SpanStartOption{
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(state.attributes...),
-			trace.WithAttributes(headerAttributes(protocol, requestKey, req.Header, i.config.metadataReqKeys)...),
+			trace.WithAttributes(headerAttributes(protocol, requestKey, req.Header, i.config.requestHeaderKeys)...),
 		}
 		if !trace.SpanContextFromContext(ctx).IsValid() {
 			ctx = i.config.propagator.Extract(ctx, carrier)
@@ -310,7 +310,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			state.addAttributes(statusCode)
 		}
 		span.SetAttributes(state.attributes...)
-		span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.metadataResKeys)...)
+		span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 		span.SetStatus(spanStatus(err))
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
 		return err
