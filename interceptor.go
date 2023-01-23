@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bufbuild/connect-go"
@@ -204,18 +205,28 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			instrumentation.requestSize,
 			instrumentation.requestsPerRPC,
 		)
-		ctx, span := i.config.tracer.Start(
-			ctx,
-			name,
-			trace.WithSpanKind(trace.SpanKindClient),
-			trace.WithAttributes(state.attributes...),
-		)
-		// inject the newly created span into the carrier
-		carrier := propagation.HeaderCarrier(conn.RequestHeader())
-		i.config.propagator.Inject(ctx, carrier)
+		var span trace.Span
+		var createSpanOnce sync.Once
+		createSpan := func() {
+			ctx, span = i.config.tracer.Start(
+				ctx,
+				name,
+				trace.WithSpanKind(trace.SpanKindClient),
+				trace.WithAttributes(state.attributes...),
+				trace.WithAttributes(headerAttributes(
+					protocol,
+					requestKey,
+					conn.RequestHeader(),
+					i.config.requestHeaderKeys)...),
+			)
+			// inject the newly created span into the carrier
+			carrier := propagation.HeaderCarrier(conn.RequestHeader())
+			i.config.propagator.Inject(ctx, carrier)
+		}
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
+				createSpanOnce.Do(createSpan)
 				// state.attributes is updated with the final error that was recorded.
 				// If error is nil a "success" is recorded on the span and on the final duration
 				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
@@ -224,10 +235,6 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 					state.addAttributes(statusCode)
 				}
 				span.SetAttributes(state.attributes...)
-				// request metadata attributes are added here because connect interceptors don't have access to request
-				// metadata until the send function is called. This means that traces are created without the request
-				// metadata attributes, so samplers don't have access to metadata attributes in streaming clients.
-				span.SetAttributes(headerAttributes(protocol, requestKey, conn.RequestHeader(), i.config.requestHeaderKeys)...)
 				span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 				span.SetStatus(spanStatus(state.error))
 				span.End()
@@ -237,6 +244,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				return state.receive(ctx, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
+				createSpanOnce.Do(createSpan)
 				return state.send(ctx, msg, conn)
 			},
 		}

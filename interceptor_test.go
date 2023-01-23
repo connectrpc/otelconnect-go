@@ -1511,6 +1511,7 @@ func TestStreamingPropagation(t *testing.T) {
 			)),
 		}, happyPingServer())
 	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.Send(nil))
 	assert.NoError(t, stream.CloseRequest())
 	assert.NoError(t, stream.CloseResponse())
 	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
@@ -1538,6 +1539,7 @@ func TestWithUntrustedRemoteStreaming(t *testing.T) {
 			)),
 		}, happyPingServer())
 	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.Send(nil))
 	assert.NoError(t, stream.CloseRequest())
 	assert.NoError(t, stream.CloseResponse())
 	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
@@ -1560,6 +1562,7 @@ func TestStreamingClientPropagation(t *testing.T) {
 	}, &pluggablePingServer{cumSum: assertTraceParent},
 	)
 	stream := client.CumSum(context.Background())
+	assert.NoError(t, stream.Send(nil))
 	assert.NoError(t, stream.CloseRequest())
 	resp, err := stream.Receive()
 	assert.NoError(t, stream.CloseResponse())
