@@ -20,7 +20,6 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/instrument/syncint64"
 	"go.opentelemetry.io/otel/metric/unit"
 )
 
@@ -39,49 +38,48 @@ const (
 type instruments struct {
 	initOnce        sync.Once
 	initErr         error
-	duration        syncint64.Histogram
-	requestSize     syncint64.Histogram
-	responseSize    syncint64.Histogram
-	requestsPerRPC  syncint64.Histogram
-	responsesPerRPC syncint64.Histogram
+	duration        instrument.Int64Histogram
+	requestSize     instrument.Int64Histogram
+	responseSize    instrument.Int64Histogram
+	requestsPerRPC  instrument.Int64Histogram
+	responsesPerRPC instrument.Int64Histogram
 }
 
 func (i *instruments) init(meter metric.Meter, isClient bool) {
 	i.initOnce.Do(func() {
-		intProvider := meter.SyncInt64()
 		interceptorType := serverKey
 		if isClient {
 			interceptorType = clientKey
 		}
-		i.duration, i.initErr = intProvider.Histogram(
+		i.duration, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, durationKey),
 			instrument.WithUnit(unit.Milliseconds),
 		)
 		if i.initErr != nil {
 			return
 		}
-		i.requestSize, i.initErr = intProvider.Histogram(
+		i.requestSize, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, requestSizeKey),
 			instrument.WithUnit(unit.Bytes),
 		)
 		if i.initErr != nil {
 			return
 		}
-		i.responseSize, i.initErr = intProvider.Histogram(
+		i.responseSize, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, responseSizeKey),
 			instrument.WithUnit(unit.Bytes),
 		)
 		if i.initErr != nil {
 			return
 		}
-		i.requestsPerRPC, i.initErr = intProvider.Histogram(
+		i.requestsPerRPC, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, requestsPerRPCKey),
 			instrument.WithUnit(unit.Dimensionless),
 		)
 		if i.initErr != nil {
 			return
 		}
-		i.responsesPerRPC, i.initErr = intProvider.Histogram(
+		i.responsesPerRPC, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, responsesPerRPCKey),
 			instrument.WithUnit(unit.Dimensionless),
 		)
