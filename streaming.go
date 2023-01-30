@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric/instrument/syncint64"
+	"go.opentelemetry.io/otel/metric/instrument"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
@@ -36,17 +36,17 @@ type streamingState struct {
 	error           error
 	sentCounter     int
 	receivedCounter int
-	receiveSize     syncint64.Histogram
-	receivesPerRPC  syncint64.Histogram
-	sendSize        syncint64.Histogram
-	sendsPerRPC     syncint64.Histogram
+	receiveSize     instrument.Int64Histogram
+	receivesPerRPC  instrument.Int64Histogram
+	sendSize        instrument.Int64Histogram
+	sendsPerRPC     instrument.Int64Histogram
 }
 
 func newStreamingState(
 	req *Request,
 	attributeFilter AttributeFilter,
 	attributes []attribute.KeyValue,
-	receiveSize, receivesPerRPC, sendSize, sendsPerRPC syncint64.Histogram,
+	receiveSize, receivesPerRPC, sendSize, sendsPerRPC instrument.Int64Histogram,
 ) *streamingState {
 	attributes = attributeFilter.filter(req, attributes...)
 	return &streamingState{
