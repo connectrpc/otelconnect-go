@@ -16,6 +16,7 @@ package otelconnect
 
 import (
 	"context"
+	"net/http"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -96,6 +97,22 @@ func WithTrustRemote() Option {
 	return &trustRemoteOption{}
 }
 
+// WithTraceRequestHeader enables header attributes for the request header keys provided.
+// Attributes will be added as Trace attributes only.
+func WithTraceRequestHeader(keys ...string) Option {
+	return &traceRequestHeaderOption{
+		keys: keys,
+	}
+}
+
+// WithTraceResponseHeader enables header attributes for the response header keys provided.
+// Attributes will be added as Trace attributes only.
+func WithTraceResponseHeader(keys ...string) Option {
+	return &traceResponseHeaderOption{
+		keys: keys,
+	}
+}
+
 type attributeFilterOption struct {
 	filterAttribute AttributeFilter
 }
@@ -154,4 +171,24 @@ type trustRemoteOption struct{}
 
 func (o *trustRemoteOption) apply(c *config) {
 	c.trustRemote = true
+}
+
+type traceRequestHeaderOption struct {
+	keys []string
+}
+
+func (o *traceRequestHeaderOption) apply(c *config) {
+	for _, key := range o.keys {
+		c.requestHeaderKeys = append(c.requestHeaderKeys, http.CanonicalHeaderKey(key))
+	}
+}
+
+type traceResponseHeaderOption struct {
+	keys []string
+}
+
+func (o *traceResponseHeaderOption) apply(c *config) {
+	for _, key := range o.keys {
+		c.responseHeaderKeys = append(c.responseHeaderKeys, http.CanonicalHeaderKey(key))
+	}
 }

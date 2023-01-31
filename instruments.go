@@ -33,6 +33,8 @@ const (
 	messageKey         = "message"
 	serverKey          = "server"
 	clientKey          = "client"
+	requestKey         = "request"
+	responseKey        = "response"
 )
 
 type instruments struct {

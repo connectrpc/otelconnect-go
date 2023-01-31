@@ -15,7 +15,9 @@
 package otelconnect
 
 import (
+	"fmt"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -111,4 +113,25 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 		}
 	}
 	return attribute.KeyValue{}, false
+}
+
+func headerAttributes(protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
+	attributes := make([]attribute.KeyValue, 0, len(allowedKeys))
+	for _, allowedKey := range allowedKeys {
+		if val, ok := metadata[allowedKey]; ok {
+			keyValue := attribute.StringSlice(
+				formatHeaderAttributeKey(protocol, eventType, allowedKey),
+				val,
+			)
+			attributes = append(attributes, keyValue)
+		}
+	}
+	return attributes
+}
+
+// formatHeaderAttributeKey formats header attributes as suggested by the OpenTelemetry specification:
+// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md#grpc-request-and-response-metadata
+func formatHeaderAttributeKey(protocol, eventType, key string) string {
+	key = strings.ReplaceAll(strings.ToLower(key), "-", "_")
+	return fmt.Sprintf("rpc.%s.%s.metadata.%s", protocol, eventType, key)
 }

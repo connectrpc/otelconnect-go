@@ -46,11 +46,13 @@ type Request struct {
 }
 
 type config struct {
-	filter          func(context.Context, *Request) bool
-	filterAttribute AttributeFilter
-	meter           metric.Meter
-	tracer          trace.Tracer
-	propagator      propagation.TextMapPropagator
-	now             func() time.Time
-	trustRemote     bool
+	filter             func(context.Context, *Request) bool
+	filterAttribute    AttributeFilter
+	meter              metric.Meter
+	tracer             trace.Tracer
+	propagator         propagation.TextMapPropagator
+	now                func() time.Time
+	trustRemote        bool
+	requestHeaderKeys  []string
+	responseHeaderKeys []string
 }

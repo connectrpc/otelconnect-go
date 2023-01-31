@@ -1151,6 +1151,88 @@ func TestFilterHeader(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
+func TestHeaderAttribute(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	pingReq, pingRes, cumsumReq, cumsumRes := "pingReq", "pingRes", "cumsumReq", "cumsumRes"
+	pingReqKey := "rpc.connect_rpc.request.metadata.pingreq"
+	pingResKey := "rpc.connect_rpc.response.metadata.pingres"
+	cumsumReqKey := "rpc.connect_rpc.request.metadata.cumsumreq"
+	cumsumResKey := "rpc.connect_rpc.response.metadata.cumsumres"
+	value := "value"
+	attributeValue := []string{value}
+	attributeValueLong := []string{value, value}
+	attributePingReq := attribute.StringSlice(pingReqKey, attributeValue)
+	attributeCumsumReq := attribute.StringSlice(cumsumReqKey, attributeValue)
+	attributePingRes := attribute.StringSlice(pingResKey, attributeValueLong)
+	attributeCumsumRes := attribute.StringSlice(cumsumResKey, attributeValue)
+	requestHeaderOption := WithTraceRequestHeader(pingReq, cumsumReq)
+	responseHeaderOption := WithTraceResponseHeader(pingRes, cumsumRes)
+	client, _, _ := startServer(
+		[]connect.HandlerOption{
+			connect.WithInterceptors(NewInterceptor(
+				WithPropagator(propagator),
+				WithTracerProvider(handlerTraceProvider),
+				requestHeaderOption,
+				responseHeaderOption,
+			))}, []connect.ClientOption{
+			connect.WithInterceptors(NewInterceptor(
+				WithPropagator(propagator),
+				WithTracerProvider(clientTraceProvider),
+				requestHeaderOption,
+				responseHeaderOption,
+			)),
+		}, &pluggablePingServer{
+			ping: func(ctx context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+				response := connect.NewResponse(&pingv1.PingResponse{})
+				response.Header().Set(pingRes, value)
+				response.Header().Add(pingRes, value) // Add two values to test formatting
+				return response, nil
+			},
+			cumSum: func(ctx context.Context, stream *connect.BidiStream[pingv1.CumSumRequest, pingv1.CumSumResponse]) error {
+				stream.ResponseHeader().Set(cumsumRes, value)
+				_, _ = stream.Receive()
+				assert.NoError(t, stream.Send(&pingv1.CumSumResponse{Sum: 1}))
+				return nil
+			},
+		})
+	pingRequest := connect.NewRequest(&pingv1.PingRequest{Id: 1})
+	// Set request metadata for unary ping request
+	pingRequest.Header().Set(pingReq, value)
+	_, err := client.Ping(context.Background(), pingRequest)
+	assert.NoError(t, err)
+	stream := client.CumSum(context.Background())
+	// Set request metadata for streaming cumsum
+	stream.RequestHeader().Set(cumsumReq, value)
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{}))
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assert.Equal(t, len(handlerSpanRecorder.Ended()), 2)
+	assert.Equal(t, len(clientSpanRecorder.Ended()), 2)
+	handlerSpans := handlerSpanRecorder.Ended()
+	handlerPingSpan := handlerSpans[0]
+	handlerCumsumSpan := handlerSpans[1]
+	clientSpans := clientSpanRecorder.Ended()
+	clientPingSpan := clientSpans[0]
+	clientCumsumSpan := clientSpans[1]
+	// Request spans from handler
+	require.Contains(t, handlerPingSpan.Attributes(), attributePingReq)
+	require.Contains(t, handlerCumsumSpan.Attributes(), attributeCumsumReq)
+	// Response spans from handler
+	require.Contains(t, handlerPingSpan.Attributes(), attributePingRes)
+	require.Contains(t, handlerCumsumSpan.Attributes(), attributeCumsumRes)
+	// Request spans from client
+	require.Contains(t, clientPingSpan.Attributes(), attributePingReq)
+	require.Contains(t, clientCumsumSpan.Attributes(), attributeCumsumReq)
+	// Response spans from client
+	require.Contains(t, clientPingSpan.Attributes(), attributePingRes)
+	require.Contains(t, clientCumsumSpan.Attributes(), attributeCumsumRes)
+}
+
 func TestInterceptors(t *testing.T) {
 	t.Parallel()
 	const largeMessageSize = 1000
@@ -1429,6 +1511,7 @@ func TestStreamingPropagation(t *testing.T) {
 			)),
 		}, happyPingServer())
 	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.Send(nil))
 	assert.NoError(t, stream.CloseRequest())
 	assert.NoError(t, stream.CloseResponse())
 	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
@@ -1456,6 +1539,7 @@ func TestWithUntrustedRemoteStreaming(t *testing.T) {
 			)),
 		}, happyPingServer())
 	stream := client.CumSum(ctx)
+	assert.NoError(t, stream.Send(nil))
 	assert.NoError(t, stream.CloseRequest())
 	assert.NoError(t, stream.CloseResponse())
 	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
@@ -1478,6 +1562,7 @@ func TestStreamingClientPropagation(t *testing.T) {
 	}, &pluggablePingServer{cumSum: assertTraceParent},
 	)
 	stream := client.CumSum(context.Background())
+	assert.NoError(t, stream.Send(nil))
 	assert.NoError(t, stream.CloseRequest())
 	resp, err := stream.Receive()
 	assert.NoError(t, stream.CloseResponse())
