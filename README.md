@@ -46,7 +46,7 @@ func main() {
   // otelconnect.WithTracerProvider and otelconnect.WithMeterProvider.
   mux.Handle(pingv1connect.NewPingServiceHandler(
     &pingv1connect.UnimplementedPingServiceHandler{},
-	  connect.WithInterceptors(otelconnect.NewInterceptor()),
+    connect.WithInterceptors(otelconnect.NewInterceptor()),
   ))
 
   http.ListenAndServe("localhost:8080", mux)
