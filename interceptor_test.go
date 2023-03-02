@@ -36,7 +36,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
@@ -94,11 +93,11 @@ func TestStreamingMetrics(t *testing.T) {
 	}
 	require.NoError(t, stream.CloseRequest())
 	require.NoError(t, stream.CloseResponse())
-	metrics, err := metricReader.Collect(context.Background())
-	if err != nil {
+	metrics := &metricdata.ResourceMetrics{}
+	if err := metricReader.Collect(context.Background(), metrics); err != nil {
 		t.Error(err)
 	}
-	diff := cmp.Diff(metricdata.ResourceMetrics{
+	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
 			{
@@ -109,7 +108,7 @@ func TestStreamingMetrics(t *testing.T) {
 				Metrics: []metricdata.Metrics{
 					{
 						Name: rpcServerDuration,
-						Unit: unit.Milliseconds,
+						Unit: milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -131,7 +130,7 @@ func TestStreamingMetrics(t *testing.T) {
 					},
 					{
 						Name: rpcServerRequestSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -153,7 +152,7 @@ func TestStreamingMetrics(t *testing.T) {
 					},
 					{
 						Name: rpcServerResponseSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -175,7 +174,7 @@ func TestStreamingMetrics(t *testing.T) {
 					},
 					{
 						Name: rpcServerRequestsPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -197,7 +196,7 @@ func TestStreamingMetrics(t *testing.T) {
 					},
 					{
 						Name: rpcServerResponsesPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -255,12 +254,11 @@ func TestStreamingMetricsClient(t *testing.T) {
 		t.Error(err)
 	}
 	require.NoError(t, stream.CloseResponse())
-	metrics, err := metricReader.Collect(context.Background())
-	if err != nil {
+	metrics := &metricdata.ResourceMetrics{}
+	if err := metricReader.Collect(context.Background(), metrics); err != nil {
 		t.Error(err)
 	}
-
-	diff := cmp.Diff(metricdata.ResourceMetrics{
+	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
 			{
@@ -271,7 +269,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 				Metrics: []metricdata.Metrics{
 					{
 						Name: rpcClientDuration,
-						Unit: unit.Milliseconds,
+						Unit: milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -293,7 +291,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 					},
 					{
 						Name: rpcClientRequestSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -315,7 +313,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 					},
 					{
 						Name: rpcClientResponseSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -337,7 +335,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 					},
 					{
 						Name: rpcClientRequestsPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -359,7 +357,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 					},
 					{
 						Name: rpcClientResponsesPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -419,11 +417,11 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 	_, err = stream.Receive()
 	require.Error(t, err)
 	require.NoError(t, stream.CloseResponse())
-	metrics, err := metricReader.Collect(context.Background())
-	if err != nil {
+	metrics := &metricdata.ResourceMetrics{}
+	if err := metricReader.Collect(context.Background(), metrics); err != nil {
 		t.Error(err)
 	}
-	diff := cmp.Diff(metricdata.ResourceMetrics{
+	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
 			{
@@ -434,7 +432,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 				Metrics: []metricdata.Metrics{
 					{
 						Name: rpcClientDuration,
-						Unit: "ms",
+						Unit: string("ms"),
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -457,7 +455,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 					},
 					{
 						Name: rpcClientRequestSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -479,7 +477,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 					},
 					{
 						Name: rpcClientResponseSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -515,7 +513,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 					},
 					{
 						Name: rpcClientRequestsPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -537,7 +535,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 					},
 					{
 						Name: rpcClientResponsesPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -610,11 +608,11 @@ func TestStreamingMetricsFail(t *testing.T) {
 	_, err = stream.Receive()
 	require.Error(t, err)
 	require.NoError(t, stream.CloseResponse())
-	metrics, err := metricReader.Collect(context.Background())
-	if err != nil {
+	metrics := &metricdata.ResourceMetrics{}
+	if err := metricReader.Collect(context.Background(), metrics); err != nil {
 		t.Error(err)
 	}
-	diff := cmp.Diff(metricdata.ResourceMetrics{
+	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
 			{
@@ -625,7 +623,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 				Metrics: []metricdata.Metrics{
 					{
 						Name: rpcServerDuration,
-						Unit: unit.Milliseconds,
+						Unit: milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -648,7 +646,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 					},
 					{
 						Name: rpcServerRequestSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -670,7 +668,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 					},
 					{
 						Name: rpcServerResponseSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -692,7 +690,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 					},
 					{
 						Name: rpcServerRequestsPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -714,7 +712,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 					},
 					{
 						Name: rpcServerResponsesPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -762,11 +760,11 @@ func TestMetrics(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
 		t.Errorf(err.Error())
 	}
-	metrics, err := metricReader.Collect(context.Background())
-	if err != nil {
+	metrics := &metricdata.ResourceMetrics{}
+	if err := metricReader.Collect(context.Background(), metrics); err != nil {
 		t.Error(err)
 	}
-	diff := cmp.Diff(metricdata.ResourceMetrics{
+	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
 			{
@@ -777,7 +775,7 @@ func TestMetrics(t *testing.T) {
 				Metrics: []metricdata.Metrics{
 					{
 						Name: rpcClientDuration,
-						Unit: unit.Milliseconds,
+						Unit: milliseconds,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -799,7 +797,7 @@ func TestMetrics(t *testing.T) {
 					},
 					{
 						Name: rpcClientRequestSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -821,7 +819,7 @@ func TestMetrics(t *testing.T) {
 					},
 					{
 						Name: rpcClientResponseSize,
-						Unit: unit.Bytes,
+						Unit: bytes,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -843,7 +841,7 @@ func TestMetrics(t *testing.T) {
 					},
 					{
 						Name: rpcClientRequestsPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -865,7 +863,7 @@ func TestMetrics(t *testing.T) {
 					},
 					{
 						Name: rpcClientResponsesPerRPC,
-						Unit: unit.Dimensionless,
+						Unit: dimensionless,
 						Data: metricdata.Histogram{
 							DataPoints: []metricdata.HistogramDataPoint{
 								{
@@ -912,8 +910,8 @@ func TestWithoutMetrics(t *testing.T) {
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
 		t.Errorf(err.Error())
 	}
-	metrics, err := metricReader.Collect(context.Background())
-	if err != nil {
+	metrics := &metricdata.ResourceMetrics{}
+	if err := metricReader.Collect(context.Background(), metrics); err != nil {
 		t.Error(err)
 	}
 	if len(metrics.ScopeMetrics) != 0 {
