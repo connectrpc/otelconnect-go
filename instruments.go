@@ -34,9 +34,9 @@ const (
 	clientKey          = "client"
 	requestKey         = "request"
 	responseKey        = "response"
-	dimensionless      = "1"
-	bytes              = "By"
-	milliseconds       = "ms"
+	unitDimensionless  = "1"
+	unitBytes          = "By"
+	unitMilliseconds   = "ms"
 )
 
 type instruments struct {
@@ -57,35 +57,35 @@ func (i *instruments) init(meter metric.Meter, isClient bool) {
 		}
 		i.duration, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, durationKey),
-			instrument.WithUnit(milliseconds),
+			instrument.WithUnit(unitMilliseconds),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.requestSize, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, requestSizeKey),
-			instrument.WithUnit(bytes),
+			instrument.WithUnit(unitBytes),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.responseSize, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, responseSizeKey),
-			instrument.WithUnit(bytes),
+			instrument.WithUnit(unitBytes),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.requestsPerRPC, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, requestsPerRPCKey),
-			instrument.WithUnit(dimensionless),
+			instrument.WithUnit(unitDimensionless),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.responsesPerRPC, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, responsesPerRPCKey),
-			instrument.WithUnit(dimensionless),
+			instrument.WithUnit(unitDimensionless),
 		)
 	})
 }
