@@ -55,35 +55,35 @@ func (i *instruments) init(meter metric.Meter, isClient bool) {
 		}
 		i.duration, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, durationKey),
-			instrument.WithUnit(unit.Milliseconds),
+			instrument.WithUnit(string(unit.Milliseconds)),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.requestSize, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, requestSizeKey),
-			instrument.WithUnit(unit.Bytes),
+			instrument.WithUnit(string(unit.Bytes)),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.responseSize, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, responseSizeKey),
-			instrument.WithUnit(unit.Bytes),
+			instrument.WithUnit(string(unit.Bytes)),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.requestsPerRPC, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, requestsPerRPCKey),
-			instrument.WithUnit(unit.Dimensionless),
+			instrument.WithUnit(string(unit.Dimensionless)),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.responsesPerRPC, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, responsesPerRPCKey),
-			instrument.WithUnit(unit.Dimensionless),
+			instrument.WithUnit(string(unit.Dimensionless)),
 		)
 	})
 }
