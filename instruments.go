@@ -20,7 +20,6 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/unit"
 )
 
 const (
@@ -35,6 +34,9 @@ const (
 	clientKey          = "client"
 	requestKey         = "request"
 	responseKey        = "response"
+	dimensionless      = "1"
+	bytes              = "By"
+	milliseconds       = "ms"
 )
 
 type instruments struct {
@@ -55,35 +57,35 @@ func (i *instruments) init(meter metric.Meter, isClient bool) {
 		}
 		i.duration, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, durationKey),
-			instrument.WithUnit(string(unit.Milliseconds)),
+			instrument.WithUnit(milliseconds),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.requestSize, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, requestSizeKey),
-			instrument.WithUnit(string(unit.Bytes)),
+			instrument.WithUnit(bytes),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.responseSize, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, responseSizeKey),
-			instrument.WithUnit(string(unit.Bytes)),
+			instrument.WithUnit(bytes),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.requestsPerRPC, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, requestsPerRPCKey),
-			instrument.WithUnit(string(unit.Dimensionless)),
+			instrument.WithUnit(dimensionless),
 		)
 		if i.initErr != nil {
 			return
 		}
 		i.responsesPerRPC, i.initErr = meter.Int64Histogram(
 			formatkeys(interceptorType, responsesPerRPCKey),
-			instrument.WithUnit(string(unit.Dimensionless)),
+			instrument.WithUnit(dimensionless),
 		)
 	})
 }
