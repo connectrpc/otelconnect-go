@@ -6,7 +6,7 @@ connect-opentelemetry-go
 [![GoDoc](https://pkg.go.dev/badge/github.com/bufbuild/connect-opentelemetry-go.svg)](https://pkg.go.dev/github.com/bufbuild/connect-opentelemetry-go)
 
 `connect-opentelemetry-go` adds support for [OpenTelemetry][opentelemetry.io]
-tracing and metrics collection to [Connect][connect-go] servers and clients.
+tracing and metrics collection to [connect-go] servers and clients.
 
 For more on Connect, see the [announcement blog post][blog], the documentation
 on [connect.build][docs] (especially the [Getting Started] guide), the
@@ -38,11 +38,12 @@ import (
 func main() {
 	mux := http.NewServeMux()
 
-	// otelconnect.New provides an interceptor that adds tracing and metrics to both clients and
-	// handlers. By default, it uses OpenTelemetry's global TracerProvider and
-	// MeterProvider, which you can configure by following the OpenTelemetry
-	// documentation. If you'd prefer to avoid globals, use
-	// otelconnect.WithTracerProvider and otelconnect.WithMeterProvider.
+	// otelconnect.NewInterceptor provides an interceptor that adds tracing and
+	// metrics to both clients and handlers. By default, it uses OpenTelemetry's
+	// global TracerProvider and MeterProvider, which you can configure by
+	// following the OpenTelemetry documentation. If you'd prefer to avoid
+	// globals, use otelconnect.WithTracerProvider and
+	// otelconnect.WithMeterProvider.
 	mux.Handle(pingv1connect.NewPingServiceHandler(
 		&pingv1connect.UnimplementedPingServiceHandler{},
 		connect.WithInterceptors(otelconnect.NewInterceptor()),
