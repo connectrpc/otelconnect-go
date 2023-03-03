@@ -85,6 +85,14 @@ APIs](https://opentelemetry.io/docs/instrumentation/go/#status-and-releases)
 change. Once the Go OpenTelemetry metrics SDK stabilizes, we'll
 release a stable v1 of this package.
 
+## Ecosystem
+
+* [connect-go]: Service handlers and clients for GoLang
+* [connect-swift]: Swift clients for idiomatic gRPC & Connect RPC
+* [connect-web]: TypeScript clients for web browsers
+* [Buf Studio][buf-studio]: web UI for ad-hoc RPCs
+* [connect-crosstest]: gRPC and gRPC-Web interoperability tests
+
 ## Support and Versioning
 
 `connect-opentelemetry-go` supports:
