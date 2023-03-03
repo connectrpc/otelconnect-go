@@ -71,7 +71,7 @@ func makeRequest() {
 
 ## Status
 
-`connect-opentelemetry-go` is available as an untagged alpha release.
+`connect-opentelemetry-go` is available as a beta release.
 
 |         | Unary | Streaming Client | Streaming Handler |
 |---------|:-----:|:----------------:|:-----------------:|
