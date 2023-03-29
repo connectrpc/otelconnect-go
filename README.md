@@ -3,18 +3,14 @@ connect-opentelemetry-go
 
 [![Build](https://connectrpc.com/otelconnect/actions/workflows/ci.yaml/badge.svg?branch=main)](https://connectrpc.com/otelconnect/actions/workflows/ci.yaml)
 [![Report Card](https://goreportcard.com/badge/connectrpc.com/otelconnect)](https://goreportcard.com/report/connectrpc.com/otelconnect)
-[![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect.svg)](https://pkg.go.dev/connectrpc.com/otelconnect)
+[![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect.svg)][godoc]
 
 `connect-opentelemetry-go` adds support for [OpenTelemetry][opentelemetry.io]
 tracing and metrics collection to [connect-go] servers and clients.
 
-For more on Connect, see the [announcement blog post][blog], the documentation
-on [connectrpc.com][docs] (especially the [Getting Started] guide), the
-[`connect-go`][connect-go] repo, or the [demo service][demo].
-
-For more on OpenTelemetry, see the official [Go OpenTelemetry
-packages][otel-go], [opentelemetry.io], and the [Go
-quickstart][otel-go-quickstart].
+For more on Connect, OpenTelemetry, and `otelconnect`, see the [Connect
+announcement blog post][blog] and the observability documentation on
+[connectrpc.com](https://connectrpc.com/docs/go/observability/).
 
 ## An example
 
@@ -70,6 +66,30 @@ func makeRequest() {
 
 ```
 
+## Configuration for internal services
+
+By default, instrumented servers are conservative and behave as though they're
+internet-facing. They don't trust any tracing information sent by the client,
+and will create new trace spans for each request. The new spans are linked to
+the remote span for reference (using OpenTelemetry's
+[`trace.Link`](https://pkg.go.dev/go.opentelemetry.io/otel/trace#Link)), but
+tracing UIs will display the request as a new top-level transaction.
+
+If your server is deployed as an internal service, configure `otelconnect` to
+trust the client's tracing information using
+[`otelconnect.WithTrustRemote`][WithTrustRemote]. With this option, servers
+will create child spans for each request.
+
+## Reducing metrics and tracing cardinality
+
+By default, the [OpenTelemetry RPC conventions][otel-rpc-conventions] produce
+high-cardinality server-side metric and tracing output. In particular, servers
+tag all metrics and trace data with the server's IP address and the remote port
+number. To drop these attributes, use
+[`otelconnect.WithoutServerPeerAttributes`][WithoutServerPeerAttributes]. For
+more customizable attribute filtering, use
+[otelconnect.WithFilter][WithFilter].
+
 ## Status
 
 `connect-opentelemetry-go` is available as a beta release.
@@ -109,18 +129,23 @@ but can't commit to a stable v1 until the OpenTelemetry APIs are stable.
 
 Offered under the [Apache 2 license][license].
 
+[Buf Studio]: https://studio.buf.build/
+[Getting Started]: https://connectrpc.com/docs/go/getting-started
+[WithFilter]: https://pkg.go.dev/connectrpc.com/otelconnect#WithFilter
+[WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect#WithTrustRemote
+[WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
 [blog]: https://buf.build/blog/connect-a-better-grpc
+[connect-crosstest]: https://github.com/bufbuild/connect-crosstest
 [connect-go]: https://connectrpc.com/connect
+[connect-kotlin]: https://github.com/bufbuild/connect-kotlin
+[connect-swift]: https://github.com/bufbuild/connect-swift
+[connect-web]: https://www.npmjs.com/package/@bufbuild/connect-web
 [demo]: https://github.com/bufbuild/connect-demo
 [docs]: https://connectrpc.com
-[Getting Started]: https://connectrpc.com/docs/go/getting-started
 [go-support-policy]: https://golang.org/doc/devel/release#policy
+[godoc]: https://pkg.go.dev/connectrpc.com/otelconnect
 [license]: https://connectrpc.com/otelconnect/blob/main/LICENSE
 [opentelemetry.io]: https://opentelemetry.io/
-[otel-go]: https://github.com/open-telemetry/opentelemetry-go
 [otel-go-quickstart]: https://opentelemetry.io/docs/instrumentation/go/getting-started/
-[connect-swift]: https://github.com/bufbuild/connect-swift
-[connect-kotlin]: https://github.com/bufbuild/connect-kotlin
-[connect-web]: https://www.npmjs.com/package/@bufbuild/connect-web
-[Buf Studio]: https://studio.buf.build/
-[connect-crosstest]: https://github.com/bufbuild/connect-crosstest
+[otel-go]: https://github.com/open-telemetry/opentelemetry-go
+[otel-rpc-conventions]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md
