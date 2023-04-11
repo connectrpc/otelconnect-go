@@ -113,6 +113,10 @@ func WithTraceResponseHeader(keys ...string) Option {
 	}
 }
 
+func WithoutRPCEvents() Option {
+	return &omitRPCEventsOption{}
+}
+
 type attributeFilterOption struct {
 	filterAttribute AttributeFilter
 }
@@ -191,4 +195,10 @@ func (o *traceResponseHeaderOption) apply(c *config) {
 	for _, key := range o.keys {
 		c.responseHeaderKeys = append(c.responseHeaderKeys, http.CanonicalHeaderKey(key))
 	}
+}
+
+type omitRPCEventsOption struct{}
+
+func (o *omitRPCEventsOption) apply(c *config) {
+	c.omitRPCEvents = true
 }
