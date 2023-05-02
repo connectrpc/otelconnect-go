@@ -26,8 +26,6 @@ import (
 	"time"
 
 	"github.com/bufbuild/connect-go"
-	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
-	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
@@ -45,6 +43,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	traceapi "go.opentelemetry.io/otel/trace"
+
+	pingv1 "github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1"
+	"github.com/bufbuild/connect-opentelemetry-go/internal/gen/observability/ping/v1/pingv1connect"
 )
 
 const (
@@ -109,8 +110,8 @@ func TestStreamingMetrics(t *testing.T) {
 					{
 						Name: rpcServerDuration,
 						Unit: unitMilliseconds,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -121,8 +122,8 @@ func TestStreamingMetrics(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1000.0,
-									Min:   metricdata.NewExtrema(1000),
-									Max:   metricdata.NewExtrema(1000),
+									Min:   metricdata.NewExtrema(int64(1000)),
+									Max:   metricdata.NewExtrema(int64(1000)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -131,8 +132,8 @@ func TestStreamingMetrics(t *testing.T) {
 					{
 						Name: rpcServerRequestSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -143,8 +144,8 @@ func TestStreamingMetrics(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   2.0,
-									Min:   metricdata.NewExtrema(2),
-									Max:   metricdata.NewExtrema(2),
+									Min:   metricdata.NewExtrema(int64(2)),
+									Max:   metricdata.NewExtrema(int64(2)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -153,8 +154,8 @@ func TestStreamingMetrics(t *testing.T) {
 					{
 						Name: rpcServerResponseSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -165,8 +166,8 @@ func TestStreamingMetrics(t *testing.T) {
 									),
 									Count: 2,
 									Sum:   4.0,
-									Min:   metricdata.NewExtrema(2),
-									Max:   metricdata.NewExtrema(2),
+									Min:   metricdata.NewExtrema(int64(2)),
+									Max:   metricdata.NewExtrema(int64(2)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -175,8 +176,8 @@ func TestStreamingMetrics(t *testing.T) {
 					{
 						Name: rpcServerRequestsPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -187,8 +188,8 @@ func TestStreamingMetrics(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -197,8 +198,8 @@ func TestStreamingMetrics(t *testing.T) {
 					{
 						Name: rpcServerResponsesPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -209,8 +210,8 @@ func TestStreamingMetrics(t *testing.T) {
 									),
 									Count: 2,
 									Sum:   2,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -270,8 +271,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 					{
 						Name: rpcClientDuration,
 						Unit: unitMilliseconds,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -282,8 +283,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1000.0,
-									Min:   metricdata.NewExtrema(1000),
-									Max:   metricdata.NewExtrema(1000),
+									Min:   metricdata.NewExtrema(int64(1000)),
+									Max:   metricdata.NewExtrema(int64(1000)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -292,8 +293,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 					{
 						Name: rpcClientRequestSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -304,8 +305,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   2.0,
-									Min:   metricdata.NewExtrema(2),
-									Max:   metricdata.NewExtrema(2),
+									Min:   metricdata.NewExtrema(int64(2)),
+									Max:   metricdata.NewExtrema(int64(2)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -314,8 +315,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 					{
 						Name: rpcClientResponseSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -326,8 +327,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   2.0,
-									Min:   metricdata.NewExtrema(2),
-									Max:   metricdata.NewExtrema(2),
+									Min:   metricdata.NewExtrema(int64(2)),
+									Max:   metricdata.NewExtrema(int64(2)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -336,8 +337,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 					{
 						Name: rpcClientRequestsPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -348,8 +349,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -358,8 +359,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 					{
 						Name: rpcClientResponsesPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -370,8 +371,8 @@ func TestStreamingMetricsClient(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -432,9 +433,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 				Metrics: []metricdata.Metrics{
 					{
 						Name: rpcClientDuration,
-						Unit: string("ms"),
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Unit: "ms",
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -446,8 +447,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1000.0,
-									Min:   metricdata.NewExtrema(1000),
-									Max:   metricdata.NewExtrema(1000),
+									Min:   metricdata.NewExtrema(int64(1000)),
+									Max:   metricdata.NewExtrema(int64(1000)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -456,8 +457,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 					{
 						Name: rpcClientRequestSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -468,8 +469,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   2.0,
-									Min:   metricdata.NewExtrema(2),
-									Max:   metricdata.NewExtrema(2),
+									Min:   metricdata.NewExtrema(int64(2)),
+									Max:   metricdata.NewExtrema(int64(2)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -478,8 +479,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 					{
 						Name: rpcClientResponseSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -490,8 +491,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									),
 									Count: 2,
 									Sum:   4.0,
-									Min:   metricdata.NewExtrema(2),
-									Max:   metricdata.NewExtrema(2),
+									Min:   metricdata.NewExtrema(int64(2)),
+									Max:   metricdata.NewExtrema(int64(2)),
 								},
 								{
 									Attributes: attribute.NewSet(
@@ -504,8 +505,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   0.0,
-									Min:   metricdata.NewExtrema(0),
-									Max:   metricdata.NewExtrema(0),
+									Min:   metricdata.NewExtrema(int64(0)),
+									Max:   metricdata.NewExtrema(int64(0)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -514,8 +515,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 					{
 						Name: rpcClientRequestsPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -526,8 +527,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -536,8 +537,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 					{
 						Name: rpcClientResponsesPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -548,8 +549,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									),
 									Count: 2,
 									Sum:   2,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 								{
 									Attributes: attribute.NewSet(
@@ -562,8 +563,8 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -624,8 +625,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 					{
 						Name: rpcServerDuration,
 						Unit: unitMilliseconds,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -637,8 +638,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1000.0,
-									Min:   metricdata.NewExtrema(1000),
-									Max:   metricdata.NewExtrema(1000),
+									Min:   metricdata.NewExtrema(int64(1000)),
+									Max:   metricdata.NewExtrema(int64(1000)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -647,8 +648,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 					{
 						Name: rpcServerRequestSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -659,8 +660,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   2.0,
-									Min:   metricdata.NewExtrema(2),
-									Max:   metricdata.NewExtrema(2),
+									Min:   metricdata.NewExtrema(int64(2)),
+									Max:   metricdata.NewExtrema(int64(2)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -669,8 +670,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 					{
 						Name: rpcServerResponseSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -681,8 +682,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 									),
 									Count: 2,
 									Sum:   4.0,
-									Min:   metricdata.NewExtrema(2),
-									Max:   metricdata.NewExtrema(2),
+									Min:   metricdata.NewExtrema(int64(2)),
+									Max:   metricdata.NewExtrema(int64(2)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -691,8 +692,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 					{
 						Name: rpcServerRequestsPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -703,8 +704,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -713,8 +714,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 					{
 						Name: rpcServerResponsesPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -725,8 +726,8 @@ func TestStreamingMetricsFail(t *testing.T) {
 									),
 									Count: 2,
 									Sum:   2,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -776,8 +777,8 @@ func TestMetrics(t *testing.T) {
 					{
 						Name: rpcClientDuration,
 						Unit: unitMilliseconds,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[float64]{
+							DataPoints: []metricdata.HistogramDataPoint[float64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -788,8 +789,8 @@ func TestMetrics(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   float64(time.Second.Milliseconds()),
-									Min:   metricdata.NewExtrema(1000),
-									Max:   metricdata.NewExtrema(1000),
+									Min:   metricdata.NewExtrema(float64(1000)),
+									Max:   metricdata.NewExtrema(float64(1000)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -798,8 +799,8 @@ func TestMetrics(t *testing.T) {
 					{
 						Name: rpcClientRequestSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -810,8 +811,8 @@ func TestMetrics(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   16,
-									Min:   metricdata.NewExtrema(16),
-									Max:   metricdata.NewExtrema(16),
+									Min:   metricdata.NewExtrema(int64(16)),
+									Max:   metricdata.NewExtrema(int64(16)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -820,8 +821,8 @@ func TestMetrics(t *testing.T) {
 					{
 						Name: rpcClientResponseSize,
 						Unit: unitBytes,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -832,8 +833,8 @@ func TestMetrics(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   16,
-									Min:   metricdata.NewExtrema(16),
-									Max:   metricdata.NewExtrema(16),
+									Min:   metricdata.NewExtrema(int64(16)),
+									Max:   metricdata.NewExtrema(int64(16)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -842,8 +843,8 @@ func TestMetrics(t *testing.T) {
 					{
 						Name: rpcClientRequestsPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -854,8 +855,8 @@ func TestMetrics(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -864,8 +865,8 @@ func TestMetrics(t *testing.T) {
 					{
 						Name: rpcClientResponsesPerRPC,
 						Unit: unitDimensionless,
-						Data: metricdata.Histogram{
-							DataPoints: []metricdata.HistogramDataPoint{
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
@@ -876,8 +877,8 @@ func TestMetrics(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema(1),
-									Max:   metricdata.NewExtrema(1),
+									Min:   metricdata.NewExtrema(int64(1)),
+									Max:   metricdata.NewExtrema(int64(1)),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -1947,18 +1948,18 @@ func cmpOpts() []cmp.Option {
 			})
 			return setx.Equals(&sety)
 		}),
-		cmp.Comparer(func(extx, exty metricdata.Extrema) bool {
+		cmp.Comparer(func(extx, exty metricdata.Extrema[int64]) bool {
 			valx, definedx := extx.Value()
 			valy, definedy := exty.Value()
 			return valx == valy && definedx == definedy
 		}),
-		cmpopts.SortSlices(func(x, y metricdata.HistogramDataPoint) bool {
+		cmpopts.SortSlices(func(x, y metricdata.HistogramDataPoint[int64]) bool {
 			return x.Attributes.Len() > y.Attributes.Len()
 		}),
-		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "StartTime"),
-		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Time"),
-		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "Bounds"),
-		cmpopts.IgnoreFields(metricdata.HistogramDataPoint{}, "BucketCounts"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[int64]{}, "StartTime"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[int64]{}, "Time"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[int64]{}, "Bounds"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[int64]{}, "BucketCounts"),
 	}
 }
 
