@@ -163,11 +163,11 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		attributes = attributeFilter(req, attributes...)
 		span.SetStatus(spanStatus(err))
 		span.SetAttributes(attributes...)
-		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), attributes...)
-		instrumentation.requestSize.Record(ctx, int64(requestSize), attributes...)
-		instrumentation.requestsPerRPC.Record(ctx, 1, attributes...)
-		instrumentation.responseSize.Record(ctx, int64(responseSize), attributes...)
-		instrumentation.responsesPerRPC.Record(ctx, 1, attributes...)
+		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(attributes...))
+		instrumentation.requestSize.Record(ctx, int64(requestSize), metric.WithAttributes(attributes...))
+		instrumentation.requestsPerRPC.Record(ctx, 1, metric.WithAttributes(attributes...))
+		instrumentation.responseSize.Record(ctx, int64(responseSize), metric.WithAttributes(attributes...))
+		instrumentation.responsesPerRPC.Record(ctx, 1, metric.WithAttributes(attributes...))
 		return response, err
 	}
 }
@@ -238,7 +238,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 				span.SetStatus(spanStatus(state.error))
 				span.End()
-				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
+				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(state.attributes...))
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
 				return state.receive(ctx, msg, conn)
@@ -320,7 +320,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		span.SetAttributes(state.attributes...)
 		span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 		span.SetStatus(spanStatus(err))
-		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), state.attributes...)
+		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(state.attributes...))
 		return err
 	}
 }

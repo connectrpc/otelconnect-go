@@ -1,6 +1,8 @@
 run:
   skip-dirs-use-default: false
 linters-settings:
+  dupl:
+    threshold: 200
   errcheck:
     check-type-assertions: true
   exhaustruct:
