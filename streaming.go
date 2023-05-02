@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
@@ -36,17 +36,17 @@ type streamingState struct {
 	error           error
 	sentCounter     int
 	receivedCounter int
-	receiveSize     instrument.Int64Histogram
-	receivesPerRPC  instrument.Int64Histogram
-	sendSize        instrument.Int64Histogram
-	sendsPerRPC     instrument.Int64Histogram
+	receiveSize     metric.Int64Histogram
+	receivesPerRPC  metric.Int64Histogram
+	sendSize        metric.Int64Histogram
+	sendsPerRPC     metric.Int64Histogram
 }
 
 func newStreamingState(
 	req *Request,
 	attributeFilter AttributeFilter,
 	attributes []attribute.KeyValue,
-	receiveSize, receivesPerRPC, sendSize, sendsPerRPC instrument.Int64Histogram,
+	receiveSize, receivesPerRPC, sendSize, sendsPerRPC metric.Int64Histogram,
 ) *streamingState {
 	attributes = attributeFilter.filter(req, attributes...)
 	return &streamingState{
@@ -89,8 +89,8 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 	size := proto.Size(protomsg)
 	s.receivedCounter++
 	s.event(ctx, semconv.MessageTypeReceived, s.receivedCounter, ok, size)
-	s.receiveSize.Record(ctx, int64(size), s.attributes...)
-	s.receivesPerRPC.Record(ctx, 1, s.attributes...)
+	s.receiveSize.Record(ctx, int64(size), metric.WithAttributes(s.attributes...))
+	s.receivesPerRPC.Record(ctx, 1, metric.WithAttributes(s.attributes...))
 	return err
 }
 
@@ -113,8 +113,8 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 	size := proto.Size(protomsg)
 	s.sentCounter++
 	s.event(ctx, semconv.MessageTypeSent, s.sentCounter, ok, size)
-	s.sendSize.Record(ctx, int64(size), s.attributes...)
-	s.sendsPerRPC.Record(ctx, 1, s.attributes...)
+	s.sendSize.Record(ctx, int64(size), metric.WithAttributes(s.attributes...))
+	s.sendsPerRPC.Record(ctx, 1, metric.WithAttributes(s.attributes...))
 	return err
 }
 

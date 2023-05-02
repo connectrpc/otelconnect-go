@@ -20,6 +20,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
@@ -64,7 +65,7 @@ func WithoutTracing() Option {
 
 // WithoutMetrics disables metrics.
 func WithoutMetrics() Option {
-	return WithMeterProvider(metric.NewNoopMeterProvider())
+	return WithMeterProvider(noop.NewMeterProvider())
 }
 
 // WithAttributeFilter sets the attribute filter for all metrics and trace attributes.

@@ -32,7 +32,7 @@ func pingHappy(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*co
 	}), nil
 }
 
-func pingFail(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+func pingFail(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 	return nil, connect.NewError(connect.CodeDataLoss, errors.New("Oh no"))
 }
 
