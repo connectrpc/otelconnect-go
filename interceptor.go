@@ -25,9 +25,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.19.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
@@ -52,10 +51,9 @@ func NewInterceptor(options ...Option) *Interceptor {
 			trace.WithInstrumentationVersion(semanticVersion),
 		),
 		propagator: otel.GetTextMapPropagator(),
-		meter: global.MeterProvider().Meter(
+		meter: otel.GetMeterProvider().Meter(
 			instrumentationName,
-			metric.WithInstrumentationVersion(semanticVersion),
-		),
+			metric.WithInstrumentationVersion(semanticVersion)),
 	}
 	for _, opt := range options {
 		opt.apply(&cfg)
