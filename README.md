@@ -111,8 +111,7 @@ more customizable attribute filtering, use
 `connect-opentelemetry-go` supports:
 
 * The [two most recent major releases][go-support-policy] of Go.
-* v1 of the `go.opentelemetry.io/otel` tracing SDK.
-* The current stable release of the `go.opentelemetry.io/otel` metrics SDK.
+* v1 of the `go.opentelemetry.io/otel` tracing and metrics SDK.
 
 ## Legal
 
