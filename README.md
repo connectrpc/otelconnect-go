@@ -92,18 +92,10 @@ more customizable attribute filtering, use
 
 ## Status
 
-`connect-opentelemetry-go` is available as a beta release.
-
 |         | Unary | Streaming Client | Streaming Handler |
 |---------|:-----:|:----------------:|:-----------------:|
 | Metrics | ✅    | ✅               | ✅                |
 | Tracing | ✅    | ✅               | ✅                |
-
-Users of this package should expect breaking changes
-as [the underlying OpenTelemetry
-APIs](https://opentelemetry.io/docs/instrumentation/go/#status-and-releases)
-change. Once the Go OpenTelemetry metrics SDK stabilizes, we'll
-release a stable v1 of this package.
 
 ## Ecosystem
 
@@ -120,10 +112,7 @@ release a stable v1 of this package.
 
 * The [two most recent major releases][go-support-policy] of Go.
 * v1 of the `go.opentelemetry.io/otel` tracing SDK.
-* The current alpha release of the `go.opentelemetry.io/otel` metrics SDK.
-
-It's not yet stable. We take every effort to maintain backward compatibility,
-but can't commit to a stable v1 until the OpenTelemetry APIs are stable.
+* The current stable release of the `go.opentelemetry.io/otel` metrics SDK.
 
 ## Legal
 
