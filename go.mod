@@ -3,7 +3,7 @@ module github.com/bufbuild/connect-opentelemetry-go
 go 1.19
 
 require (
-	github.com/bufbuild/connect-go v1.7.0
+	github.com/bufbuild/connect-go v1.8.0
 	github.com/google/go-cmp v0.5.9
 	github.com/stretchr/testify v1.8.3
 	go.opentelemetry.io/otel v1.16.0
