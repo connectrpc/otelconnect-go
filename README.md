@@ -23,7 +23,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/bufbuild/connect-go"
+	connect "github.com/bufbuild/connect-go"
 	otelconnect "github.com/bufbuild/connect-opentelemetry-go"
 	// Generated from your protobuf schema by protoc-gen-go and
 	// protoc-gen-connect-go.
