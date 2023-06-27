@@ -55,4 +55,6 @@ type config struct {
 	trustRemote        bool
 	requestHeaderKeys  []string
 	responseHeaderKeys []string
+	receivedEvent      bool
+	sentEvent          bool
 }

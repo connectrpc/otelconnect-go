@@ -23,6 +23,7 @@ import (
 
 	"github.com/bufbuild/connect-go"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
@@ -70,6 +71,17 @@ func (i *Interceptor) getAndInitInstrument(isClient bool) (*instruments, error) 
 	}
 	i.handlerInstruments.init(i.config.meter, isClient)
 	return &i.handlerInstruments, i.handlerInstruments.initErr
+}
+
+func (i *Interceptor) shouldSendEvent(messageType attribute.KeyValue) bool {
+	switch messageType {
+	case semconv.MessageTypeSent:
+		return i.config.sentEvent
+	case semconv.MessageTypeReceived:
+		return i.config.receivedEvent
+	default:
+		return false
+	}
 }
 
 // WrapUnary implements otel tracing and metrics for unary handlers.
@@ -133,13 +145,15 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				requestSize = proto.Size(msg)
 			}
 		}
-		span.AddEvent(messageKey,
-			trace.WithAttributes(
-				requestSpan,
-				semconv.MessageIDKey.Int(1),
-				semconv.MessageUncompressedSizeKey.Int(requestSize),
-			),
-		)
+		if i.shouldSendEvent(requestSpan) {
+			span.AddEvent(messageKey,
+				trace.WithAttributes(
+					requestSpan,
+					semconv.MessageIDKey.Int(1),
+					semconv.MessageUncompressedSizeKey.Int(requestSize),
+				),
+			)
+		}
 		response, err := next(ctx, request)
 		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
 			attributes = append(attributes, statusCode)
@@ -151,13 +165,15 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			}
 			span.SetAttributes(headerAttributes(protocol, responseKey, response.Header(), i.config.responseHeaderKeys)...)
 		}
-		span.AddEvent(messageKey,
-			trace.WithAttributes(
-				responseSpan,
-				semconv.MessageIDKey.Int(1),
-				semconv.MessageUncompressedSizeKey.Int(responseSize),
-			),
-		)
+		if i.shouldSendEvent(responseSpan) {
+			span.AddEvent(messageKey,
+				trace.WithAttributes(
+					responseSpan,
+					semconv.MessageIDKey.Int(1),
+					semconv.MessageUncompressedSizeKey.Int(responseSize),
+				),
+			)
+		}
 		attributes = attributeFilter(req, attributes...)
 		span.SetStatus(spanStatus(err))
 		span.SetAttributes(attributes...)
@@ -202,6 +218,8 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			instrumentation.responsesPerRPC,
 			instrumentation.requestSize,
 			instrumentation.requestsPerRPC,
+			i.config.sentEvent,
+			i.config.receivedEvent,
 		)
 		var span trace.Span
 		var createSpanOnce sync.Once

@@ -114,6 +114,41 @@ func WithTraceResponseHeader(keys ...string) Option {
 	}
 }
 
+// Event type that can be recorded, see WithMessageEvents.
+type Event int
+
+// Different types of events that can be recorded, see WithMessageEvents.
+const (
+	ReceivedEvents Event = iota
+	SentEvents
+)
+
+func (m messageEventsProviderOption) apply(c *config) {
+	for _, e := range m.events {
+		switch e {
+		case ReceivedEvents:
+			c.receivedEvent = true
+		case SentEvents:
+			c.sentEvent = true
+		}
+	}
+}
+
+type messageEventsProviderOption struct {
+	events []Event
+}
+
+// WithMessageEvents configures the Handler to record the specified events
+// (span.AddEvent) on spans. By default only summary attributes are added at the
+// end of the request.
+//
+// Valid events are:
+//   - ReceivedEvents: Record the number of bytes read after every gRPC read operation.
+//   - SentEvents: Record the number of bytes written after every gRPC write operation.
+func WithMessageEvents(events ...Event) Option {
+	return messageEventsProviderOption{events: events}
+}
+
 type attributeFilterOption struct {
 	filterAttribute AttributeFilter
 }

@@ -40,6 +40,8 @@ type streamingState struct {
 	receivesPerRPC  metric.Int64Histogram
 	sendSize        metric.Int64Histogram
 	sendsPerRPC     metric.Int64Histogram
+	receivedEvent   bool
+	sentEvent       bool
 }
 
 func newStreamingState(
@@ -47,6 +49,7 @@ func newStreamingState(
 	attributeFilter AttributeFilter,
 	attributes []attribute.KeyValue,
 	receiveSize, receivesPerRPC, sendSize, sendsPerRPC metric.Int64Histogram,
+	receivedEvent, sentEvent bool,
 ) *streamingState {
 	attributes = attributeFilter.filter(req, attributes...)
 	return &streamingState{
@@ -58,6 +61,8 @@ func newStreamingState(
 		receivesPerRPC:  receivesPerRPC,
 		sendSize:        sendSize,
 		sendsPerRPC:     sendsPerRPC,
+		receivedEvent:   receivedEvent,
+		sentEvent:       sentEvent,
 	}
 }
 
@@ -118,20 +123,33 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 	return err
 }
 
+func (s *streamingState) shouldSendEvent(messageType attribute.KeyValue) bool {
+	switch messageType {
+	case semconv.MessageTypeSent:
+		return s.sentEvent
+	case semconv.MessageTypeReceived:
+		return s.receivedEvent
+	default:
+		return false
+	}
+}
+
 func (s *streamingState) event(ctx context.Context, messageType attribute.KeyValue, messageID int, msgOk bool, size int) {
-	span := trace.SpanFromContext(ctx)
-	if msgOk {
-		span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
-			s.req,
-			messageType,
-			semconv.MessageUncompressedSizeKey.Int(size),
-			semconv.MessageIDKey.Int(messageID),
-		)...))
-	} else {
-		span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
-			s.req,
-			messageType,
-			semconv.MessageIDKey.Int(messageID),
-		)...))
+	if s.shouldSendEvent(messageType) {
+		span := trace.SpanFromContext(ctx)
+		if msgOk {
+			span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
+				s.req,
+				messageType,
+				semconv.MessageUncompressedSizeKey.Int(size),
+				semconv.MessageIDKey.Int(messageID),
+			)...))
+		} else {
+			span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
+				s.req,
+				messageType,
+				semconv.MessageIDKey.Int(messageID),
+			)...))
+		}
 	}
 }
