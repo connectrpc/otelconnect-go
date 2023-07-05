@@ -97,6 +97,13 @@ func addressAttributes(address string) []attribute.KeyValue {
 }
 
 func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, bool) {
+	if connect.IsNotModifiedError(serverErr) {
+		// A "not modified" error is special: it's code is technically "unknown" but
+		// it would be misleading to label it as an unknown error since it's not really
+		// an error, but rather a sentinel to trigger a "304 Not Modified" HTTP status.
+		codeKey := attribute.Key("http.response.status_code")
+		return codeKey.Int(http.StatusNotModified), true
+	}
 	// Following the respective specifications, use integers and "status_code" for
 	// gRPC codes in contrast to strings and "error_code" for Connect codes.
 	switch protocol {
