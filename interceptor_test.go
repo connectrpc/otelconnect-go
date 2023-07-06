@@ -1434,6 +1434,51 @@ func TestUnaryInterceptorPropagation(t *testing.T) {
 	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
 }
 
+func TestUnaryInterceptorNotModifiedError(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	var ctx context.Context
+	client, _, _ := startServer(
+		[]connect.HandlerOption{
+			connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
+				return func(_ context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+					ctx, _ = trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+					return unaryFunc(ctx, request)
+				}
+			})),
+			connect.WithInterceptors(NewInterceptor(
+				WithPropagator(propagation.TraceContext{}),
+				WithTracerProvider(traceProvider),
+				WithTrustRemote(),
+			)),
+		},
+		[]connect.ClientOption{
+			connect.WithHTTPGet(),
+		},
+		happyPingServer(),
+	)
+	req := connect.NewRequest(&pingv1.PingRequest{Id: 1})
+	req.Header().Set("If-None-Match", cacheablePingEtag)
+	_, err := client.CacheablePing(context.Background(), req)
+	assert.ErrorContains(t, err, "not modified")
+	assert.True(t, connect.IsNotModifiedError(err))
+	assert.Equal(t, len(spanRecorder.Ended()), 1)
+	recordedSpan := spanRecorder.Ended()[0]
+	assert.Equal(t, codes.Unset, recordedSpan.Status().Code)
+	var codeAttributes []attribute.KeyValue
+	for _, attr := range recordedSpan.Attributes() {
+		if attr.Key == semconv.HTTPStatusCodeKey {
+			codeAttributes = append(codeAttributes, attr)
+		} else if strings.HasPrefix(string(attr.Key), "rpc") && strings.HasSuffix(string(attr.Key), "code") {
+			codeAttributes = append(codeAttributes, attr)
+		}
+	}
+	// should not be any RPC status attribute, only the HTTP status attribute
+	expectedCodeAttributes := []attribute.KeyValue{semconv.HTTPStatusCodeKey.Int(304)}
+	assert.Equal(t, expectedCodeAttributes, codeAttributes)
+}
+
 func TestWithUntrustedRemoteUnary(t *testing.T) {
 	t.Parallel()
 	var propagator propagation.TraceContext

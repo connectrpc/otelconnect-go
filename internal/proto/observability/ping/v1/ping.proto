@@ -59,6 +59,14 @@ message CumSumResponse {
 service PingService {
   // Ping sends a ping to the server to determine if it's reachable.
   rpc Ping(PingRequest) returns (PingResponse) {}
+  // CacheablePing sends a ping request and returns a cacheable ping
+  // response. This endpoint supports conditional GETs. Responses
+  // to GET requests will include an Etag header that can be used
+  // to conditionally check for a newer response in a subsequent
+  // request.
+  rpc CacheablePing(PingRequest) returns (PingResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   // Fail always fails.
   rpc Fail(FailRequest) returns (FailResponse) {}
   // Sum calculates the sum of the numbers sent on the stream.
