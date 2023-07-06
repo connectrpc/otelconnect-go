@@ -107,6 +107,12 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 		}
 		return codeKey.Int64(0), true // gRPC uses 0 for success
 	case connectProtocol:
+		if connect.IsNotModifiedError(serverErr) {
+			// A "not modified" error is special: it's code is technically "unknown" but
+			// it would be misleading to label it as an unknown error since it's not really
+			// an error, but rather a sentinel to trigger a "304 Not Modified" HTTP status.
+			return semconv.HTTPStatusCodeKey.Int(http.StatusNotModified), true
+		}
 		codeKey := attribute.Key("rpc." + protocol + ".error_code")
 		if serverErr != nil {
 			return codeKey.String(connect.CodeOf(serverErr).String()), true
