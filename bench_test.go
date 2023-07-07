@@ -21,7 +21,7 @@ import (
 	"sync"
 	"testing"
 
-	"connectrpc.com/connect"
+	connect "connectrpc.com/connect"
 	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
 	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
 )

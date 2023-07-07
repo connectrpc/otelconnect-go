@@ -23,7 +23,7 @@ import (
 	"log"
 	"net/http"
 
-	"connectrpc.com/connect"
+	connect "connectrpc.com/connect"
 	otelconnect "connectrpc.com/otelconnect"
 	// Generated from your protobuf schema by protoc-gen-go and
 	// protoc-gen-connect-go.

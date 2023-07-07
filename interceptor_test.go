@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
+	connect "connectrpc.com/connect"
 	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
 	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
 	"github.com/google/go-cmp/cmp"

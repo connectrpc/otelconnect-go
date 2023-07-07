@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"time"
 
-	"connectrpc.com/connect"
+	connect "connectrpc.com/connect"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"

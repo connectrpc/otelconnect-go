@@ -16,6 +16,13 @@ linters-settings:
       - '^print$'
       - '^println$'
       - '^panic$'
+  importas:
+    no-unaliased: true
+    alias:
+      - pkg: connectrpc.com/connect
+        alias: connect
+      - pkg: connectrpc.com/otelconnect/internal/gen/observability/ping/v1
+        alias: pingv1
   godox:
     # TODO, OPT, etc. comments are fine to commit. Use FIXME comments for
     # temporary hacks, and use godox to prevent committing them.

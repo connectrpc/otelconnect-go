@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	"connectrpc.com/connect"
+	connect "connectrpc.com/connect"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 )

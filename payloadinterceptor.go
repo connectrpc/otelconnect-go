@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"sync"
 
-	"connectrpc.com/connect"
+	connect "connectrpc.com/connect"
 )
 
 type streamingClientInterceptor struct {
