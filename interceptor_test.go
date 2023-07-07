@@ -1816,6 +1816,64 @@ func TestStreamingSpanStatus(t *testing.T) {
 	assert.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Error)
 }
 
+func TestWithoutTraceEventsStreaming(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer([]connect.HandlerOption{
+		connect.WithInterceptors(NewInterceptor(
+			WithTracerProvider(traceProvider),
+			WithoutTraceEvents(),
+		)),
+	}, nil, happyPingServer())
+	stream := pingClient.CumSum(context.Background())
+	assert.NoError(t, stream.Send(&pingv1.CumSumRequest{Number: 1}))
+	_, err := stream.Receive()
+	assert.NoError(t, err)
+	assert.NoError(t, stream.CloseRequest())
+	assert.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + CumSumMethod,
+			events:   []trace.Event{},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(CumSumMethod),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestWithoutTraceEventsUnary(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	pingClient, host, port := startServer([]connect.HandlerOption{
+		connect.WithInterceptors(NewInterceptor(
+			WithTracerProvider(traceProvider),
+			WithoutTraceEvents(),
+		)),
+	}, nil, happyPingServer())
+	_, err := pingClient.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	assert.NoError(t, err)
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
+			events:   []trace.Event{},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(PingMethod),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
 // streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
 // wraps streaming handler RPCs. It has no effect on unary or streaming client RPCs.
 type streamingHandlerInterceptorFunc func(connect.StreamingHandlerFunc) connect.StreamingHandlerFunc
