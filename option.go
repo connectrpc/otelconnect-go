@@ -114,6 +114,7 @@ func WithTraceResponseHeader(keys ...string) Option {
 	}
 }
 
+// WithoutTraceEvents disables trace events for both unary and streaming interceptors.
 func WithoutTraceEvents() Option {
 	return &omitTraceEventsOption{}
 }
