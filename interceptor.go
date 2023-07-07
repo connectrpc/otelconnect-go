@@ -133,13 +133,17 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				requestSize = proto.Size(msg)
 			}
 		}
-		span.AddEvent(messageKey,
-			trace.WithAttributes(
-				requestSpan,
-				semconv.MessageIDKey.Int(1),
-				semconv.MessageUncompressedSizeKey.Int(requestSize),
-			),
-		)
+
+		if !i.config.omitRPCEvents {
+			span.AddEvent(messageKey,
+				trace.WithAttributes(
+					requestSpan,
+					semconv.MessageIDKey.Int(1),
+					semconv.MessageUncompressedSizeKey.Int(requestSize),
+				),
+			)
+		}
+
 		response, err := next(ctx, request)
 		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
 			attributes = append(attributes, statusCode)
@@ -151,13 +155,17 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			}
 			span.SetAttributes(headerAttributes(protocol, responseKey, response.Header(), i.config.responseHeaderKeys)...)
 		}
-		span.AddEvent(messageKey,
-			trace.WithAttributes(
-				responseSpan,
-				semconv.MessageIDKey.Int(1),
-				semconv.MessageUncompressedSizeKey.Int(responseSize),
-			),
-		)
+
+		if !i.config.omitRPCEvents {
+			span.AddEvent(messageKey,
+				trace.WithAttributes(
+					responseSpan,
+					semconv.MessageIDKey.Int(1),
+					semconv.MessageUncompressedSizeKey.Int(responseSize),
+				),
+			)
+		}
+
 		attributes = attributeFilter(req, attributes...)
 		span.SetStatus(spanStatus(err))
 		span.SetAttributes(attributes...)
