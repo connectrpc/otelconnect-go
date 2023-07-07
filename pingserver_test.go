@@ -19,11 +19,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 
 	"connectrpc.com/connect"
 	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
 	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
 )
+
+const cacheablePingEtag = "ABCDEFGH"
 
 func pingHappy(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 	return connect.NewResponse(&pingv1.PingResponse{
@@ -103,7 +106,15 @@ func (p *pluggablePingServer) Ping(
 	ctx context.Context,
 	request *connect.Request[pingv1.PingRequest],
 ) (*connect.Response[pingv1.PingResponse], error) {
-	return p.ping(ctx, request)
+	if request.HTTPMethod() == http.MethodGet && request.Header().Get("If-None-Match") == cacheablePingEtag {
+		return nil, connect.NewNotModifiedError(nil)
+	}
+	resp, err := p.ping(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	resp.Header().Set("Etag", cacheablePingEtag)
+	return resp, nil
 }
 
 func (p *pluggablePingServer) CumSum(
