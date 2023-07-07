@@ -117,7 +117,7 @@ more customizable attribute filtering, use
 
 Offered under the [Apache 2 license][license].
 
-[Buf Studio]: https://studio.buf.build/
+[Buf Studio]: https://buf.build/studio
 [Getting Started]: https://connect.build/docs/go/getting-started
 [WithFilter]: https://pkg.go.dev/github.com/bufbuild/connect-opentelemetry-go#WithFilter
 [WithTrustRemote]: https://pkg.go.dev/github.com/bufbuild/connect-opentelemetry-go#WithTrustRemote
