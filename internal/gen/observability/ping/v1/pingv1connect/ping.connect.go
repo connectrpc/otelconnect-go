@@ -49,9 +49,6 @@ const (
 const (
 	// PingServicePingProcedure is the fully-qualified name of the PingService's Ping RPC.
 	PingServicePingProcedure = "/observability.ping.v1.PingService/Ping"
-	// PingServiceCacheablePingProcedure is the fully-qualified name of the PingService's CacheablePing
-	// RPC.
-	PingServiceCacheablePingProcedure = "/observability.ping.v1.PingService/CacheablePing"
 	// PingServiceFailProcedure is the fully-qualified name of the PingService's Fail RPC.
 	PingServiceFailProcedure = "/observability.ping.v1.PingService/Fail"
 	// PingServiceSumProcedure is the fully-qualified name of the PingService's Sum RPC.
@@ -66,12 +63,6 @@ const (
 type PingServiceClient interface {
 	// Ping sends a ping to the server to determine if it's reachable.
 	Ping(context.Context, *connect_go.Request[v1.PingRequest]) (*connect_go.Response[v1.PingResponse], error)
-	// CacheablePing sends a ping request and returns a cacheable ping
-	// response. This endpoint supports conditional GETs. Responses
-	// to GET requests will include an Etag header that can be used
-	// to conditionally check for a newer response in a subsequent
-	// request.
-	CacheablePing(context.Context, *connect_go.Request[v1.PingRequest]) (*connect_go.Response[v1.PingResponse], error)
 	// Fail always fails.
 	Fail(context.Context, *connect_go.Request[v1.FailRequest]) (*connect_go.Response[v1.FailResponse], error)
 	// Sum calculates the sum of the numbers sent on the stream.
@@ -95,11 +86,6 @@ func NewPingServiceClient(httpClient connect_go.HTTPClient, baseURL string, opts
 		ping: connect_go.NewClient[v1.PingRequest, v1.PingResponse](
 			httpClient,
 			baseURL+PingServicePingProcedure,
-			opts...,
-		),
-		cacheablePing: connect_go.NewClient[v1.PingRequest, v1.PingResponse](
-			httpClient,
-			baseURL+PingServiceCacheablePingProcedure,
 			connect_go.WithIdempotency(connect_go.IdempotencyNoSideEffects),
 			connect_go.WithClientOptions(opts...),
 		),
@@ -128,22 +114,16 @@ func NewPingServiceClient(httpClient connect_go.HTTPClient, baseURL string, opts
 
 // pingServiceClient implements PingServiceClient.
 type pingServiceClient struct {
-	ping          *connect_go.Client[v1.PingRequest, v1.PingResponse]
-	cacheablePing *connect_go.Client[v1.PingRequest, v1.PingResponse]
-	fail          *connect_go.Client[v1.FailRequest, v1.FailResponse]
-	sum           *connect_go.Client[v1.SumRequest, v1.SumResponse]
-	countUp       *connect_go.Client[v1.CountUpRequest, v1.CountUpResponse]
-	cumSum        *connect_go.Client[v1.CumSumRequest, v1.CumSumResponse]
+	ping    *connect_go.Client[v1.PingRequest, v1.PingResponse]
+	fail    *connect_go.Client[v1.FailRequest, v1.FailResponse]
+	sum     *connect_go.Client[v1.SumRequest, v1.SumResponse]
+	countUp *connect_go.Client[v1.CountUpRequest, v1.CountUpResponse]
+	cumSum  *connect_go.Client[v1.CumSumRequest, v1.CumSumResponse]
 }
 
 // Ping calls observability.ping.v1.PingService.Ping.
 func (c *pingServiceClient) Ping(ctx context.Context, req *connect_go.Request[v1.PingRequest]) (*connect_go.Response[v1.PingResponse], error) {
 	return c.ping.CallUnary(ctx, req)
-}
-
-// CacheablePing calls observability.ping.v1.PingService.CacheablePing.
-func (c *pingServiceClient) CacheablePing(ctx context.Context, req *connect_go.Request[v1.PingRequest]) (*connect_go.Response[v1.PingResponse], error) {
-	return c.cacheablePing.CallUnary(ctx, req)
 }
 
 // Fail calls observability.ping.v1.PingService.Fail.
@@ -170,12 +150,6 @@ func (c *pingServiceClient) CumSum(ctx context.Context) *connect_go.BidiStreamFo
 type PingServiceHandler interface {
 	// Ping sends a ping to the server to determine if it's reachable.
 	Ping(context.Context, *connect_go.Request[v1.PingRequest]) (*connect_go.Response[v1.PingResponse], error)
-	// CacheablePing sends a ping request and returns a cacheable ping
-	// response. This endpoint supports conditional GETs. Responses
-	// to GET requests will include an Etag header that can be used
-	// to conditionally check for a newer response in a subsequent
-	// request.
-	CacheablePing(context.Context, *connect_go.Request[v1.PingRequest]) (*connect_go.Response[v1.PingResponse], error)
 	// Fail always fails.
 	Fail(context.Context, *connect_go.Request[v1.FailRequest]) (*connect_go.Response[v1.FailResponse], error)
 	// Sum calculates the sum of the numbers sent on the stream.
@@ -196,11 +170,6 @@ func NewPingServiceHandler(svc PingServiceHandler, opts ...connect_go.HandlerOpt
 	mux.Handle(PingServicePingProcedure, connect_go.NewUnaryHandler(
 		PingServicePingProcedure,
 		svc.Ping,
-		opts...,
-	))
-	mux.Handle(PingServiceCacheablePingProcedure, connect_go.NewUnaryHandler(
-		PingServiceCacheablePingProcedure,
-		svc.CacheablePing,
 		connect_go.WithIdempotency(connect_go.IdempotencyNoSideEffects),
 		connect_go.WithHandlerOptions(opts...),
 	))
@@ -232,10 +201,6 @@ type UnimplementedPingServiceHandler struct{}
 
 func (UnimplementedPingServiceHandler) Ping(context.Context, *connect_go.Request[v1.PingRequest]) (*connect_go.Response[v1.PingResponse], error) {
 	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("observability.ping.v1.PingService.Ping is not implemented"))
-}
-
-func (UnimplementedPingServiceHandler) CacheablePing(context.Context, *connect_go.Request[v1.PingRequest]) (*connect_go.Response[v1.PingResponse], error) {
-	return nil, connect_go.NewError(connect_go.CodeUnimplemented, errors.New("observability.ping.v1.PingService.CacheablePing is not implemented"))
 }
 
 func (UnimplementedPingServiceHandler) Fail(context.Context, *connect_go.Request[v1.FailRequest]) (*connect_go.Response[v1.FailResponse], error) {

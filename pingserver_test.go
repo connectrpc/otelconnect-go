@@ -106,13 +106,6 @@ func (p *pluggablePingServer) Ping(
 	ctx context.Context,
 	request *connect.Request[pingv1.PingRequest],
 ) (*connect.Response[pingv1.PingResponse], error) {
-	return p.ping(ctx, request)
-}
-
-func (p *pluggablePingServer) CacheablePing(
-	ctx context.Context,
-	request *connect.Request[pingv1.PingRequest],
-) (*connect.Response[pingv1.PingResponse], error) {
 	if request.HTTPMethod() == http.MethodGet && request.Header().Get("If-None-Match") == cacheablePingEtag {
 		return nil, connect.NewNotModifiedError(nil)
 	}

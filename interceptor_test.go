@@ -1460,7 +1460,7 @@ func TestUnaryInterceptorNotModifiedError(t *testing.T) {
 	)
 	req := connect.NewRequest(&pingv1.PingRequest{Id: 1})
 	req.Header().Set("If-None-Match", cacheablePingEtag)
-	_, err := client.CacheablePing(context.Background(), req)
+	_, err := client.Ping(context.Background(), req)
 	assert.ErrorContains(t, err, "not modified")
 	assert.True(t, connect.IsNotModifiedError(err))
 	assert.Equal(t, len(spanRecorder.Ended()), 1)
