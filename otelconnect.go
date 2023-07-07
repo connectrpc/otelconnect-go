@@ -55,5 +55,5 @@ type config struct {
 	trustRemote        bool
 	requestHeaderKeys  []string
 	responseHeaderKeys []string
-	omitRPCEvents      bool
+	omitTraceEvents    bool
 }

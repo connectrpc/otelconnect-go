@@ -133,8 +133,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				requestSize = proto.Size(msg)
 			}
 		}
-
-		if !i.config.omitRPCEvents {
+		if !i.config.omitTraceEvents {
 			span.AddEvent(messageKey,
 				trace.WithAttributes(
 					requestSpan,
@@ -143,7 +142,6 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				),
 			)
 		}
-
 		response, err := next(ctx, request)
 		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
 			attributes = append(attributes, statusCode)
@@ -155,8 +153,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			}
 			span.SetAttributes(headerAttributes(protocol, responseKey, response.Header(), i.config.responseHeaderKeys)...)
 		}
-
-		if !i.config.omitRPCEvents {
+		if !i.config.omitTraceEvents {
 			span.AddEvent(messageKey,
 				trace.WithAttributes(
 					responseSpan,
@@ -165,7 +162,6 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				),
 			)
 		}
-
 		attributes = attributeFilter(req, attributes...)
 		span.SetStatus(spanStatus(protocol, err))
 		span.SetAttributes(attributes...)
@@ -205,6 +201,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		state := newStreamingState(
 			req,
 			i.config.filterAttribute,
+			i.config.omitTraceEvents,
 			requestAttributes(req),
 			instrumentation.responseSize,
 			instrumentation.responsesPerRPC,
@@ -281,6 +278,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		state := newStreamingState(
 			req,
 			i.config.filterAttribute,
+			i.config.omitTraceEvents,
 			requestAttributes(req),
 			instrumentation.requestSize,
 			instrumentation.requestsPerRPC,
