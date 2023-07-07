@@ -73,8 +73,11 @@ func WithAttributeFilter(filter AttributeFilter) Option {
 	return &attributeFilterOption{filterAttribute: filter}
 }
 
-// WithoutServerPeerAttributes removes net.peer.port and net.peer.name attributes from server trace and span attributes.
-// This is recommended to use as net.peer server attributes have high cardinality.
+// WithoutServerPeerAttributes removes net.peer.port and net.peer.name
+// attributes from server trace and span attributes. The default behavior
+// follows the OpenTelemetry semantic conventions for RPC, but produces very
+// high-cardinality data; this option significantly reduces cardinality in most
+// environments.
 func WithoutServerPeerAttributes() Option {
 	return WithAttributeFilter(func(request *Request, value attribute.KeyValue) bool {
 		if request.Spec.IsClient {
@@ -114,8 +117,11 @@ func WithTraceResponseHeader(keys ...string) Option {
 	}
 }
 
-func WithoutRPCEvents() Option {
-	return &omitRPCEventsOption{}
+// WithoutTraceEvents disables trace events for both unary and streaming
+// interceptors. This reduces the quantity of data sent to your tracing system
+// by omitting per-message information like message size.
+func WithoutTraceEvents() Option {
+	return &omitTraceEventsOption{}
 }
 
 type attributeFilterOption struct {
@@ -198,8 +204,8 @@ func (o *traceResponseHeaderOption) apply(c *config) {
 	}
 }
 
-type omitRPCEventsOption struct{}
+type omitTraceEventsOption struct{}
 
-func (o *omitRPCEventsOption) apply(c *config) {
-	c.omitRPCEvents = true
+func (o *omitTraceEventsOption) apply(c *config) {
+	c.omitTraceEvents = true
 }
