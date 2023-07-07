@@ -114,8 +114,8 @@ func WithTraceResponseHeader(keys ...string) Option {
 	}
 }
 
-func WithoutRPCEvents() Option {
-	return &omitRPCEventsOption{}
+func WithoutTraceEvents() Option {
+	return &omitTraceEventsOption{}
 }
 
 type attributeFilterOption struct {
@@ -198,8 +198,8 @@ func (o *traceResponseHeaderOption) apply(c *config) {
 	}
 }
 
-type omitRPCEventsOption struct{}
+type omitTraceEventsOption struct{}
 
-func (o *omitRPCEventsOption) apply(c *config) {
-	c.omitRPCEvents = true
+func (o *omitTraceEventsOption) apply(c *config) {
+	c.omitTraceEvents = true
 }
