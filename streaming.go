@@ -90,8 +90,8 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 	}
 	protomsg, ok := msg.(proto.Message)
 	size := proto.Size(protomsg)
-	s.receivedCounter++
 	if !s.omitTraceEvents {
+		s.receivedCounter++
 		s.event(ctx, semconv.MessageTypeReceived, s.receivedCounter, ok, size)
 	}
 	s.receiveSize.Record(ctx, int64(size), metric.WithAttributes(s.attributes...))
@@ -116,8 +116,8 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 	}
 	protomsg, ok := msg.(proto.Message)
 	size := proto.Size(protomsg)
-	s.sentCounter++
 	if !s.omitTraceEvents {
+		s.sentCounter++
 		s.event(ctx, semconv.MessageTypeSent, s.sentCounter, ok, size)
 	}
 	s.sendSize.Record(ctx, int64(size), metric.WithAttributes(s.attributes...))
