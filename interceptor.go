@@ -143,6 +143,10 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			)
 		}
 		response, err := next(ctx, request)
+		if i.config.appendTraceIdResponseHeader {
+			response.Header().Add("X-Trace-Id", span.SpanContext().TraceID().String())
+		}
+
 		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
 			attributes = append(attributes, statusCode)
 		}
