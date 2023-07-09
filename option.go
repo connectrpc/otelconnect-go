@@ -124,6 +124,11 @@ func WithoutTraceEvents() Option {
 	return &omitTraceEventsOption{}
 }
 
+// WithAppendTraceIdResponseHeader enables the appending of the `X-Trace-Id` response header to all parent requests.
+func WithAppendTraceIdResponseHeader() Option {
+	return &appendTraceIdResponseHeaderOption{}
+}
+
 type attributeFilterOption struct {
 	filterAttribute AttributeFilter
 }
@@ -208,4 +213,10 @@ type omitTraceEventsOption struct{}
 
 func (o *omitTraceEventsOption) apply(c *config) {
 	c.omitTraceEvents = true
+}
+
+type appendTraceIdResponseHeaderOption struct{}
+
+func (o *appendTraceIdResponseHeaderOption) apply(c *config) {
+	c.appendTraceIdResponseHeader = true
 }
