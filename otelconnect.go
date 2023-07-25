@@ -15,45 +15,25 @@
 package otelconnect
 
 import (
-	"context"
-	"net/http"
-	"time"
-
-	connect "github.com/bufbuild/connect-go"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
+	"connectrpc.com/otelconnect"
 )
 
-const (
-	version             = "0.0.1-dev"
-	semanticVersion     = "semver:" + version
-	instrumentationName = "github.com/bufbuild/connect-opentelemetry-go"
-	grpcProtocol        = "grpc"
-	grpcwebString       = "grpcweb"
-	grpcwebProtocol     = "grpc_web"
-	connectString       = "connect"
-	connectProtocol     = "connect_rpc"
-)
+// Interceptor implements [connect.Interceptor] that adds
+// OpenTelemetry metrics and tracing to connect handlers and clients.
+type Interceptor = otelconnect.Interceptor
+
+// NewInterceptor constructs and returns an Interceptor which implements [connect.Interceptor]
+// that adds OpenTelemetry metrics and tracing to Connect handlers and clients.
+func NewInterceptor(options ...Option) *Interceptor {
+	return otelconnect.NewInterceptor(options...)
+}
+
+// AttributeFilter is used to filter attributes out based on the [Request] and [attribute.KeyValue].
+// If the filter returns true the attribute will be kept else it will be removed.
+// AttributeFilter must be safe to call concurrently.
+type AttributeFilter = otelconnect.AttributeFilter
 
 // Request is the information about each RPC available to filter functions. It
 // contains the common subset of [connect.AnyRequest],
 // [connect.StreamingClientConn], and [connect.StreamingHandlerConn].
-type Request struct {
-	Spec   connect.Spec
-	Peer   connect.Peer
-	Header http.Header
-}
-
-type config struct {
-	filter             func(context.Context, *Request) bool
-	filterAttribute    AttributeFilter
-	meter              metric.Meter
-	tracer             trace.Tracer
-	propagator         propagation.TextMapPropagator
-	now                func() time.Time
-	trustRemote        bool
-	requestHeaderKeys  []string
-	responseHeaderKeys []string
-	omitTraceEvents    bool
-}
+type Request = otelconnect.Request
