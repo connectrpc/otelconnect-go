@@ -1,12 +1,12 @@
-connect-opentelemetry-go
-========================
+otelconnect
+===========
 
-[![Build](https://connectrpc.com/otelconnect/actions/workflows/ci.yaml/badge.svg?branch=main)](https://connectrpc.com/otelconnect/actions/workflows/ci.yaml)
+[![Build](https://github.com/connectrpc/otelconnect-go/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/connectrpc/otelconnect-go/actions/workflows/ci.yaml)
 [![Report Card](https://goreportcard.com/badge/connectrpc.com/otelconnect)](https://goreportcard.com/report/connectrpc.com/otelconnect)
 [![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect.svg)][godoc]
 
-`connect-opentelemetry-go` adds support for [OpenTelemetry][opentelemetry.io]
-tracing and metrics collection to [connect-go] servers and clients.
+`connectrpc.com/otelconnect` adds support for [OpenTelemetry][opentelemetry.io]
+tracing and metrics collection to [Connect][connect] servers and clients.
 
 For more on Connect, OpenTelemetry, and `otelconnect`, see the [Connect
 announcement blog post][blog] and the observability documentation on
@@ -24,7 +24,7 @@ import (
 	"net/http"
 
 	connect "connectrpc.com/connect"
-	otelconnect "connectrpc.com/otelconnect"
+	"connectrpc.com/otelconnect"
 	// Generated from your protobuf schema by protoc-gen-go and
 	// protoc-gen-connect-go.
 	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
@@ -99,7 +99,7 @@ more customizable attribute filtering, use
 
 ## Ecosystem
 
-* [connect-go]: Service handlers and clients for GoLang
+* [connect-go][connect]: Service handlers and clients for Go
 * [connect-swift]: Swift clients for idiomatic gRPC & Connect RPC
 * [connect-kotlin]: Kotlin clients for idiomatic gRPC & Connect RPC
 * [connect-web]: TypeScript clients for web browsers
@@ -108,7 +108,7 @@ more customizable attribute filtering, use
 
 ## Support and Versioning
 
-`connect-opentelemetry-go` supports:
+`otelconnect` supports:
 
 * The [two most recent major releases][go-support-policy] of Go.
 * v1 of the `go.opentelemetry.io/otel` tracing and metrics SDK.
@@ -124,15 +124,14 @@ Offered under the [Apache 2 license][license].
 [WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
 [blog]: https://buf.build/blog/connect-a-better-grpc
 [connect-crosstest]: https://github.com/bufbuild/connect-crosstest
-[connect-go]: https://connectrpc.com/connect
+[connect-go]: https://github.com/connectrpc/connect-go
 [connect-kotlin]: https://github.com/bufbuild/connect-kotlin
 [connect-swift]: https://github.com/bufbuild/connect-swift
 [connect-web]: https://www.npmjs.com/package/@bufbuild/connect-web
-[demo]: https://github.com/bufbuild/connect-demo
 [docs]: https://connectrpc.com
 [go-support-policy]: https://golang.org/doc/devel/release#policy
 [godoc]: https://pkg.go.dev/connectrpc.com/otelconnect
-[license]: https://connectrpc.com/otelconnect/blob/main/LICENSE
+[license]: https://github.com/connectrpc/otelconnect-go/blob/main/LICENSE
 [opentelemetry.io]: https://opentelemetry.io/
 [otel-go-quickstart]: https://opentelemetry.io/docs/instrumentation/go/getting-started/
 [otel-go]: https://github.com/open-telemetry/opentelemetry-go
