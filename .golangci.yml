@@ -8,7 +8,7 @@ linters-settings:
   exhaustruct:
     include:
       # No zero values for param structs.
-      - 'github\.com/bufbuild/connect-opentelemetry-go\..*[pP]arams'
+      - 'connectrpc\.com/otelconnect\..*[pP]arams'
   forbidigo:
     forbid:
       - '^fmt\.Print'
