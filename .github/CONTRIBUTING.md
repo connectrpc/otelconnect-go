@@ -1,7 +1,7 @@
 Contributing
 ============
 
-We'd love your help making `connect-opentelemetry-go` better!
+We'd love your help making `otelconnect` better!
 
 If you'd like to add new exported APIs, please [open an issue][open-issue]
 describing your proposal &mdash; discussing API changes ahead of time makes
@@ -9,7 +9,7 @@ pull request review much smoother. In your issue, pull request, and any other
 communications, please remember to treat your fellow contributors with
 respect!
 
-Note that you'll need to sign [Buf's Contributor License Agreement][cla]
+Note that you'll need to sign the [Contributor License Agreement][cla]
 before we can accept any of your contributions. If necessary, a bot will remind
 you to accept the CLA when you open your pull request.
 
@@ -18,11 +18,11 @@ you to accept the CLA when you open your pull request.
 [Fork][fork], then clone the repository:
 
 ```
-mkdir -p $GOPATH/src/github.com/bufbuild
-cd $GOPATH/src/github.com/bufbuild
-git clone git@github.com:your_github_username/connect-opentelemetry-go.git
-cd connect-opentelemetry-go
-git remote add upstream https://connectrpc.com/otelconnect.git
+mkdir -p $GOPATH/src/connectrpc.com
+cd $GOPATH/src/connectrpc.com
+git clone git@github.com:your_github_username/otelconnect-go.git otelconnect
+cd otelconnect
+git remote add upstream https://github.com/connectrpc/otelconnect-go.git
 git fetch upstream
 ```
 
@@ -67,7 +67,7 @@ We're much more likely to approve your changes if you:
 * Write a [good commit message][commit-message].
 * Maintain backward compatibility.
 
-[fork]: https://connectrpc.com/otelconnect/fork
-[open-issue]: https://connectrpc.com/otelconnect/issues/new
-[cla]: https://cla-assistant.io/bufbuild/connect-opentelemetry-go
+[fork]: https://github.com/connectrpc/otelconnect-go/fork
+[open-issue]: https://github.com/otelconnect-go/issues/new
+[cla]: https://cla-assistant.io/connectrpc/otelconnect-go
 [commit-message]: http://tbaggery.com/2008/04/19/a-note-about-git-commit-messages.html
