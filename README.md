@@ -124,7 +124,7 @@ Offered under the [Apache 2 license][license].
 [WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
 [blog]: https://buf.build/blog/connect-a-better-grpc
 [connect-crosstest]: https://github.com/bufbuild/connect-crosstest
-[connect-go]: https://github.com/connectrpc/connect-go
+[connect]: https://github.com/connectrpc/connect-go
 [connect-kotlin]: https://github.com/bufbuild/connect-kotlin
 [connect-swift]: https://github.com/bufbuild/connect-swift
 [connect-web]: https://www.npmjs.com/package/@bufbuild/connect-web
