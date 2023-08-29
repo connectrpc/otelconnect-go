@@ -23,7 +23,7 @@ import (
 
 	connect "connectrpc.com/connect"
 	"go.opentelemetry.io/otel/attribute"
-	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
 // AttributeFilter is used to filter attributes out based on the [Request] and [attribute.KeyValue].

@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	version             = "0.0.1-dev"
+	version             = "0.6.0-dev"
 	semanticVersion     = "semver:" + version
 	instrumentationName = "connectrpc.com/otelconnect"
 	grpcProtocol        = "grpc"
