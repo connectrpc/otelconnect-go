@@ -123,7 +123,7 @@ Offered under the [Apache 2 license][license].
 [WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect#WithTrustRemote
 [WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
 [blog]: https://buf.build/blog/connect-a-better-grpc
-[connect-conformance]: https://github.com/connectrpc/conformance
+[conformance]: https://github.com/connectrpc/conformance
 [connect]: https://github.com/connectrpc/connect-go
 [connect-kotlin]: https://github.com/bufbuild/connect-kotlin
 [connect-swift]: https://github.com/bufbuild/connect-swift
