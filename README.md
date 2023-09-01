@@ -104,7 +104,7 @@ more customizable attribute filtering, use
 * [connect-kotlin]: Kotlin clients for idiomatic gRPC & Connect RPC
 * [connect-es]: Type-safe APIs with Protobuf and TypeScript.
 * [Buf Studio]: web UI for ad-hoc RPCs
-* [connect-conformance]: gRPC and gRPC-Web interoperability tests
+* [conformance]: Connect, gRPC, and gRPC-Web interoperability tests
 
 ## Support and Versioning
 
