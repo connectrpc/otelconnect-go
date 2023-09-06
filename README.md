@@ -102,9 +102,9 @@ more customizable attribute filtering, use
 * [connect-go][connect]: Service handlers and clients for Go
 * [connect-swift]: Swift clients for idiomatic gRPC & Connect RPC
 * [connect-kotlin]: Kotlin clients for idiomatic gRPC & Connect RPC
-* [connect-web]: TypeScript clients for web browsers
+* [connect-es]: Type-safe APIs with Protobuf and TypeScript.
 * [Buf Studio]: web UI for ad-hoc RPCs
-* [connect-crosstest]: gRPC and gRPC-Web interoperability tests
+* [conformance]: Connect, gRPC, and gRPC-Web interoperability tests
 
 ## Support and Versioning
 
@@ -123,11 +123,11 @@ Offered under the [Apache 2 license][license].
 [WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect#WithTrustRemote
 [WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
 [blog]: https://buf.build/blog/connect-a-better-grpc
-[connect-crosstest]: https://github.com/bufbuild/connect-crosstest
+[conformance]: https://github.com/connectrpc/conformance
 [connect]: https://github.com/connectrpc/connect-go
 [connect-kotlin]: https://github.com/bufbuild/connect-kotlin
 [connect-swift]: https://github.com/bufbuild/connect-swift
-[connect-web]: https://www.npmjs.com/package/@bufbuild/connect-web
+[connect-es]: https://github.com/connectrpc/connect-es
 [docs]: https://connectrpc.com
 [go-support-policy]: https://golang.org/doc/devel/release#policy
 [godoc]: https://pkg.go.dev/connectrpc.com/otelconnect
