@@ -61,7 +61,7 @@ generate: $(BIN)/buf $(BIN)/protoc-gen-go $(BIN)/protoc-gen-connect-go $(BIN)/li
 		<(git ls-files --deleted | sort -u) | \
 		xargs $(BIN)/license-header \
 			--license-type apache \
-			--copyright-holder "Buf Technologies, Inc." \
+			--copyright-holder "The Connect Authors" \
 			--year-range "$(COPYRIGHT_YEARS)"
 
 .PHONY: upgrade
