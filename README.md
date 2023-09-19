@@ -125,8 +125,8 @@ Offered under the [Apache 2 license][license].
 [blog]: https://buf.build/blog/connect-a-better-grpc
 [conformance]: https://github.com/connectrpc/conformance
 [connect]: https://github.com/connectrpc/connect-go
-[connect-kotlin]: https://github.com/bufbuild/connect-kotlin
-[connect-swift]: https://github.com/bufbuild/connect-swift
+[connect-kotlin]: https://github.com/connectrpc/connect-kotlin
+[connect-swift]: https://github.com/connectrpc/connect-swift
 [connect-es]: https://github.com/connectrpc/connect-es
 [docs]: https://connectrpc.com
 [go-support-policy]: https://golang.org/doc/devel/release#policy
