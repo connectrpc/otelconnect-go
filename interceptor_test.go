@@ -45,6 +45,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	traceapi "go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -69,8 +70,6 @@ const (
 
 func TestStreamingMetrics(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
-	size := int64(len(data) + 2)
 	metricReader, meterProvider := setupMetrics()
 	var now time.Time
 	connectClient, host, port := startServer(
@@ -84,22 +83,17 @@ func TestStreamingMetrics(t *testing.T) {
 				}))),
 		}, []connect.ClientOption{}, okayPingServer())
 	stream := connectClient.PingStream(context.Background())
-	err := stream.Send(&pingv1.PingStreamRequest{
-		Data: data,
-	})
-	if err != nil {
-		t.Error(err)
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
 	}
-	_, err = stream.Receive()
-	if err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, stream.Send(msg))
+	size := int64(proto.Size(msg))
+	_, err := stream.Receive()
+	require.NoError(t, err)
 	require.NoError(t, stream.CloseRequest())
 	require.NoError(t, stream.CloseResponse())
 	metrics := &metricdata.ResourceMetrics{}
-	if err := metricReader.Collect(context.Background(), metrics); err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, metricReader.Collect(context.Background(), metrics))
 	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
@@ -166,10 +160,10 @@ func TestStreamingMetrics(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
 									),
-									Count: 2,
-									Sum:   4.0,
-									Min:   metricdata.NewExtrema[int64](2),
-									Max:   metricdata.NewExtrema[int64](2),
+									Count: 1,
+									Sum:   size,
+									Min:   metricdata.NewExtrema[int64](size),
+									Max:   metricdata.NewExtrema[int64](size),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -210,8 +204,8 @@ func TestStreamingMetrics(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
 									),
-									Count: 2,
-									Sum:   2,
+									Count: 1,
+									Sum:   1,
 									Min:   metricdata.NewExtrema[int64](1),
 									Max:   metricdata.NewExtrema[int64](1),
 								},
@@ -233,8 +227,6 @@ func TestStreamingMetrics(t *testing.T) {
 
 func TestStreamingMetricsClient(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
-	size := int64(len(data) + 2)
 	metricReader, meterProvider := setupMetrics()
 	var now time.Time
 	connectClient, host, port := startServer(
@@ -249,22 +241,17 @@ func TestStreamingMetricsClient(t *testing.T) {
 				}))),
 		}, okayPingServer())
 	stream := connectClient.PingStream(context.Background())
-	err := stream.Send(&pingv1.PingStreamRequest{
-		Data: data,
-	})
-	if err != nil {
-		t.Error(err)
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
 	}
+	size := int64(proto.Size(msg))
+	require.NoError(t, stream.Send(msg))
 	require.NoError(t, stream.CloseRequest())
-	_, err = stream.Receive()
-	if err != nil {
-		t.Error(err)
-	}
+	_, err := stream.Receive()
+	require.NoError(t, err)
 	require.NoError(t, stream.CloseResponse())
 	metrics := &metricdata.ResourceMetrics{}
-	if err := metricReader.Collect(context.Background(), metrics); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
 	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
@@ -398,8 +385,6 @@ func TestStreamingMetricsClient(t *testing.T) {
 
 func TestStreamingMetricsClientFail(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
-	size := int64(len(data) + 2)
 	metricReader, meterProvider := setupMetrics()
 	var now time.Time
 	connectClient, host, port := startServer(
@@ -414,20 +399,17 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 				}))),
 		}, failPingServer())
 	stream := connectClient.PingStream(context.Background())
-	err := stream.Send(&pingv1.PingStreamRequest{
-		Data: data,
-	})
-	if err != nil {
-		t.Error(err)
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
 	}
+	size := int64(proto.Size(msg))
+	require.NoError(t, stream.Send(msg))
 	require.NoError(t, stream.CloseRequest())
-	_, err = stream.Receive()
+	_, err := stream.Receive()
 	require.Error(t, err)
 	require.NoError(t, stream.CloseResponse())
 	metrics := &metricdata.ResourceMetrics{}
-	if err := metricReader.Collect(context.Background(), metrics); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
 	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
@@ -577,24 +559,18 @@ func TestStreamingMetricsFail(t *testing.T) {
 				}))),
 		}, []connect.ClientOption{}, failPingServer())
 	stream := connectClient.PingStream(context.Background())
-	err := stream.Send(&pingv1.PingStreamRequest{
+	msg := &pingv1.PingStreamRequest{
 		Data: []byte("Hello, otel!"),
-	})
-	if err != nil {
-		t.Error(err)
 	}
+	size := int64(proto.Size(msg))
+	err := stream.Send(msg)
+	require.NoError(t, err)
 	require.NoError(t, stream.CloseRequest())
-	_, err = stream.Receive()
-	require.NoError(t, err)
-	_, err = stream.Receive()
-	require.NoError(t, err)
 	_, err = stream.Receive()
 	require.Error(t, err)
 	require.NoError(t, stream.CloseResponse())
 	metrics := &metricdata.ResourceMetrics{}
-	if err := metricReader.Collect(context.Background(), metrics); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
 	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
@@ -641,31 +617,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 										semconv.RPCMethodKey.String(PingStreamMethod),
 									),
 									Count: 1,
-									Sum:   2.0,
-									Min:   metricdata.NewExtrema[int64](2),
-									Max:   metricdata.NewExtrema[int64](2),
-								},
-							},
-							Temporality: metricdata.CumulativeTemporality,
-						},
-					},
-					{
-						Name: rpcServerResponseSize,
-						Unit: unitBytes,
-						Data: metricdata.Histogram[int64]{
-							DataPoints: []metricdata.HistogramDataPoint[int64]{
-								{
-									Attributes: attribute.NewSet(
-										semconv.NetPeerNameKey.String(host),
-										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
-										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
-									),
-									Count: 2,
-									Sum:   4.0,
-									Min:   metricdata.NewExtrema[int64](2),
-									Max:   metricdata.NewExtrema[int64](2),
+									Sum:   size,
+									Min:   metricdata.NewExtrema[int64](size),
+									Max:   metricdata.NewExtrema[int64](size),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -686,28 +640,6 @@ func TestStreamingMetricsFail(t *testing.T) {
 									),
 									Count: 1,
 									Sum:   1,
-									Min:   metricdata.NewExtrema[int64](1),
-									Max:   metricdata.NewExtrema[int64](1),
-								},
-							},
-							Temporality: metricdata.CumulativeTemporality,
-						},
-					},
-					{
-						Name: rpcServerResponsesPerRPC,
-						Unit: unitDimensionless,
-						Data: metricdata.Histogram[int64]{
-							DataPoints: []metricdata.HistogramDataPoint[int64]{
-								{
-									Attributes: attribute.NewSet(
-										semconv.NetPeerNameKey.String(host),
-										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
-										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
-									),
-									Count: 2,
-									Sum:   2,
 									Min:   metricdata.NewExtrema[int64](1),
 									Max:   metricdata.NewExtrema[int64](1),
 								},
@@ -744,9 +676,7 @@ func TestMetrics(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 	metrics := &metricdata.ResourceMetrics{}
-	if err := metricReader.Collect(context.Background(), metrics); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
 	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
@@ -894,9 +824,7 @@ func TestWithoutMetrics(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 	metrics := &metricdata.ResourceMetrics{}
-	if err := metricReader.Collect(context.Background(), metrics); err != nil {
-		t.Error(err)
-	}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
 	if len(metrics.ScopeMetrics) != 0 {
 		t.Error("metrics unexpectedly recorded")
 	}
@@ -972,9 +900,7 @@ func TestHandlerFailCall(t *testing.T) {
 		context.Background(),
 		connect.NewRequest(&pingv1.FailRequest{Code: int32(connect.CodeInternal)}),
 	)
-	if err == nil {
-		t.Fatal("expecting error, got nil")
-	}
+	require.Error(t, err)
 	require.Len(t, clientSpanRecorder.Ended(), 1)
 	require.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Error)
 	assertSpans(t, []wantSpans{
@@ -1307,12 +1233,12 @@ func TestUnaryHandlerNoTraceParent(t *testing.T) {
 
 func TestStreamingHandlerNoTraceParent(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
+	msg := &pingv1.PingStreamResponse{
+		Data: []byte("Hello, otel!"),
+	}
 	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
 		assert.Zero(t, stream.RequestHeader().Get(TraceParentKey))
-		assert.NoError(t, stream.Send(&pingv1.PingStreamResponse{
-			Data: data,
-		}))
+		assert.NoError(t, stream.Send(msg))
 		return nil
 	}
 	client, _, _ := startServer([]connect.HandlerOption{
@@ -1327,7 +1253,7 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 	resp, err := stream.Receive()
 	assert.NoError(t, stream.CloseResponse())
 	assert.NoError(t, err)
-	assert.Equal(t, data, resp.Data)
+	assert.Equal(t, msg.Data, resp.Data)
 }
 
 func TestPropagationBaggage(t *testing.T) {
@@ -1578,12 +1504,12 @@ func TestWithUntrustedRemoteStreaming(t *testing.T) {
 
 func TestStreamingClientPropagation(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
+	msg := &pingv1.PingStreamResponse{
+		Data: []byte("Hello, otel!"),
+	}
 	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
 		assert.NotZero(t, stream.RequestHeader().Get(TraceParentKey))
-		assert.NoError(t, stream.Send(&pingv1.PingStreamResponse{
-			Data: data,
-		}))
+		assert.NoError(t, stream.Send(msg))
 		return nil
 	}
 	client, _, _ := startServer(nil, []connect.ClientOption{
@@ -1599,12 +1525,11 @@ func TestStreamingClientPropagation(t *testing.T) {
 	resp, err := stream.Receive()
 	assert.NoError(t, stream.CloseResponse())
 	assert.NoError(t, err)
-	assert.Equal(t, data, resp.Data)
+	assert.Equal(t, msg.Data, resp.Data)
 }
 
 func TestStreamingHandlerTracing(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer([]connect.HandlerOption{
@@ -1612,7 +1537,11 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
 
-	assert.NoError(t, stream.Send(&pingv1.PingStreamRequest{Data: data}))
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}
+	size := proto.Size(msg)
+	assert.NoError(t, stream.Send(msg))
 	_, err := stream.Receive()
 	assert.NoError(t, err)
 	assert.NoError(t, stream.CloseRequest())
@@ -1627,7 +1556,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
 					},
 				},
@@ -1635,16 +1564,8 @@ func TestStreamingHandlerTracing(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
-					},
-				},
-				{
-					Name: messageKey,
-					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(2),
-						semconv.MessageIDKey.Int(2),
 					},
 				},
 			},
@@ -1661,7 +1582,6 @@ func TestStreamingHandlerTracing(t *testing.T) {
 
 func TestStreamingClientTracing(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer(nil, []connect.ClientOption{
@@ -1669,7 +1589,9 @@ func TestStreamingClientTracing(t *testing.T) {
 	}, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
 
-	assert.NoError(t, stream.Send(&pingv1.PingStreamRequest{Data: data}))
+	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
+	size := proto.Size(msg)
+	assert.NoError(t, stream.Send(msg))
 	_, err := stream.Receive()
 	assert.NoError(t, err)
 	assert.NoError(t, stream.CloseRequest())
@@ -1684,7 +1606,7 @@ func TestStreamingClientTracing(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
 					},
 				},
@@ -1692,7 +1614,7 @@ func TestStreamingClientTracing(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
 					},
 				},
@@ -1710,14 +1632,12 @@ func TestStreamingClientTracing(t *testing.T) {
 
 func TestWithAttributeFilter(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
-	size := len(data) + 2
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer(nil, []connect.ClientOption{
 		connect.WithInterceptors(NewInterceptor(
 			WithTracerProvider(traceProvider),
-			WithAttributeFilter(func(request *Request, value attribute.KeyValue) bool {
+			WithAttributeFilter(func(_ *Request, value attribute.KeyValue) bool {
 				if value.Key == semconv.MessageIDKey {
 					return false
 				}
@@ -1731,7 +1651,9 @@ func TestWithAttributeFilter(t *testing.T) {
 	}, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
 
-	assert.NoError(t, stream.Send(&pingv1.PingStreamRequest{Data: data}))
+	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
+	size := proto.Size(msg)
+	assert.NoError(t, stream.Send(msg))
 	_, err := stream.Receive()
 	assert.NoError(t, err)
 	assert.NoError(t, stream.CloseRequest())
@@ -1767,7 +1689,6 @@ func TestWithAttributeFilter(t *testing.T) {
 
 func TestWithoutServerPeerAttributes(t *testing.T) {
 	t.Parallel()
-	data := []byte("Hello, otel!")
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, _, _ := startServer([]connect.HandlerOption{
@@ -1777,7 +1698,9 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 		)),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
-	assert.NoError(t, stream.Send(&pingv1.PingStreamRequest{Data: data}))
+	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
+	size := proto.Size(msg)
+	assert.NoError(t, stream.Send(msg))
 	_, err := stream.Receive()
 	assert.NoError(t, err)
 	assert.NoError(t, stream.CloseRequest())
@@ -1790,7 +1713,7 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
 					},
 				},
@@ -1798,16 +1721,8 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(2),
+						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
-					},
-				},
-				{
-					Name: messageKey,
-					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(2),
-						semconv.MessageIDKey.Int(2),
 					},
 				},
 			},
