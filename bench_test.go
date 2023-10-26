@@ -55,7 +55,7 @@ func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			_, err := client.Ping(context.Background(), &connect.Request[pingv1.PingRequest]{
-				Msg: &pingv1.PingRequest{Data: []byte("Sentence")},
+				Msg: &pingv1.PingRequest{Data: []byte("Hello, otel!")},
 			})
 			if err != nil {
 				b.Log(err)
@@ -67,11 +67,13 @@ func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []
 func benchStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
 	b.Helper()
 	_, client := startBenchServer(handleropts, clientopts)
-	req := &pingv1.CumSumRequest{Number: 12}
+	req := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			stream := client.CumSum(context.Background())
+			stream := client.PingStream(context.Background())
 			if err := stream.Send(req); err != nil {
 				b.Error(err)
 			}
@@ -84,7 +86,7 @@ func benchStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopt
 
 func startBenchServer(handleropts []connect.HandlerOption, clientopts []connect.ClientOption) (*httptest.Server, pingv1connect.PingServiceClient) {
 	mux := http.NewServeMux()
-	mux.Handle(pingv1connect.NewPingServiceHandler(happyPingServer(), handleropts...))
+	mux.Handle(pingv1connect.NewPingServiceHandler(okayPingServer(), handleropts...))
 	server := httptest.NewUnstartedServer(mux)
 	server.EnableHTTP2 = true
 	server.StartTLS()

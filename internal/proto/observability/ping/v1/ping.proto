@@ -32,28 +32,14 @@ message FailRequest {
 
 message FailResponse {}
 
-message SumRequest {
-  int64 number = 1;
+message PingStreamRequest {
+  int64 id = 1;
+  bytes data = 2;
 }
 
-message SumResponse {
-  int64 sum = 1;
-}
-
-message CountUpRequest {
-  int64 number = 1;
-}
-
-message CountUpResponse {
-  int64 number = 1;
-}
-
-message CumSumRequest {
-  int64 number = 1;
-}
-
-message CumSumResponse {
-  int64 sum = 1;
+message PingStreamResponse {
+  int64 id = 1;
+  bytes data = 2;
 }
 
 service PingService {
@@ -61,12 +47,8 @@ service PingService {
   rpc Ping(PingRequest) returns (PingResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
-  // Fail always fails.
+  // PingStream sends a ful-duplex stream of pings to the server.
+  rpc PingStream(stream PingStreamRequest) returns (stream PingStreamResponse) {}
+  // Fail sends a request to the server that will generate an error.
   rpc Fail(FailRequest) returns (FailResponse) {}
-  // Sum calculates the sum of the numbers sent on the stream.
-  rpc Sum(stream SumRequest) returns (SumResponse) {}
-  // CountUp returns a stream of the numbers up to the given request.
-  rpc CountUp(CountUpRequest) returns (stream CountUpResponse) {}
-  // CumSum determines the cumulative sum of all the numbers sent on the stream.
-  rpc CumSum(stream CumSumRequest) returns (stream CumSumResponse) {}
 }
