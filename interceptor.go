@@ -34,9 +34,9 @@ import (
 // Interceptor implements [connect.Interceptor] that adds
 // OpenTelemetry metrics and tracing to connect handlers and clients.
 type Interceptor struct {
-	config             config
-	clientInstruments  instruments
-	handlerInstruments instruments
+	config          config
+	instrumentsOnce sync.Once
+	instruments     instruments
 }
 
 var _ connect.Interceptor = &Interceptor{}
@@ -63,13 +63,23 @@ func NewInterceptor(options ...Option) *Interceptor {
 	}
 }
 
-func (i *Interceptor) getAndInitInstrument(isClient bool) (*instruments, error) {
-	if isClient {
-		i.clientInstruments.init(i.config.meter, isClient)
-		return &i.clientInstruments, i.clientInstruments.initErr
-	}
-	i.handlerInstruments.init(i.config.meter, isClient)
-	return &i.handlerInstruments, i.handlerInstruments.initErr
+// initialization must wait to determine if the interceptor is a client or server
+// because the instrumentation is different for each.
+func (i *Interceptor) getAndInitInstrument(isClient bool) *instruments {
+	i.instrumentsOnce.Do(func() {
+		instrumentType := serverKey
+		if isClient {
+			instrumentType = clientKey
+		}
+		var err error
+		i.instruments, err = makeInstruments(i.config.meter, instrumentType)
+		if err != nil {
+			// Error initializing instruments will not cause the
+			// interceptor to fail. Report the error and continue.
+			otel.Handle(err)
+		}
+	})
+	return &i.instruments
 }
 
 // WrapUnary implements otel tracing and metrics for unary handlers.
@@ -91,10 +101,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol)
 		attributes := attributeFilter(req, requestAttributes(req)...)
-		instrumentation, err := i.getAndInitInstrument(isClient)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
+		instrumentation := i.getAndInitInstrument(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
 		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
@@ -179,13 +186,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		requestStartTime := i.config.now()
 		conn := next(ctx, spec)
-		instrumentation, err := i.getAndInitInstrument(spec.IsClient)
-		if err != nil {
-			return &errorStreamingClientInterceptor{
-				StreamingClientConn: conn,
-				err:                 connect.NewError(connect.CodeInternal, err),
-			}
-		}
+		instrumentation := i.getAndInitInstrument(spec.IsClient)
 		req := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
@@ -259,10 +260,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		requestStartTime := i.config.now()
 		isClient := conn.Spec().IsClient
-		instrumentation, err := i.getAndInitInstrument(isClient)
-		if err != nil {
-			return err
-		}
+		instrumentation := i.getAndInitInstrument(isClient)
 		req := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
@@ -273,8 +271,8 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return next(ctx, conn)
 			}
 		}
-		protocol := protocolToSemConv(req.Peer.Protocol)
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
+		protocol := protocolToSemConv(conn.Peer().Protocol)
 		state := newStreamingState(
 			req,
 			i.config.filterAttribute,
@@ -317,7 +315,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return state.send(ctx, msg, conn)
 			},
 		}
-		err = next(ctx, streamingHandler)
+		err := next(ctx, streamingHandler)
 		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
 			state.addAttributes(statusCode)
 		}
@@ -329,6 +327,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	}
 }
 
+// protocolToSemConv to convert the protocol string to OpenTelementry format.
 func protocolToSemConv(protocol string) string {
 	switch protocol {
 	case grpcwebString:
