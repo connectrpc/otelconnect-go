@@ -208,28 +208,26 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			instrumentation.requestSize,
 			instrumentation.requestsPerRPC,
 		)
+
+		// Create the span and inject it into the carrier
 		var span trace.Span
-		var createSpanOnce sync.Once
-		createSpan := func() {
-			ctx, span = i.config.tracer.Start(
-				ctx,
-				name,
-				trace.WithSpanKind(trace.SpanKindClient),
-				trace.WithAttributes(state.attributes...),
-				trace.WithAttributes(headerAttributes(
-					protocol,
-					requestKey,
-					conn.RequestHeader(),
-					i.config.requestHeaderKeys)...),
-			)
-			// inject the newly created span into the carrier
-			carrier := propagation.HeaderCarrier(conn.RequestHeader())
-			i.config.propagator.Inject(ctx, carrier)
-		}
+		ctx, span = i.config.tracer.Start(
+			ctx,
+			name,
+			trace.WithSpanKind(trace.SpanKindClient),
+			trace.WithAttributes(state.attributes...),
+			trace.WithAttributes(headerAttributes(
+				protocol,
+				requestKey,
+				conn.RequestHeader(),
+				i.config.requestHeaderKeys)...),
+		)
+		carrier := propagation.HeaderCarrier(conn.RequestHeader())
+		i.config.propagator.Inject(ctx, carrier)
+
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
-				createSpanOnce.Do(createSpan)
 				// state.attributes is updated with the final error that was recorded.
 				// If error is nil a "success" is recorded on the span and on the final duration
 				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
@@ -247,7 +245,6 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				return state.receive(ctx, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				createSpanOnce.Do(createSpan)
 				return state.send(ctx, msg, conn)
 			},
 		}
