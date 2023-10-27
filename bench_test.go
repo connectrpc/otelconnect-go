@@ -53,8 +53,9 @@ func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []
 	b.Cleanup(svr.Close)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		ctx := context.Background()
 		for pb.Next() {
-			_, err := client.Ping(context.Background(), &connect.Request[pingv1.PingRequest]{
+			_, err := client.Ping(ctx, &connect.Request[pingv1.PingRequest]{
 				Msg: &pingv1.PingRequest{Data: []byte("Hello, otel!")},
 			})
 			if err != nil {
@@ -67,17 +68,24 @@ func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []
 func benchStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
 	b.Helper()
 	_, client := startBenchServer(handleropts, clientopts)
-	req := &pingv1.PingStreamRequest{
-		Data: []byte("Hello, otel!"),
-	}
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		ctx := context.Background()
 		for pb.Next() {
-			stream := client.PingStream(context.Background())
-			if err := stream.Send(req); err != nil {
+			stream := client.PingStream(ctx)
+			if err := stream.Send(
+				&pingv1.PingStreamRequest{
+					Data: []byte("Hello, otel!"),
+				}); err != nil {
+				b.Error(err)
+			}
+			if err := stream.CloseRequest(); err != nil {
 				b.Error(err)
 			}
 			if _, err := stream.Receive(); err != nil {
+				b.Error(err)
+			}
+			if err := stream.CloseResponse(); err != nil {
 				b.Error(err)
 			}
 		}
