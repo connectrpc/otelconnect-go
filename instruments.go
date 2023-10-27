@@ -17,6 +17,7 @@ package otelconnect
 import (
 	"fmt"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 )
@@ -46,58 +47,50 @@ type instruments struct {
 	responsesPerRPC metric.Int64Histogram
 }
 
-// makeInstruments creates the metrics for the interceptor. If the metrics
-// cannot be created, an error is returned and the instruments will use the
-// noop metrics.
-func makeInstruments(meter metric.Meter, interceptorType string) (instruments, error) {
-	instruments := instruments{
-		duration:        noop.Int64Histogram{},
-		requestSize:     noop.Int64Histogram{},
-		responseSize:    noop.Int64Histogram{},
-		requestsPerRPC:  noop.Int64Histogram{},
-		responsesPerRPC: noop.Int64Histogram{},
+// makeInstruments creates the metrics for the interceptor. Any error is reported
+// to the global error handler and the interceptor will use the noop metrics.
+func makeInstruments(meter metric.Meter, interceptorType string) instruments {
+	return instruments{
+		duration: makeInt64Histogram(
+			meter,
+			formatkeys(interceptorType, durationKey),
+			metric.WithUnit(unitMilliseconds),
+		),
+		requestSize: makeInt64Histogram(
+			meter,
+			formatkeys(interceptorType, requestSizeKey),
+			metric.WithUnit(unitBytes),
+		),
+		responseSize: makeInt64Histogram(
+			meter,
+			formatkeys(interceptorType, responseSizeKey),
+			metric.WithUnit(unitBytes),
+		),
+		requestsPerRPC: makeInt64Histogram(
+			meter,
+			formatkeys(interceptorType, requestsPerRPCKey),
+			metric.WithUnit(unitDimensionless),
+		),
+		responsesPerRPC: makeInt64Histogram(
+			meter,
+			formatkeys(interceptorType, responsesPerRPCKey),
+			metric.WithUnit(unitDimensionless),
+		),
 	}
-	duration, err := meter.Int64Histogram(
-		formatkeys(interceptorType, durationKey),
-		metric.WithUnit(unitMilliseconds),
+}
+
+func makeInt64Histogram(meter metric.Meter, name string, options ...metric.Int64HistogramOption) metric.Int64Histogram {
+	histogram, err := meter.Int64Histogram(
+		name,
+		options...,
 	)
 	if err != nil {
-		return instruments, err
+		// Error initializing instruments will not cause the interceptor
+		// to fail. Report the error and continue.
+		otel.Handle(err)
+		return noop.Int64Histogram{}
 	}
-	instruments.duration = duration
-	requestSize, err := meter.Int64Histogram(
-		formatkeys(interceptorType, requestSizeKey),
-		metric.WithUnit(unitBytes),
-	)
-	if err != nil {
-		return instruments, err
-	}
-	instruments.requestSize = requestSize
-	responseSize, err := meter.Int64Histogram(
-		formatkeys(interceptorType, responseSizeKey),
-		metric.WithUnit(unitBytes),
-	)
-	if err != nil {
-		return instruments, err
-	}
-	instruments.responseSize = responseSize
-	requestsPerRPC, err := meter.Int64Histogram(
-		formatkeys(interceptorType, requestsPerRPCKey),
-		metric.WithUnit(unitDimensionless),
-	)
-	if err != nil {
-		return instruments, err
-	}
-	instruments.requestsPerRPC = requestsPerRPC
-	responsesPerRPC, err := meter.Int64Histogram(
-		formatkeys(interceptorType, responsesPerRPCKey),
-		metric.WithUnit(unitDimensionless),
-	)
-	instruments.responsesPerRPC = responsesPerRPC
-	if err != nil {
-		return instruments, err
-	}
-	return instruments, nil
+	return histogram
 }
 
 func formatkeys(interceptorType string, metricName string) string {

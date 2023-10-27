@@ -71,13 +71,7 @@ func (i *Interceptor) getAndInitInstrument(isClient bool) *instruments {
 		if isClient {
 			instrumentType = clientKey
 		}
-		var err error
-		i.instruments, err = makeInstruments(i.config.meter, instrumentType)
-		if err != nil {
-			// Error initializing instruments will not cause the
-			// interceptor to fail. Report the error and continue.
-			otel.Handle(err)
-		}
+		i.instruments = makeInstruments(i.config.meter, instrumentType)
 	})
 	return &i.instruments
 }
