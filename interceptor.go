@@ -208,26 +208,30 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			instrumentation.requestSize,
 			instrumentation.requestsPerRPC,
 		)
-
-		// Create the span and inject it into the carrier
+		// Create the span and inject it into the carrier on the first
+		// call to send or receive. This ensure we capture request
+		// headers created after the stream is created.
 		var span trace.Span
-		ctx, span = i.config.tracer.Start(
-			ctx,
-			name,
-			trace.WithSpanKind(trace.SpanKindClient),
-			trace.WithAttributes(state.attributes...),
-			trace.WithAttributes(headerAttributes(
-				protocol,
-				requestKey,
-				conn.RequestHeader(),
-				i.config.requestHeaderKeys)...),
-		)
-		carrier := propagation.HeaderCarrier(conn.RequestHeader())
-		i.config.propagator.Inject(ctx, carrier)
-
+		var createSpanOnce sync.Once
+		createSpan := func() {
+			ctx, span = i.config.tracer.Start(
+				ctx,
+				name,
+				trace.WithSpanKind(trace.SpanKindClient),
+				trace.WithAttributes(state.attributes...),
+				trace.WithAttributes(headerAttributes(
+					protocol,
+					requestKey,
+					conn.RequestHeader(),
+					i.config.requestHeaderKeys)...),
+			)
+			carrier := propagation.HeaderCarrier(conn.RequestHeader())
+			i.config.propagator.Inject(ctx, carrier)
+		}
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
+				createSpanOnce.Do(createSpan)
 				// state.attributes is updated with the final error that was recorded.
 				// If error is nil a "success" is recorded on the span and on the final duration
 				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
@@ -242,9 +246,11 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(state.attributes...))
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
+				createSpanOnce.Do(createSpan)
 				return state.receive(ctx, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
+				createSpanOnce.Do(createSpan)
 				return state.send(ctx, msg, conn)
 			},
 		}
