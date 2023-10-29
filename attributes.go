@@ -37,16 +37,23 @@ func (filter AttributeFilter) filter(request *Request, values ...attribute.KeyVa
 	}
 	// Assign a new slice of zero length with the same underlying
 	// array as the values slice. This avoids unnecessary memory allocations.
-	filteredValues := values[:0]
-	for _, attr := range values {
-		if filter(request, attr) {
-			filteredValues = append(filteredValues, attr)
-		}
-	}
+	filteredValues := filter.append(request, values[:0], values...)
 	for i := len(filteredValues); i < len(values); i++ {
 		values[i] = attribute.KeyValue{}
 	}
 	return filteredValues
+}
+
+func (filter AttributeFilter) append(request *Request, values []attribute.KeyValue, attrs ...attribute.KeyValue) []attribute.KeyValue {
+	if filter == nil {
+		return append(values, attrs...)
+	}
+	for _, attr := range attrs {
+		if filter(request, attr) {
+			values = append(values, attr)
+		}
+	}
+	return values
 }
 
 func procedureAttributes(procedure string) []attribute.KeyValue {

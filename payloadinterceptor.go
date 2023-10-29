@@ -15,7 +15,11 @@
 package otelconnect
 
 import (
+	"context"
+	"errors"
+	"io"
 	"sync"
+	"time"
 
 	connect "connectrpc.com/connect"
 )
@@ -23,34 +27,55 @@ import (
 type streamingClientInterceptor struct {
 	connect.StreamingClientConn
 
-	receive func(any, connect.StreamingClientConn) error
-	send    func(any, connect.StreamingClientConn) error
-	onClose func()
+	ctx     context.Context //nolint:containedctx
+	state   *state
+	startAt time.Time
 
+	requestStarted sync.Once
 	mu             sync.Mutex
 	requestClosed  bool
 	responseClosed bool
-	onCloseCalled  bool
+}
+
+func (s *streamingClientInterceptor) init() {
+	s.requestStarted.Do(func() {
+		header := s.StreamingClientConn.RequestHeader()
+		s.ctx = s.state.start(s.ctx, header)
+	})
 }
 
 func (s *streamingClientInterceptor) Receive(msg any) error {
-	return s.receive(msg, s.StreamingClientConn)
+	s.init()
+	if err := s.StreamingClientConn.Receive(msg); err != nil {
+		if !errors.Is(err, io.EOF) {
+			s.state.setError(err)
+		}
+		return err
+	}
+	s.state.receive(s.ctx, msg)
+	return nil
 }
 
 func (s *streamingClientInterceptor) Send(msg any) error {
-	return s.send(msg, s.StreamingClientConn)
+	s.init()
+	if err := s.StreamingClientConn.Send(msg); err != nil {
+		if !errors.Is(err, io.EOF) {
+			s.state.setError(err)
+		}
+		return err
+	}
+	s.state.send(s.ctx, msg)
+	return nil
 }
 
 func (s *streamingClientInterceptor) CloseRequest() error {
 	err := s.StreamingClientConn.CloseRequest()
 	s.mu.Lock()
+	wasClosed := s.requestClosed && s.responseClosed
 	s.requestClosed = true
-	shouldCall := s.responseClosed && !s.onCloseCalled
-	if shouldCall {
-		s.onCloseCalled = true
-	}
+	shouldClose := !wasClosed && s.requestClosed && s.responseClosed
 	s.mu.Unlock()
-	if shouldCall {
+	if shouldClose {
 		s.onClose()
 	}
 	return err
@@ -59,29 +84,47 @@ func (s *streamingClientInterceptor) CloseRequest() error {
 func (s *streamingClientInterceptor) CloseResponse() error {
 	err := s.StreamingClientConn.CloseResponse()
 	s.mu.Lock()
+	wasClosed := s.requestClosed && s.responseClosed
 	s.responseClosed = true
-	shouldCall := s.requestClosed && !s.onCloseCalled
-	if shouldCall {
-		s.onCloseCalled = true
-	}
+	shouldClose := !wasClosed && s.requestClosed && s.responseClosed
 	s.mu.Unlock()
-	if shouldCall {
+	if shouldClose {
 		s.onClose()
 	}
 	return err
 }
 
+func (s *streamingClientInterceptor) onClose() {
+	s.init()
+	header := s.StreamingClientConn.ResponseHeader()
+	s.state.end(s.ctx, header, s.startAt)
+}
+
 type streamingHandlerInterceptor struct {
 	connect.StreamingHandlerConn
 
-	receive func(any, connect.StreamingHandlerConn) error
-	send    func(any, connect.StreamingHandlerConn) error
+	ctx   context.Context //nolint:containedctx
+	state *state
 }
 
-func (p *streamingHandlerInterceptor) Receive(msg any) error {
-	return p.receive(msg, p.StreamingHandlerConn)
+func (s *streamingHandlerInterceptor) Receive(msg any) error {
+	if err := s.StreamingHandlerConn.Receive(msg); err != nil {
+		if !errors.Is(err, io.EOF) {
+			s.state.setError(err)
+		}
+		return err
+	}
+	s.state.receive(s.ctx, msg)
+	return nil
 }
 
-func (p *streamingHandlerInterceptor) Send(msg any) error {
-	return p.send(msg, p.StreamingHandlerConn)
+func (s *streamingHandlerInterceptor) Send(msg any) error {
+	if err := s.StreamingHandlerConn.Send(msg); err != nil {
+		if !errors.Is(err, io.EOF) {
+			s.state.setError(err)
+		}
+		return err
+	}
+	s.state.send(s.ctx, msg)
+	return nil
 }

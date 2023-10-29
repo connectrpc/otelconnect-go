@@ -920,7 +920,6 @@ func TestHandlerFailCall(t *testing.T) {
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
 						semconv.MessageIDKey.Int(1),
-						semconv.MessageUncompressedSizeKey.Int(0),
 					},
 				},
 			},
@@ -1556,16 +1555,16 @@ func TestStreamingHandlerTracing(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 			},
@@ -1606,16 +1605,16 @@ func TestStreamingClientTracing(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 			},
@@ -1713,16 +1712,16 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 			},
@@ -1861,20 +1860,12 @@ func assertSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 	for i, span := range got {
 		wantEvents := want[i].events
 		wantAttributes := want[i].attrs
-		if span.EndTime().IsZero() {
-			t.Fail()
-		}
-		if span.Name() != want[i].spanName {
-			t.Errorf("span name not %s", want[i].spanName)
-		}
+		assert.False(t, span.EndTime().IsZero(), "span has not ended")
+		assert.Equal(t, want[i].spanName, span.Name(), "span name does not match")
 		gotEvents := span.Events()
-		if len(wantEvents) != len(gotEvents) {
-			t.Fatal("event lengths do not match")
-		}
+		require.Equal(t, len(wantEvents), len(gotEvents), "event lengths do not match")
 		for i, e := range wantEvents {
-			if e.Name != gotEvents[i].Name {
-				t.Error("names do not match")
-			}
+			assert.Equal(t, e.Name, gotEvents[i].Name, "names do not match")
 			diff := cmp.Diff(e.Attributes, gotEvents[i].Attributes,
 				cmp.Comparer(func(x, y attribute.KeyValue) bool {
 					return x.Value == y.Value && x.Key == y.Key
