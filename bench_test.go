@@ -18,7 +18,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 
 	connect "connectrpc.com/connect"
@@ -26,33 +25,26 @@ import (
 	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
 )
 
-const (
-	concurrency    = 5
-	messagesToSend = 10
-)
-
-func BenchmarkStreamingServerNoOptions(b *testing.B) {
-	testStreaming(b, nil, nil)
+func BenchmarkStreamingBase(b *testing.B) {
+	benchStreaming(b, nil, nil)
 }
 
-func BenchmarkStreamingServerClientOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{connect.WithInterceptors(NewInterceptor())}, []connect.ClientOption{connect.WithInterceptors(NewInterceptor())})
+func BenchmarkStreamingWithInterceptor(b *testing.B) {
+	benchStreaming(b,
+		[]connect.HandlerOption{connect.WithInterceptors(NewInterceptor())},
+		[]connect.ClientOption{connect.WithInterceptors(NewInterceptor())},
+	)
 }
 
-func BenchmarkStreamingServerOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{connect.WithInterceptors(NewInterceptor())}, []connect.ClientOption{})
-}
-
-func BenchmarkStreamingClientOption(b *testing.B) {
-	testStreaming(b, []connect.HandlerOption{}, []connect.ClientOption{connect.WithInterceptors(NewInterceptor())})
-}
-
-func BenchmarkUnaryOtel(b *testing.B) {
-	benchUnary(b, []connect.HandlerOption{connect.WithInterceptors(NewInterceptor())}, []connect.ClientOption{connect.WithInterceptors(NewInterceptor())})
-}
-
-func BenchmarkUnary(b *testing.B) {
+func BenchmarkUnaryBase(b *testing.B) {
 	benchUnary(b, nil, nil)
+}
+
+func BenchmarkUnaryWithInterceptor(b *testing.B) {
+	benchUnary(b,
+		[]connect.HandlerOption{connect.WithInterceptors(NewInterceptor())},
+		[]connect.ClientOption{connect.WithInterceptors(NewInterceptor())},
+	)
 }
 
 func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
@@ -60,52 +52,34 @@ func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []
 	svr, client := startBenchServer(handleropts, clientopts)
 	b.Cleanup(svr.Close)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		var wg sync.WaitGroup
-		for j := 0; j < concurrency; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				_, err := client.Ping(context.Background(), &connect.Request[pingv1.PingRequest]{
-					Msg: &pingv1.PingRequest{Data: []byte("Sentence")},
-				})
-				if err != nil {
-					b.Log(err)
-				}
-			}()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := client.Ping(context.Background(), &connect.Request[pingv1.PingRequest]{
+				Msg: &pingv1.PingRequest{Data: []byte("Sentence")},
+			})
+			if err != nil {
+				b.Log(err)
+			}
 		}
-		wg.Wait()
-	}
+	})
 }
 
-func testStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
+func benchStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
 	b.Helper()
 	_, client := startBenchServer(handleropts, clientopts)
 	req := &pingv1.CumSumRequest{Number: 12}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		var wg sync.WaitGroup
-		for j := 0; j < concurrency; j++ {
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
 			stream := client.CumSum(context.Background())
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for j := 0; j < messagesToSend; j++ {
-					err := stream.Send(req)
-					if err != nil {
-						b.Error(err)
-					}
-				}
-				for j := 0; j < messagesToSend; j++ {
-					_, err := stream.Receive()
-					if err != nil {
-						b.Error(err)
-					}
-				}
-			}()
+			if err := stream.Send(req); err != nil {
+				b.Error(err)
+			}
+			if _, err := stream.Receive(); err != nil {
+				b.Error(err)
+			}
 		}
-		wg.Wait()
-	}
+	})
 }
 
 func startBenchServer(handleropts []connect.HandlerOption, clientopts []connect.ClientOption) (*httptest.Server, pingv1connect.PingServiceClient) {
