@@ -34,9 +34,11 @@ import (
 // Interceptor implements [connect.Interceptor] that adds
 // OpenTelemetry metrics and tracing to connect handlers and clients.
 type Interceptor struct {
-	config          config
-	instrumentsOnce sync.Once
-	instruments     instruments
+	config            config
+	clientOnce        sync.Once
+	clientInstruments instruments
+	serverOnce        sync.Once
+	serverInstruments instruments
 }
 
 var _ connect.Interceptor = &Interceptor{}
@@ -66,14 +68,16 @@ func NewInterceptor(options ...Option) *Interceptor {
 // initialization must wait to determine if the interceptor is a client or server
 // because the instrumentation is different for each.
 func (i *Interceptor) getAndInitInstrument(isClient bool) *instruments {
-	i.instrumentsOnce.Do(func() {
-		instrumentType := serverKey
-		if isClient {
-			instrumentType = clientKey
-		}
-		i.instruments = makeInstruments(i.config.meter, instrumentType)
+	if isClient {
+		i.clientOnce.Do(func() {
+			i.clientInstruments = makeInstruments(i.config.meter, clientKey)
+		})
+		return &i.clientInstruments
+	}
+	i.serverOnce.Do(func() {
+		i.serverInstruments = makeInstruments(i.config.meter, serverKey)
 	})
-	return &i.instruments
+	return &i.serverInstruments
 }
 
 // WrapUnary implements otel tracing and metrics for unary handlers.
