@@ -67,6 +67,8 @@ func NewInterceptor(options ...Option) *Interceptor {
 
 // initialization must wait to determine if the interceptor is a client or server
 // because the instrumentation is different for each.
+// TODO: move initialization to the constructor to avoid the need for the
+// sync.Once and error handling.
 func (i *Interceptor) getAndInitInstrument(isClient bool) *instruments {
 	if isClient {
 		i.clientOnce.Do(func() {
@@ -325,7 +327,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	}
 }
 
-// protocolToSemConv to convert the protocol string to OpenTelementry format.
+// protocolToSemConv converts the protocol string to the OpenTelemetry format.
 func protocolToSemConv(protocol string) string {
 	switch protocol {
 	case grpcwebString:
