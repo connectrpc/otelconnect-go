@@ -42,8 +42,13 @@ type Interceptor struct {
 
 var _ connect.Interceptor = &Interceptor{}
 
-// NewInterceptor constructs and returns an Interceptor which implements [connect.Interceptor]
-// that adds OpenTelemetry metrics and tracing to Connect handlers and clients.
+// NewInterceptor returns an interceptor that implements [connect.Interceptor].
+// It adds OpenTelemetry metrics and tracing to connect handlers and clients.
+// Use options to configure the interceptor. Any invalid options will cause an
+// error to be returned. The interceptor will use the default tracer and meter
+// providers. To use a custom tracer or meter provider pass in the
+// [WithTracerProvider] or [WithMeterProvider] options. To disable metrics or
+// tracing pass in the [WithoutMetrics] or [WithoutTracing] options.
 func NewInterceptor(options ...Option) (*Interceptor, error) {
 	cfg := config{
 		now: time.Now,
