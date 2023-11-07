@@ -17,6 +17,7 @@ package otelconnect
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -35,9 +36,7 @@ import (
 // OpenTelemetry metrics and tracing to connect handlers and clients.
 type Interceptor struct {
 	config            config
-	clientOnce        sync.Once
 	clientInstruments instruments
-	serverOnce        sync.Once
 	serverInstruments instruments
 }
 
@@ -45,7 +44,7 @@ var _ connect.Interceptor = &Interceptor{}
 
 // NewInterceptor constructs and returns an Interceptor which implements [connect.Interceptor]
 // that adds OpenTelemetry metrics and tracing to Connect handlers and clients.
-func NewInterceptor(options ...Option) *Interceptor {
+func NewInterceptor(options ...Option) (*Interceptor, error) {
 	cfg := config{
 		now: time.Now,
 		tracer: otel.GetTracerProvider().Tracer(
@@ -60,25 +59,26 @@ func NewInterceptor(options ...Option) *Interceptor {
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
-	return &Interceptor{
-		config: cfg,
+	clientInstruments, err := createInstruments(cfg.meter, clientKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client instruments: %w", err)
 	}
+	serverInstruments, err := createInstruments(cfg.meter, serverKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create server instruments: %w", err)
+	}
+	return &Interceptor{
+		config:            cfg,
+		clientInstruments: clientInstruments,
+		serverInstruments: serverInstruments,
+	}, nil
 }
 
-// initialization must wait to determine if the interceptor is a client or server
-// because the instrumentation is different for each.
-// TODO: move initialization to the constructor to avoid the need for the
-// sync.Once and error handling.
-func (i *Interceptor) getAndInitInstrument(isClient bool) *instruments {
+// getInstruments returns the correct instrumentation for the interceptor.
+func (i *Interceptor) getInstruments(isClient bool) *instruments {
 	if isClient {
-		i.clientOnce.Do(func() {
-			i.clientInstruments = makeInstruments(i.config.meter, clientKey)
-		})
 		return &i.clientInstruments
 	}
-	i.serverOnce.Do(func() {
-		i.serverInstruments = makeInstruments(i.config.meter, serverKey)
-	})
 	return &i.serverInstruments
 }
 
@@ -101,7 +101,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol)
 		attributes := attributeFilter(req, requestAttributes(req)...)
-		instrumentation := i.getAndInitInstrument(isClient)
+		instrumentation := i.getInstruments(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
 		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
@@ -186,7 +186,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		requestStartTime := i.config.now()
 		conn := next(ctx, spec)
-		instrumentation := i.getAndInitInstrument(spec.IsClient)
+		instrumentation := i.getInstruments(spec.IsClient)
 		req := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
@@ -260,7 +260,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		requestStartTime := i.config.now()
 		isClient := conn.Spec().IsClient
-		instrumentation := i.getAndInitInstrument(isClient)
+		instrumentation := i.getInstruments(isClient)
 		req := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),

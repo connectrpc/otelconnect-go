@@ -30,9 +30,13 @@ func BenchmarkStreamingBase(b *testing.B) {
 }
 
 func BenchmarkStreamingWithInterceptor(b *testing.B) {
+	interceptor, err := NewInterceptor()
+	if err != nil {
+		b.Fatal(err)
+	}
 	benchStreaming(b,
-		[]connect.HandlerOption{connect.WithInterceptors(NewInterceptor())},
-		[]connect.ClientOption{connect.WithInterceptors(NewInterceptor())},
+		[]connect.HandlerOption{connect.WithInterceptors(interceptor)},
+		[]connect.ClientOption{connect.WithInterceptors(interceptor)},
 	)
 }
 
@@ -41,9 +45,13 @@ func BenchmarkUnaryBase(b *testing.B) {
 }
 
 func BenchmarkUnaryWithInterceptor(b *testing.B) {
+	interceptor, err := NewInterceptor()
+	if err != nil {
+		b.Fatal(err)
+	}
 	benchUnary(b,
-		[]connect.HandlerOption{connect.WithInterceptors(NewInterceptor())},
-		[]connect.ClientOption{connect.WithInterceptors(NewInterceptor())},
+		[]connect.HandlerOption{connect.WithInterceptors(interceptor)},
+		[]connect.ClientOption{connect.WithInterceptors(interceptor)},
 	)
 }
 
