@@ -15,7 +15,6 @@
 package otelconnect
 
 import (
-	"fmt"
 	"sync"
 
 	connect "connectrpc.com/connect"
@@ -70,34 +69,6 @@ func (s *streamingClientInterceptor) CloseResponse() error {
 		s.onClose()
 	}
 	return err
-}
-
-type errorStreamingClientInterceptor struct {
-	connect.StreamingClientConn
-
-	err error
-}
-
-func (e *errorStreamingClientInterceptor) Send(any) error {
-	return e.err
-}
-
-func (e *errorStreamingClientInterceptor) CloseRequest() error {
-	if err := e.StreamingClientConn.CloseRequest(); err != nil {
-		return fmt.Errorf("%w %s", err, e.err.Error())
-	}
-	return e.err
-}
-
-func (e *errorStreamingClientInterceptor) Receive(any) error {
-	return e.err
-}
-
-func (e *errorStreamingClientInterceptor) CloseResponse() error {
-	if err := e.StreamingClientConn.CloseResponse(); err != nil {
-		return fmt.Errorf("%w %s", err, e.err.Error())
-	}
-	return e.err
 }
 
 type streamingHandlerInterceptor struct {

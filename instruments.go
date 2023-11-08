@@ -16,7 +16,6 @@ package otelconnect
 
 import (
 	"fmt"
-	"sync"
 
 	"go.opentelemetry.io/otel/metric"
 )
@@ -39,8 +38,6 @@ const (
 )
 
 type instruments struct {
-	initOnce        sync.Once
-	initErr         error
 	duration        metric.Int64Histogram
 	requestSize     metric.Int64Histogram
 	responseSize    metric.Int64Histogram
@@ -48,45 +45,50 @@ type instruments struct {
 	responsesPerRPC metric.Int64Histogram
 }
 
-func (i *instruments) init(meter metric.Meter, isClient bool) {
-	i.initOnce.Do(func() {
-		interceptorType := serverKey
-		if isClient {
-			interceptorType = clientKey
-		}
-		i.duration, i.initErr = meter.Int64Histogram(
-			formatkeys(interceptorType, durationKey),
-			metric.WithUnit(unitMilliseconds),
-		)
-		if i.initErr != nil {
-			return
-		}
-		i.requestSize, i.initErr = meter.Int64Histogram(
-			formatkeys(interceptorType, requestSizeKey),
-			metric.WithUnit(unitBytes),
-		)
-		if i.initErr != nil {
-			return
-		}
-		i.responseSize, i.initErr = meter.Int64Histogram(
-			formatkeys(interceptorType, responseSizeKey),
-			metric.WithUnit(unitBytes),
-		)
-		if i.initErr != nil {
-			return
-		}
-		i.requestsPerRPC, i.initErr = meter.Int64Histogram(
-			formatkeys(interceptorType, requestsPerRPCKey),
-			metric.WithUnit(unitDimensionless),
-		)
-		if i.initErr != nil {
-			return
-		}
-		i.responsesPerRPC, i.initErr = meter.Int64Histogram(
-			formatkeys(interceptorType, responsesPerRPCKey),
-			metric.WithUnit(unitDimensionless),
-		)
-	})
+// createInstruments creates the metrics for the interceptor.
+func createInstruments(meter metric.Meter, interceptorType string) (instruments, error) {
+	duration, err := meter.Int64Histogram(
+		formatkeys(interceptorType, durationKey),
+		metric.WithUnit(unitMilliseconds),
+	)
+	if err != nil {
+		return instruments{}, err
+	}
+	requestSize, err := meter.Int64Histogram(
+		formatkeys(interceptorType, requestSizeKey),
+		metric.WithUnit(unitBytes),
+	)
+	if err != nil {
+		return instruments{}, err
+	}
+	responseSize, err := meter.Int64Histogram(
+		formatkeys(interceptorType, responseSizeKey),
+		metric.WithUnit(unitBytes),
+	)
+	if err != nil {
+		return instruments{}, err
+	}
+	requestsPerRPC, err := meter.Int64Histogram(
+		formatkeys(interceptorType, requestsPerRPCKey),
+		metric.WithUnit(unitDimensionless),
+	)
+	if err != nil {
+		return instruments{}, err
+	}
+	responsesPerRPC, err := meter.Int64Histogram(
+		formatkeys(interceptorType, responsesPerRPCKey),
+		metric.WithUnit(unitDimensionless),
+	)
+	if err != nil {
+		return instruments{}, err
+	}
+	return instruments{
+		duration:        duration,
+		requestSize:     requestSize,
+		responseSize:    responseSize,
+		requestsPerRPC:  requestsPerRPC,
+		responsesPerRPC: responsesPerRPC,
+	}, nil
 }
 
 func formatkeys(interceptorType string, metricName string) string {
