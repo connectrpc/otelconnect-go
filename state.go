@@ -30,7 +30,7 @@ import (
 )
 
 type state struct {
-	request     *Request
+	call        *Request
 	config      config
 	instruments *instruments
 
@@ -45,12 +45,12 @@ type state struct {
 }
 
 func newState(
-	request *Request,
+	call *Request,
 	config config,
 	instruments *instruments,
 ) *state {
 	return &state{
-		request:     request,
+		call:        call,
 		config:      config,
 		instruments: instruments,
 	}
@@ -60,15 +60,15 @@ func newState(
 // This method must only be called once at the start of the RPC when the
 // request headers are available.
 func (s *state) start(ctx context.Context, header http.Header) context.Context {
-	name := strings.TrimLeft(s.request.Spec.Procedure, "/")
-	protocol := protocolToSemConv(s.request.Peer.Protocol)
+	name := strings.TrimLeft(s.call.Spec.Procedure, "/")
+	protocol := protocolToSemConv(s.call.Peer.Protocol)
 	carrier := propagation.HeaderCarrier(header)
 	spanKind := trace.SpanKindServer
-	if s.request.Spec.IsClient {
+	if s.call.Spec.IsClient {
 		spanKind = trace.SpanKindClient
 	}
 	// Set the span attributes.
-	s.attributes = s.config.filterAttribute.filter(s.request, requestAttributes(s.request)...)
+	s.attributes = s.config.filterAttribute.filter(s.call, requestAttributes(s.call)...)
 	headerAttrs := headerAttributes(protocol, requestKey, header, s.config.requestHeaderKeys)
 	traceOpts := []trace.SpanStartOption{
 		trace.WithSpanKind(spanKind),
@@ -78,7 +78,7 @@ func (s *state) start(ctx context.Context, header http.Header) context.Context {
 	if !trace.SpanContextFromContext(ctx).IsValid() {
 		ctx = s.config.propagator.Extract(ctx, carrier)
 		// If on the server and not trusting the remote, start a new root span.
-		if !s.request.Spec.IsClient && !s.config.trustRemote {
+		if !s.call.Spec.IsClient && !s.config.trustRemote {
 			traceOpts = append(traceOpts,
 				trace.WithNewRoot(),
 				trace.WithLinks(trace.LinkFromContext(ctx)),
@@ -91,7 +91,7 @@ func (s *state) start(ctx context.Context, header http.Header) context.Context {
 		name,
 		traceOpts...,
 	)
-	if s.request.Spec.IsClient {
+	if s.call.Spec.IsClient {
 		// Inject the newly created span into the carrier.
 		s.config.propagator.Inject(ctx, carrier)
 	}
@@ -101,15 +101,15 @@ func (s *state) start(ctx context.Context, header http.Header) context.Context {
 // end the span and record the duration.
 // This method must only be called once at the end of the RPC.
 func (s *state) end(ctx context.Context, header http.Header, startAt time.Time) {
-	protocol := protocolToSemConv(s.request.Peer.Protocol)
+	protocol := protocolToSemConv(s.call.Peer.Protocol)
 	if statusCodeAttribute, ok := statusCodeAttribute(protocol, s.err); ok {
 		s.attributes = s.config.filterAttribute.append(
-			s.request,
+			s.call,
 			s.attributes,
 			statusCodeAttribute,
 		)
 	}
-	if s.request.Spec.IsClient && s.err != nil {
+	if s.call.Spec.IsClient && s.err != nil {
 		// On the client, record the error as a sent message with the
 		// error status code attribute.
 		s.receive(ctx, s.err)
@@ -155,8 +155,8 @@ func (s *state) emitEvent(ctx context.Context, msgID int, msgType attribute.KeyV
 	protoMsg, isProto := msg.(proto.Message)
 	size := proto.Size(protoMsg) // safe to call even if msg is nil
 	// Record the message based metrics.
-	isRequest := s.request.Spec.IsClient && msgType == semconv.MessageTypeSent ||
-		!s.request.Spec.IsClient && msgType == semconv.MessageTypeReceived
+	isRequest := s.call.Spec.IsClient && msgType == semconv.MessageTypeSent ||
+		!s.call.Spec.IsClient && msgType == semconv.MessageTypeReceived
 	opts := metric.WithAttributes(s.attributes...)
 	if isRequest {
 		s.instruments.requestSize.Record(ctx, int64(size), opts)
@@ -176,12 +176,12 @@ func (s *state) emitEvent(ctx context.Context, msgID int, msgType attribute.KeyV
 	// Allocate the attributes slice with the expected number of attributes.
 	attrs := make([]attribute.KeyValue, 0, 3)
 	attrs = s.config.filterAttribute.append(
-		s.request, attrs,
+		s.call, attrs,
 		msgType, semconv.MessageIDKey.Int(msgID),
 	)
 	if isProto {
 		attrs = s.config.filterAttribute.append(
-			s.request, attrs,
+			s.call, attrs,
 			semconv.MessageUncompressedSizeKey.Int(size),
 		)
 	}

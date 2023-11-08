@@ -31,25 +31,25 @@ import (
 // AttributeFilter must be safe to call concurrently.
 type AttributeFilter func(*Request, attribute.KeyValue) bool
 
-func (filter AttributeFilter) filter(request *Request, values ...attribute.KeyValue) []attribute.KeyValue {
+func (filter AttributeFilter) filter(call *Request, values ...attribute.KeyValue) []attribute.KeyValue {
 	if filter == nil {
 		return values
 	}
 	// Assign a new slice of zero length with the same underlying
 	// array as the values slice. This avoids unnecessary memory allocations.
-	filteredValues := filter.append(request, values[:0], values...)
+	filteredValues := filter.append(call, values[:0], values...)
 	for i := len(filteredValues); i < len(values); i++ {
 		values[i] = attribute.KeyValue{}
 	}
 	return filteredValues
 }
 
-func (filter AttributeFilter) append(request *Request, values []attribute.KeyValue, attrs ...attribute.KeyValue) []attribute.KeyValue {
+func (filter AttributeFilter) append(call *Request, values []attribute.KeyValue, attrs ...attribute.KeyValue) []attribute.KeyValue {
 	if filter == nil {
 		return append(values, attrs...)
 	}
 	for _, attr := range attrs {
-		if filter(request, attr) {
+		if filter(call, attr) {
 			values = append(values, attr)
 		}
 	}
@@ -78,13 +78,13 @@ func procedureAttributes(procedure string) []attribute.KeyValue {
 	return attrs
 }
 
-func requestAttributes(req *Request) []attribute.KeyValue {
+func requestAttributes(call *Request) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
-	if addr := req.Peer.Addr; addr != "" {
+	if addr := call.Peer.Addr; addr != "" {
 		attrs = append(attrs, addressAttributes(addr)...)
 	}
-	name := strings.TrimLeft(req.Spec.Procedure, "/")
-	protocol := protocolToSemConv(req.Peer.Protocol)
+	name := strings.TrimLeft(call.Spec.Procedure, "/")
+	protocol := protocolToSemConv(call.Peer.Protocol)
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
 	attrs = append(attrs, procedureAttributes(name)...)
 	return attrs

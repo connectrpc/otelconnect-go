@@ -942,7 +942,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	pingClient, host, port := startServer([]connect.HandlerOption{
-		connect.WithInterceptors(NewInterceptor(WithTracerProvider(serverTraceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
+		connect.WithInterceptors(NewInterceptor(WithTracerProvider(serverTraceProvider), WithFilter(func(ctx context.Context, call *Request) bool {
 			return false
 		}))),
 	}, []connect.ClientOption{
@@ -992,7 +992,7 @@ func TestBasicFilter(t *testing.T) {
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, _, _ := startServer([]connect.HandlerOption{
-		connect.WithInterceptors(NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
+		connect.WithInterceptors(NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, call *Request) bool {
 			return false
 		}))),
 	}, nil, okayPingServer())
@@ -1013,8 +1013,8 @@ func TestFilterHeader(t *testing.T) {
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	pingClient, host, port := startServer([]connect.HandlerOption{
-		connect.WithInterceptors(NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
-			return request.Header.Get(headerKey) == headerVal
+		connect.WithInterceptors(NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, call *Request) bool {
+			return call.Header.Get(headerKey) == headerVal
 		}))),
 	}, nil, okayPingServer())
 	req := requestOfSize(1, 0)

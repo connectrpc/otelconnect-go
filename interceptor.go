@@ -76,26 +76,26 @@ func (i *Interceptor) getAndInitInstrument(isClient bool) *instruments {
 func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 		startAt := i.config.now() // TODO: get from connect
-		request := &Request{
+		call := &Request{
 			Spec:   req.Spec(),
 			Peer:   req.Peer(),
 			Header: req.Header(),
 		}
 		if i.config.filter != nil {
-			if !i.config.filter(ctx, request) {
+			if !i.config.filter(ctx, call) {
 				return next(ctx, req)
 			}
 		}
-		instruments := i.getAndInitInstrument(request.Spec.IsClient)
+		instruments := i.getAndInitInstrument(call.Spec.IsClient)
 		state := newState(
-			request,
+			call,
 			i.config,
 			instruments,
 		)
-		ctx = state.start(ctx, request.Header)
+		ctx = state.start(ctx, call.Header)
 		// Flip call order if on the client.
 		msgStart, msgEnd := state.receive, state.send
-		if request.Spec.IsClient {
+		if call.Spec.IsClient {
 			msgStart, msgEnd = msgEnd, msgStart
 		}
 		msgStart(ctx, req.Any())
@@ -117,19 +117,19 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		startAt := i.config.now() // TODO: get from connect
 		conn := next(ctx, spec)
-		request := &Request{
+		call := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
 			Header: conn.RequestHeader(),
 		}
 		if i.config.filter != nil {
-			if !i.config.filter(ctx, request) {
+			if !i.config.filter(ctx, call) {
 				return conn
 			}
 		}
-		instruments := i.getAndInitInstrument(request.Spec.IsClient)
+		instruments := i.getAndInitInstrument(call.Spec.IsClient)
 		state := newState(
-			request,
+			call,
 			i.config,
 			instruments,
 		)
@@ -149,23 +149,23 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		startAt := i.config.now() // TODO: get from connect
-		request := &Request{
+		call := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
 			Header: conn.RequestHeader(),
 		}
 		if i.config.filter != nil {
-			if !i.config.filter(ctx, request) {
+			if !i.config.filter(ctx, call) {
 				return next(ctx, conn)
 			}
 		}
-		instruments := i.getAndInitInstrument(request.Spec.IsClient)
+		instruments := i.getAndInitInstrument(call.Spec.IsClient)
 		state := newState(
-			request,
+			call,
 			i.config,
 			instruments,
 		)
-		ctx = state.start(ctx, request.Header)
+		ctx = state.start(ctx, call.Header)
 		err := next(ctx, &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 

@@ -79,8 +79,8 @@ func WithAttributeFilter(filter AttributeFilter) Option {
 // high-cardinality data; this option significantly reduces cardinality in most
 // environments.
 func WithoutServerPeerAttributes() Option {
-	return WithAttributeFilter(func(request *Request, value attribute.KeyValue) bool {
-		if request.Spec.IsClient {
+	return WithAttributeFilter(func(call *Request, value attribute.KeyValue) bool {
+		if call.Spec.IsClient {
 			return true
 		}
 		if value.Key == semconv.NetPeerPortKey {
