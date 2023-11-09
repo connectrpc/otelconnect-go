@@ -17,7 +17,7 @@ package otelconnect
 import (
 	"context"
 	"errors"
-	"sync"
+	"fmt"
 	"time"
 
 	connect "connectrpc.com/connect"
@@ -30,16 +30,21 @@ import (
 // Interceptor implements [connect.Interceptor] that adds
 // OpenTelemetry metrics and tracing to connect handlers and clients.
 type Interceptor struct {
-	config          config
-	instrumentsOnce sync.Once
-	instruments     instruments
+	config            config
+	clientInstruments instruments
+	serverInstruments instruments
 }
 
 var _ connect.Interceptor = &Interceptor{}
 
-// NewInterceptor constructs and returns an Interceptor which implements [connect.Interceptor]
-// that adds OpenTelemetry metrics and tracing to Connect handlers and clients.
-func NewInterceptor(options ...Option) *Interceptor {
+// NewInterceptor returns an interceptor that implements [connect.Interceptor].
+// It adds OpenTelemetry metrics and tracing to connect handlers and clients.
+// Use options to configure the interceptor. Any invalid options will cause an
+// error to be returned. The interceptor will use the default tracer and meter
+// providers. To use a custom tracer or meter provider pass in the
+// [WithTracerProvider] or [WithMeterProvider] options. To disable metrics or
+// tracing pass in the [WithoutMetrics] or [WithoutTracing] options.
+func NewInterceptor(options ...Option) (*Interceptor, error) {
 	cfg := config{
 		now: time.Now,
 		tracer: otel.GetTracerProvider().Tracer(
@@ -54,22 +59,27 @@ func NewInterceptor(options ...Option) *Interceptor {
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
-	return &Interceptor{
-		config: cfg,
+	clientInstruments, err := createInstruments(cfg.meter, clientKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client instruments: %w", err)
 	}
+	serverInstruments, err := createInstruments(cfg.meter, serverKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create server instruments: %w", err)
+	}
+	return &Interceptor{
+		config:            cfg,
+		clientInstruments: clientInstruments,
+		serverInstruments: serverInstruments,
+	}, nil
 }
 
-// initialization must wait to determine if the interceptor is a client or server
-// because the instrumentation is different for each.
-func (i *Interceptor) getAndInitInstrument(isClient bool) *instruments {
-	i.instrumentsOnce.Do(func() {
-		instrumentType := serverKey
-		if isClient {
-			instrumentType = clientKey
-		}
-		i.instruments = makeInstruments(i.config.meter, instrumentType)
-	})
-	return &i.instruments
+// getInstruments returns the correct instrumentation for the interceptor.
+func (i *Interceptor) getInstruments(isClient bool) *instruments {
+	if isClient {
+		return &i.clientInstruments
+	}
+	return &i.serverInstruments
 }
 
 // WrapUnary implements otel tracing and metrics for unary handlers.
@@ -86,7 +96,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				return next(ctx, req)
 			}
 		}
-		instruments := i.getAndInitInstrument(call.Spec.IsClient)
+		instruments := i.getInstruments(call.Spec.IsClient)
 		state := newState(
 			call,
 			i.config,
@@ -127,7 +137,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				return conn
 			}
 		}
-		instruments := i.getAndInitInstrument(call.Spec.IsClient)
+		instruments := i.getInstruments(call.Spec.IsClient)
 		state := newState(
 			call,
 			i.config,
@@ -159,7 +169,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return next(ctx, conn)
 			}
 		}
-		instruments := i.getAndInitInstrument(call.Spec.IsClient)
+		instruments := i.getInstruments(call.Spec.IsClient)
 		state := newState(
 			call,
 			i.config,
@@ -180,7 +190,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 	}
 }
 
-// protocolToSemConv to convert the protocol string to OpenTelementry format.
+// protocolToSemConv converts the protocol string to the OpenTelemetry format.
 func protocolToSemConv(protocol string) string {
 	switch protocol {
 	case grpcwebString:
