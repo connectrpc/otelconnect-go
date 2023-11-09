@@ -39,19 +39,22 @@ type streamingClientInterceptor struct {
 
 func (s *streamingClientInterceptor) init() {
 	s.requestStarted.Do(func() {
-		header := s.StreamingClientConn.RequestHeader()
+		// Start time on first send.
+		s.startAt = s.state.config.now()
+		header := s.RequestHeader()
 		s.ctx = s.state.start(s.ctx, header)
 	})
 }
 
 func (s *streamingClientInterceptor) Receive(msg any) error {
-	s.init()
 	if err := s.StreamingClientConn.Receive(msg); err != nil {
 		if !errors.Is(err, io.EOF) {
 			s.state.setError(err)
 		}
 		return err
 	}
+	// Must already be initialized by a call to Send. This is because
+	// Receive blocks until the first message.
 	s.state.receive(s.ctx, msg)
 	return nil
 }
@@ -95,8 +98,8 @@ func (s *streamingClientInterceptor) CloseResponse() error {
 }
 
 func (s *streamingClientInterceptor) onClose() {
-	s.init()
-	header := s.StreamingClientConn.ResponseHeader()
+	s.init() // Ensure initialized even under error conditions.
+	header := s.ResponseHeader()
 	s.state.end(s.ctx, header, s.startAt)
 }
 
