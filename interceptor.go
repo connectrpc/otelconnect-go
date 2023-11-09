@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	connect "connectrpc.com/connect"
@@ -112,8 +113,11 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		rsp, err := next(ctx, req)
 		if err != nil {
 			state.setError(err)
-			// TODO: response header from error
-			state.end(ctx, nil, startAt)
+			var header http.Header
+			if cerr := (*connect.Error)(nil); errors.As(err, &cerr) {
+				header = cerr.Meta()
+			}
+			state.end(ctx, header, startAt)
 		} else {
 			msgEnd(ctx, rsp.Any())
 			state.end(ctx, rsp.Header(), startAt)
