@@ -70,9 +70,8 @@ func (s *streamingClientInterceptor) Send(msg any) error {
 func (s *streamingClientInterceptor) CloseRequest() error {
 	err := s.StreamingClientConn.CloseRequest()
 	s.mu.Lock()
-	wasClosed := s.requestClosed && s.responseClosed
+	hasClosed := !s.requestClosed && s.responseClosed
 	s.requestClosed = true
-	hasClosed := !wasClosed && s.responseClosed
 	s.mu.Unlock()
 	if hasClosed {
 		s.onClose()
@@ -83,9 +82,8 @@ func (s *streamingClientInterceptor) CloseRequest() error {
 func (s *streamingClientInterceptor) CloseResponse() error {
 	err := s.StreamingClientConn.CloseResponse()
 	s.mu.Lock()
-	wasClosed := s.requestClosed && s.responseClosed
+	hasClosed := !s.responseClosed && s.requestClosed
 	s.responseClosed = true
-	hasClosed := !wasClosed && s.requestClosed
 	s.mu.Unlock()
 	if hasClosed {
 		s.onClose()
