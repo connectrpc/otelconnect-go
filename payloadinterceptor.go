@@ -19,7 +19,6 @@ import (
 	"errors"
 	"io"
 	"sync"
-	"time"
 
 	connect "connectrpc.com/connect"
 )
@@ -27,9 +26,8 @@ import (
 type streamingClientInterceptor struct {
 	connect.StreamingClientConn
 
-	ctx     context.Context //nolint:containedctx
-	state   *state
-	startAt time.Time
+	ctx   context.Context //nolint:containedctx
+	state *state
 
 	requestStarted sync.Once
 	mu             sync.Mutex
@@ -39,8 +37,6 @@ type streamingClientInterceptor struct {
 
 func (s *streamingClientInterceptor) init() {
 	s.requestStarted.Do(func() {
-		// Start time on first send.
-		s.startAt = s.state.config.now()
 		header := s.RequestHeader()
 		s.ctx = s.state.start(s.ctx, header)
 	})
@@ -100,7 +96,7 @@ func (s *streamingClientInterceptor) CloseResponse() error {
 func (s *streamingClientInterceptor) onClose() {
 	s.init() // Ensure initialized even under error conditions.
 	header := s.ResponseHeader()
-	s.state.end(s.ctx, header, s.startAt)
+	s.state.end(s.ctx, header)
 }
 
 type streamingHandlerInterceptor struct {

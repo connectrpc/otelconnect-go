@@ -36,8 +36,9 @@ type state struct {
 
 	// attributes added to the span. Can only be set by the start and end methods.
 	attributes      []attribute.KeyValue
-	sentCounter     int // Only accessed by the send method.
-	receivedCounter int // Only accessed by the receive method.
+	startAt         time.Time // Only accessed by the start method.
+	sentCounter     int       // Only accessed by the send method.
+	receivedCounter int       // Only accessed by the receive method.
 
 	// TODO: use sync.OnceValue
 	errOnce sync.Once
@@ -60,6 +61,7 @@ func newState(
 // This method must only be called once at the start of the RPC when the
 // request headers are available.
 func (s *state) start(ctx context.Context, header http.Header) context.Context {
+	s.startAt = s.config.now() // TODO: improve start time accuracy if possible.
 	name := strings.TrimLeft(s.call.Spec.Procedure, "/")
 	protocol := protocolToSemConv(s.call.Peer.Protocol)
 	carrier := propagation.HeaderCarrier(header)
@@ -100,7 +102,7 @@ func (s *state) start(ctx context.Context, header http.Header) context.Context {
 
 // end the span and record the duration.
 // This method must only be called once at the end of the RPC.
-func (s *state) end(ctx context.Context, header http.Header, startAt time.Time) {
+func (s *state) end(ctx context.Context, header http.Header) {
 	protocol := protocolToSemConv(s.call.Peer.Protocol)
 	if statusCodeAttribute, ok := statusCodeAttribute(protocol, s.err); ok {
 		s.attributes = s.config.filterAttribute.append(
@@ -123,7 +125,7 @@ func (s *state) end(ctx context.Context, header http.Header, startAt time.Time) 
 	span.End()
 	// Record the duration metric.
 	endAt := s.config.now()
-	duration := endAt.Sub(startAt).Milliseconds()
+	duration := endAt.Sub(s.startAt).Milliseconds()
 	s.instruments.duration.Record(ctx, duration, metric.WithAttributes(s.attributes...))
 }
 

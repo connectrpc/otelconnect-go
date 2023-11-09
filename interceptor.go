@@ -86,7 +86,6 @@ func (i *Interceptor) getInstruments(isClient bool) *instruments {
 // WrapUnary implements otel tracing and metrics for unary handlers.
 func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		startAt := i.config.now() // TODO: improve time source.
 		call := &Request{
 			Spec:   req.Spec(),
 			Peer:   req.Peer(),
@@ -117,10 +116,10 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			if cerr := (*connect.Error)(nil); errors.As(err, &cerr) {
 				header = cerr.Meta()
 			}
-			state.end(ctx, header, startAt)
+			state.end(ctx, header)
 		} else {
 			msgEnd(ctx, rsp.Any())
-			state.end(ctx, rsp.Header(), startAt)
+			state.end(ctx, rsp.Header())
 		}
 		return rsp, err
 	}
@@ -146,8 +145,8 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			i.config,
 			instruments,
 		)
-		// start is deferred until the first send or receive to ensure
-		// the request headers are available.
+		// start is deferred until the first Send for time accuracy
+		// and to ensure the request headers are available.
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 
@@ -160,7 +159,6 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 // WrapStreamingHandler implements otel tracing and metrics for streaming connect handlers.
 func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		startAt := i.config.now()
 		call := &Request{
 			Spec:   conn.Spec(),
 			Peer:   conn.Peer(),
@@ -187,7 +185,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		if err != nil {
 			state.setError(err)
 		}
-		state.end(ctx, conn.ResponseHeader(), startAt)
+		state.end(ctx, conn.ResponseHeader())
 		return err
 	}
 }
