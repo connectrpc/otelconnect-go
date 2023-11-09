@@ -73,9 +73,9 @@ func (s *streamingClientInterceptor) CloseRequest() error {
 	s.mu.Lock()
 	wasClosed := s.requestClosed && s.responseClosed
 	s.requestClosed = true
-	shouldClose := !wasClosed && s.requestClosed && s.responseClosed
+	hasClosed := !wasClosed && s.responseClosed
 	s.mu.Unlock()
-	if shouldClose {
+	if hasClosed {
 		s.onClose()
 	}
 	return err
@@ -86,9 +86,9 @@ func (s *streamingClientInterceptor) CloseResponse() error {
 	s.mu.Lock()
 	wasClosed := s.requestClosed && s.responseClosed
 	s.responseClosed = true
-	shouldClose := !wasClosed && s.requestClosed && s.responseClosed
+	hasClosed := !wasClosed && s.requestClosed
 	s.mu.Unlock()
-	if shouldClose {
+	if hasClosed {
 		s.onClose()
 	}
 	return err
