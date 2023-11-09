@@ -28,7 +28,7 @@ import (
 
 // An Option configures the OpenTelemetry instrumentation.
 type Option interface {
-	apply(*config)
+	apply(cfg *config)
 }
 
 // WithPropagator configures the instrumentation to use the supplied propagator

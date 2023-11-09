@@ -65,8 +65,8 @@ func newStreamingState(
 }
 
 type sendReceiver interface {
-	Receive(any) error
-	Send(any) error
+	Receive(msg any) error
+	Send(msg any) error
 }
 
 func (s *streamingState) addAttributes(attributes ...attribute.KeyValue) {

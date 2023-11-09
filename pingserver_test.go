@@ -30,8 +30,8 @@ const cacheablePingEtag = "ABCDEFGH"
 
 func pingOkay(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 	return connect.NewResponse(&pingv1.PingResponse{
-		Id:   req.Msg.Id,
-		Data: req.Msg.Data,
+		Id:   req.Msg.GetId(),
+		Data: req.Msg.GetData(),
 	}), nil
 }
 
@@ -54,8 +54,8 @@ func pingStreamOkay(
 			return fmt.Errorf("receive request: %w", err)
 		}
 		if err := stream.Send(&pingv1.PingStreamResponse{
-			Id:   msg.Id,
-			Data: msg.Data,
+			Id:   msg.GetId(),
+			Data: msg.GetData(),
 		}); err != nil {
 			return fmt.Errorf("send response: %w", err)
 		}
