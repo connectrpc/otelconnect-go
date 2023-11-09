@@ -68,6 +68,7 @@ func (s *streamingClientInterceptor) Send(msg any) error {
 }
 
 func (s *streamingClientInterceptor) CloseRequest() error {
+	s.init() // Ensure initialized even under error conditions.
 	err := s.StreamingClientConn.CloseRequest()
 	s.mu.Lock()
 	hasClosed := !s.requestClosed && s.responseClosed
@@ -92,7 +93,6 @@ func (s *streamingClientInterceptor) CloseResponse() error {
 }
 
 func (s *streamingClientInterceptor) onClose() {
-	s.init() // Ensure initialized even under error conditions.
 	header := s.ResponseHeader()
 	s.state.end(s.ctx, header)
 }
