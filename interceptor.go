@@ -195,7 +195,6 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			name,
 			trace.WithSpanKind(trace.SpanKindClient),
 		)
-
 		conn := next(ctx, spec)
 		instrumentation := i.getInstruments(spec.IsClient)
 		if i.config.filter != nil {

@@ -1356,9 +1356,9 @@ func TestUnaryPropagation(t *testing.T) {
 	require.NoError(t, err)
 	client, _, _ := startServer(
 		[]connect.HandlerOption{
-			connect.WithInterceptors(serverInterceptor),
+			connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 		}, []connect.ClientOption{
-			connect.WithInterceptors(clientInterceptor),
+			connect.WithInterceptors(clientInterceptor, assertSpanInterceptor{t: t}),
 		}, okayPingServer())
 	_, err = client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
 	require.NoError(t, err)
@@ -1591,7 +1591,7 @@ func TestStreamingClientPropagation(t *testing.T) {
 	)
 	require.NoError(t, err)
 	client, _, _ := startServer(nil, []connect.ClientOption{
-		connect.WithInterceptors(clientInterceptor),
+		connect.WithInterceptors(clientInterceptor, assertSpanInterceptor{t: t}),
 	}, &pluggablePingServer{pingStream: assertTraceParent},
 	)
 	stream := client.PingStream(context.Background())
@@ -1610,7 +1610,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
 	pingClient, host, port := startServer([]connect.HandlerOption{
-		connect.WithInterceptors(serverInterceptor),
+		connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
 
@@ -2176,5 +2176,31 @@ func serverSpanStatusTestCases() []serverSpanStatusTestCase {
 		{connectCode: connect.CodeUnavailable, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnavailable.String()},
 		{connectCode: connect.CodeDataLoss, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDataLoss.String()},
 		{connectCode: connect.CodeUnauthenticated, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+	}
+}
+
+type assertSpanInterceptor struct{ t testing.TB }
+
+func (i assertSpanInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+		i.assertSpanContext(ctx)
+		return next(ctx, request)
+	}
+}
+func (i assertSpanInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		i.assertSpanContext(ctx)
+		return next(ctx, spec)
+	}
+}
+func (i assertSpanInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		i.assertSpanContext(ctx)
+		return next(ctx, conn)
+	}
+}
+func (i assertSpanInterceptor) assertSpanContext(ctx context.Context) {
+	if !traceapi.SpanContextFromContext(ctx).IsValid() {
+		i.t.Error("invalid span context")
 	}
 }
