@@ -30,7 +30,6 @@ type streamingClientInterceptor struct {
 	mu             sync.Mutex
 	requestClosed  bool
 	responseClosed bool
-	onCloseCalled  bool
 }
 
 func (s *streamingClientInterceptor) Receive(msg any) error {
@@ -44,11 +43,8 @@ func (s *streamingClientInterceptor) Send(msg any) error {
 func (s *streamingClientInterceptor) CloseRequest() error {
 	err := s.StreamingClientConn.CloseRequest()
 	s.mu.Lock()
+	shouldCall := !s.requestClosed && s.responseClosed
 	s.requestClosed = true
-	shouldCall := s.responseClosed && !s.onCloseCalled
-	if shouldCall {
-		s.onCloseCalled = true
-	}
 	s.mu.Unlock()
 	if shouldCall {
 		s.onClose()
@@ -59,11 +55,8 @@ func (s *streamingClientInterceptor) CloseRequest() error {
 func (s *streamingClientInterceptor) CloseResponse() error {
 	err := s.StreamingClientConn.CloseResponse()
 	s.mu.Lock()
+	shouldCall := !s.responseClosed && s.requestClosed
 	s.responseClosed = true
-	shouldCall := s.requestClosed && !s.onCloseCalled
-	if shouldCall {
-		s.onCloseCalled = true
-	}
 	s.mu.Unlock()
 	if shouldCall {
 		s.onClose()
