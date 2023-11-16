@@ -26,9 +26,9 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
-// AttributeFilter is used to filter attributes out based on the [Request] and [attribute.KeyValue].
-// If the filter returns true the attribute will be kept else it will be removed.
-// AttributeFilter must be safe to call concurrently.
+// AttributeFilter is used to filter attributes out based on the [connect.Spec]
+// and [attribute.KeyValue]. If the filter returns true the attribute will be
+// kept else it will be removed. AttributeFilter must be safe to call concurrently.
 type AttributeFilter func(connect.Spec, attribute.KeyValue) bool
 
 func (filter AttributeFilter) filter(spec connect.Spec, values ...attribute.KeyValue) []attribute.KeyValue {
