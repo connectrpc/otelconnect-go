@@ -210,9 +210,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			i.config.omitTraceEvents,
 			requestAttributes(req),
 			instrumentation.responseSize,
-			instrumentation.responsesPerRPC,
 			instrumentation.requestSize,
-			instrumentation.requestsPerRPC,
 		)
 		var span trace.Span
 		var createSpanOnce sync.Once
@@ -247,7 +245,13 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 				span.SetStatus(spanStatus(protocol, state.error))
 				span.End()
-				instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(state.attributes...))
+				instrumentation.requestsPerRPC.Record(ctx, state.sentCounter,
+					metric.WithAttributes(state.attributes...))
+				instrumentation.responsesPerRPC.Record(ctx, state.receivedCounter,
+					metric.WithAttributes(state.attributes...))
+				duration := i.config.now().Sub(requestStartTime).Milliseconds()
+				instrumentation.duration.Record(ctx, duration,
+					metric.WithAttributes(state.attributes...))
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
 				return state.receive(ctx, msg, conn)
@@ -284,9 +288,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			i.config.omitTraceEvents,
 			requestAttributes(req),
 			instrumentation.requestSize,
-			instrumentation.requestsPerRPC,
 			instrumentation.responseSize,
-			instrumentation.responsesPerRPC,
 		)
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
@@ -327,7 +329,13 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		span.SetAttributes(state.attributes...)
 		span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 		span.SetStatus(spanStatus(protocol, err))
-		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(state.attributes...))
+		instrumentation.requestsPerRPC.Record(ctx, state.receivedCounter,
+			metric.WithAttributes(state.attributes...))
+		instrumentation.responsesPerRPC.Record(ctx, state.sentCounter,
+			metric.WithAttributes(state.attributes...))
+		duration := i.config.now().Sub(requestStartTime).Milliseconds()
+		instrumentation.duration.Record(ctx, duration,
+			metric.WithAttributes(state.attributes...))
 		return err
 	}
 }
