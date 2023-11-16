@@ -91,13 +91,8 @@ func (i *Interceptor) getInstruments(isClient bool) *instruments {
 func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 		requestStartTime := i.config.now()
-		req := &Request{
-			Spec:   request.Spec(),
-			Peer:   request.Peer(),
-			Header: request.Header(),
-		}
 		if i.config.filter != nil {
-			if !i.config.filter(ctx, req) {
+			if !i.config.filter(ctx, request.Spec()) {
 				return next(ctx, request)
 			}
 		}
@@ -105,14 +100,14 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		isClient := request.Spec().IsClient
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol)
-		attributes := attributeFilter(req, requestAttributes(req)...)
+		attributes := attributeFilter(request.Spec(), requestAttributes(request.Spec(), request.Peer())...)
 		instrumentation := i.getInstruments(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
 		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
 		traceOpts := []trace.SpanStartOption{
 			trace.WithAttributes(attributes...),
-			trace.WithAttributes(headerAttributes(protocol, requestKey, req.Header, i.config.requestHeaderKeys)...),
+			trace.WithAttributes(headerAttributes(protocol, requestKey, request.Header(), i.config.requestHeaderKeys)...),
 		}
 		if !isClient {
 			spanKind = trace.SpanKindServer
@@ -174,7 +169,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				),
 			)
 		}
-		attributes = attributeFilter(req, attributes...)
+		attributes = attributeFilter(request.Spec(), attributes...)
 		if isClient {
 			span.SetStatus(clientSpanStatus(protocol, err))
 		} else {
@@ -194,50 +189,47 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		requestStartTime := i.config.now()
+		name := strings.TrimLeft(spec.Procedure, "/")
+		ctx, span := i.config.tracer.Start(
+			ctx,
+			name,
+			trace.WithSpanKind(trace.SpanKindClient),
+		)
+
 		conn := next(ctx, spec)
 		instrumentation := i.getInstruments(spec.IsClient)
-		req := &Request{
-			Spec:   conn.Spec(),
-			Peer:   conn.Peer(),
-			Header: conn.RequestHeader(),
-		}
 		if i.config.filter != nil {
-			if !i.config.filter(ctx, req) {
+			if !i.config.filter(ctx, spec) {
 				return conn
 			}
 		}
-		name := strings.TrimLeft(conn.Spec().Procedure, "/")
-		protocol := protocolToSemConv(conn.Peer().Protocol)
+		// inject the newly created span into the carrier
+		carrier := propagation.HeaderCarrier(conn.RequestHeader())
+		i.config.propagator.Inject(ctx, carrier)
 		state := newStreamingState(
-			req,
+			spec,
+			conn.Peer(),
 			i.config.filterAttribute,
 			i.config.omitTraceEvents,
-			requestAttributes(req),
 			instrumentation.responseSize,
 			instrumentation.requestSize,
 		)
-		var span trace.Span
-		var createSpanOnce sync.Once
-		createSpan := func() {
-			ctx, span = i.config.tracer.Start(
-				ctx,
-				name,
-				trace.WithSpanKind(trace.SpanKindClient),
-				trace.WithAttributes(state.attributes...),
-				trace.WithAttributes(headerAttributes(
+		protocol := protocolToSemConv(conn.Peer().Protocol)
+		var requestOnce sync.Once
+		setRequestAttributes := func() {
+			span.SetAttributes(
+				headerAttributes(
 					protocol,
 					requestKey,
 					conn.RequestHeader(),
-					i.config.requestHeaderKeys)...),
+					i.config.requestHeaderKeys,
+				)...,
 			)
-			// inject the newly created span into the carrier
-			carrier := propagation.HeaderCarrier(conn.RequestHeader())
-			i.config.propagator.Inject(ctx, carrier)
 		}
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
-				createSpanOnce.Do(createSpan)
+				requestOnce.Do(setRequestAttributes)
 				// state.attributes is updated with the final error that was recorded.
 				// If error is nil a "success" is recorded on the span and on the final duration
 				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
@@ -261,7 +253,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				return state.receive(ctx, msg, conn)
 			},
 			send: func(msg any, conn connect.StreamingClientConn) error {
-				createSpanOnce.Do(createSpan)
+				requestOnce.Do(setRequestAttributes)
 				return state.send(ctx, msg, conn)
 			},
 		}
@@ -274,23 +266,18 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		requestStartTime := i.config.now()
 		isClient := conn.Spec().IsClient
 		instrumentation := i.getInstruments(isClient)
-		req := &Request{
-			Spec:   conn.Spec(),
-			Peer:   conn.Peer(),
-			Header: conn.RequestHeader(),
-		}
 		if i.config.filter != nil {
-			if !i.config.filter(ctx, req) {
+			if !i.config.filter(ctx, conn.Spec()) {
 				return next(ctx, conn)
 			}
 		}
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		protocol := protocolToSemConv(conn.Peer().Protocol)
 		state := newStreamingState(
-			req,
+			conn.Spec(),
+			conn.Peer(),
 			i.config.filterAttribute,
 			i.config.omitTraceEvents,
-			requestAttributes(req),
 			instrumentation.requestSize,
 			instrumentation.responseSize,
 		)
@@ -299,7 +286,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		traceOpts := []trace.SpanStartOption{
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(state.attributes...),
-			trace.WithAttributes(headerAttributes(protocol, requestKey, req.Header, i.config.requestHeaderKeys)...),
+			trace.WithAttributes(headerAttributes(protocol, requestKey, conn.RequestHeader(), i.config.requestHeaderKeys)...),
 		}
 		if !trace.SpanContextFromContext(ctx).IsValid() {
 			ctx = i.config.propagator.Extract(ctx, carrier)
