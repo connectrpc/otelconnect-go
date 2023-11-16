@@ -188,6 +188,11 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 // WrapStreamingClient implements otel tracing and metrics for streaming connect clients.
 func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		if i.config.filter != nil {
+			if !i.config.filter(ctx, spec) {
+				return next(ctx, spec)
+			}
+		}
 		requestStartTime := i.config.now()
 		name := strings.TrimLeft(spec.Procedure, "/")
 		ctx, span := i.config.tracer.Start(
@@ -197,11 +202,6 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		)
 		conn := next(ctx, spec)
 		instrumentation := i.getInstruments(spec.IsClient)
-		if i.config.filter != nil {
-			if !i.config.filter(ctx, spec) {
-				return conn
-			}
-		}
 		// inject the newly created span into the carrier
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		i.config.propagator.Inject(ctx, carrier)
