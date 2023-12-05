@@ -21,20 +21,25 @@ import (
 )
 
 const (
-	metricKeyFormat    = "rpc.%s.%s"
-	durationKey        = "duration"
-	requestSizeKey     = "request.size"
-	responseSizeKey    = "response.size"
-	requestsPerRPCKey  = "requests_per_rpc"
-	responsesPerRPCKey = "responses_per_rpc"
-	messageKey         = "message"
-	serverKey          = "server"
-	clientKey          = "client"
-	requestKey         = "request"
-	responseKey        = "response"
-	unitDimensionless  = "1"
-	unitBytes          = "By"
-	unitMilliseconds   = "ms"
+	metricKeyFormat     = "rpc.%s.%s"
+	durationKey         = "duration"
+	durationDesc        = "Measures the duration of inbound RPC."
+	requestSizeKey      = "request.size"
+	requestSizeDesc     = "Measures size of RPC request messages (uncompressed)."
+	responseSizeKey     = "response.size"
+	responseSizeDesc    = "Measures size of RPC response messages (uncompressed)."
+	requestsPerRPCKey   = "requests_per_rpc"
+	requestsPerRPCDesc  = "Measures the number of messages received per RPC. Should be 1 for all non-streaming RPCs."
+	responsesPerRPCKey  = "responses_per_rpc"
+	responsesPerRPCDesc = "Measures the number of messages received per RPC. Should be 1 for all non-streaming RPCs."
+	messageKey          = "message"
+	serverKey           = "server"
+	clientKey           = "client"
+	requestKey          = "request"
+	responseKey         = "response"
+	unitDimensionless   = "1"
+	unitBytes           = "By"
+	unitMilliseconds    = "ms"
 )
 
 type instruments struct {
@@ -50,6 +55,7 @@ func createInstruments(meter metric.Meter, interceptorType string) (instruments,
 	duration, err := meter.Int64Histogram(
 		formatkeys(interceptorType, durationKey),
 		metric.WithUnit(unitMilliseconds),
+		metric.WithDescription(durationDesc),
 	)
 	if err != nil {
 		return instruments{}, err
@@ -57,6 +63,7 @@ func createInstruments(meter metric.Meter, interceptorType string) (instruments,
 	requestSize, err := meter.Int64Histogram(
 		formatkeys(interceptorType, requestSizeKey),
 		metric.WithUnit(unitBytes),
+		metric.WithDescription(requestSizeDesc),
 	)
 	if err != nil {
 		return instruments{}, err
@@ -64,6 +71,7 @@ func createInstruments(meter metric.Meter, interceptorType string) (instruments,
 	responseSize, err := meter.Int64Histogram(
 		formatkeys(interceptorType, responseSizeKey),
 		metric.WithUnit(unitBytes),
+		metric.WithDescription(responseSizeDesc),
 	)
 	if err != nil {
 		return instruments{}, err
@@ -71,6 +79,7 @@ func createInstruments(meter metric.Meter, interceptorType string) (instruments,
 	requestsPerRPC, err := meter.Int64Histogram(
 		formatkeys(interceptorType, requestsPerRPCKey),
 		metric.WithUnit(unitDimensionless),
+		metric.WithDescription(requestsPerRPCDesc),
 	)
 	if err != nil {
 		return instruments{}, err
@@ -78,6 +87,7 @@ func createInstruments(meter metric.Meter, interceptorType string) (instruments,
 	responsesPerRPC, err := meter.Int64Histogram(
 		formatkeys(interceptorType, responsesPerRPCKey),
 		metric.WithUnit(unitDimensionless),
+		metric.WithDescription(responsesPerRPCDesc),
 	)
 	if err != nil {
 		return instruments{}, err
