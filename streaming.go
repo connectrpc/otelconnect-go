@@ -35,12 +35,10 @@ type streamingState struct {
 	omitTraceEvents bool
 	attributes      []attribute.KeyValue
 	error           error
-	sentCounter     int
-	receivedCounter int
+	sentCounter     int64
+	receivedCounter int64
 	receiveSize     metric.Int64Histogram
-	receivesPerRPC  metric.Int64Histogram
 	sendSize        metric.Int64Histogram
-	sendsPerRPC     metric.Int64Histogram
 }
 
 func newStreamingState(
@@ -48,7 +46,7 @@ func newStreamingState(
 	attributeFilter AttributeFilter,
 	omitTraceEvents bool,
 	attributes []attribute.KeyValue,
-	receiveSize, receivesPerRPC, sendSize, sendsPerRPC metric.Int64Histogram,
+	receiveSize, sendSize metric.Int64Histogram,
 ) *streamingState {
 	attributes = attributeFilter.filter(req, attributes...)
 	return &streamingState{
@@ -58,9 +56,7 @@ func newStreamingState(
 		req:             req,
 		attributes:      attributes,
 		receiveSize:     receiveSize,
-		receivesPerRPC:  receivesPerRPC,
 		sendSize:        sendSize,
-		sendsPerRPC:     sendsPerRPC,
 	}
 }
 
@@ -80,6 +76,7 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 	if errors.Is(err, io.EOF) {
 		return err
 	}
+	s.receivedCounter++
 	if err != nil {
 		s.error = err
 		// If error add it to the attributes because the stream is about to terminate.
@@ -91,11 +88,9 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 	protomsg, ok := msg.(proto.Message)
 	size := proto.Size(protomsg)
 	if !s.omitTraceEvents {
-		s.receivedCounter++
-		s.event(ctx, semconv.MessageTypeReceived, s.receivedCounter, ok, size)
+		s.emitEvent(ctx, semconv.MessageTypeReceived, s.receivedCounter, size, ok)
 	}
 	s.receiveSize.Record(ctx, int64(size), metric.WithAttributes(s.attributes...))
-	s.receivesPerRPC.Record(ctx, 1, metric.WithAttributes(s.attributes...))
 	return err
 }
 
@@ -106,6 +101,7 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 	if errors.Is(err, io.EOF) {
 		return err
 	}
+	s.sentCounter++
 	if err != nil {
 		s.error = err
 		// If error add it to the attributes because the stream is about to terminate.
@@ -117,28 +113,24 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 	protomsg, ok := msg.(proto.Message)
 	size := proto.Size(protomsg)
 	if !s.omitTraceEvents {
-		s.sentCounter++
-		s.event(ctx, semconv.MessageTypeSent, s.sentCounter, ok, size)
+		s.emitEvent(ctx, semconv.MessageTypeSent, s.sentCounter, size, ok)
 	}
 	s.sendSize.Record(ctx, int64(size), metric.WithAttributes(s.attributes...))
-	s.sendsPerRPC.Record(ctx, 1, metric.WithAttributes(s.attributes...))
 	return err
 }
 
-func (s *streamingState) event(ctx context.Context, messageType attribute.KeyValue, messageID int, msgOk bool, size int) {
+func (s *streamingState) emitEvent(ctx context.Context, msgType attribute.KeyValue, msgID int64, msgSize int, hasSize bool) {
 	span := trace.SpanFromContext(ctx)
-	if msgOk {
-		span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
-			s.req,
-			messageType,
-			semconv.MessageUncompressedSizeKey.Int(size),
-			semconv.MessageIDKey.Int(messageID),
-		)...))
-	} else {
-		span.AddEvent("message", trace.WithAttributes(s.attributeFilter.filter(
-			s.req,
-			messageType,
-			semconv.MessageIDKey.Int(messageID),
-		)...))
+	if !span.IsRecording() {
+		return
 	}
+	attrs := []attribute.KeyValue{
+		msgType, semconv.MessageIDKey.Int64(msgID),
+	}
+	if hasSize {
+		attrs = append(attrs, semconv.MessageUncompressedSizeKey.Int(msgSize))
+	}
+	span.AddEvent(messageKey, trace.WithAttributes(
+		s.attributeFilter.filter(s.req, attrs...)...,
+	))
 }
