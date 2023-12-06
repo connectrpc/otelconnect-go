@@ -679,8 +679,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcServerResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
