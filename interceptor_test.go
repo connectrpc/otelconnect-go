@@ -107,8 +107,9 @@ func TestStreamingMetrics(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcServerDuration,
-						Unit: unitMilliseconds,
+						Name:        rpcServerDuration,
+						Description: durationDesc,
+						Unit:        unitMilliseconds,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -129,8 +130,9 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerRequestSize,
-						Unit: unitBytes,
+						Name:        rpcServerRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -151,8 +153,9 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerResponseSize,
-						Unit: unitBytes,
+						Name:        rpcServerResponseSize,
+						Description: responseSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -173,8 +176,9 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcServerRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -195,8 +199,9 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcServerResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -266,8 +271,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcClientDuration,
-						Unit: unitMilliseconds,
+						Name:        rpcClientDuration,
+						Description: durationDesc,
+						Unit:        unitMilliseconds,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -288,8 +294,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestSize,
-						Unit: unitBytes,
+						Name:        rpcClientRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -310,8 +317,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponseSize,
-						Unit: unitBytes,
+						Name:        rpcClientResponseSize,
+						Description: responseSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -332,8 +340,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -354,8 +363,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -427,8 +437,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcClientDuration,
-						Unit: string("ms"),
+						Name:        rpcClientDuration,
+						Description: durationDesc,
+						Unit:        string("ms"),
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -450,8 +461,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestSize,
-						Unit: unitBytes,
+						Name:        rpcClientRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -472,8 +484,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponseSize,
-						Unit: unitBytes,
+						Name:        rpcClientResponseSize,
+						Description: responseSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -495,8 +508,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -517,8 +531,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -591,8 +606,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcServerDuration,
-						Unit: unitMilliseconds,
+						Name:        rpcServerDuration,
+						Description: durationDesc,
+						Unit:        unitMilliseconds,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -614,8 +630,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerRequestSize,
-						Unit: unitBytes,
+						Name:        rpcServerRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -636,8 +653,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcServerRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -701,8 +719,9 @@ func TestMetrics(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcClientDuration,
-						Unit: unitMilliseconds,
+						Name:        rpcClientDuration,
+						Description: durationDesc,
+						Unit:        unitMilliseconds,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -723,8 +742,9 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestSize,
-						Unit: unitBytes,
+						Name:        rpcClientRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -745,8 +765,9 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponseSize,
-						Unit: unitBytes,
+						Name:        rpcClientResponseSize,
+						Description: responseSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -767,8 +788,9 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -789,8 +811,9 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -1129,7 +1152,8 @@ func TestHeaderAttribute(t *testing.T) {
 	require.NoError(t, err)
 	client, _, _ := startServer(
 		[]connect.HandlerOption{
-			connect.WithInterceptors(serverInterceptor)},
+			connect.WithInterceptors(serverInterceptor),
+		},
 		[]connect.ClientOption{
 			connect.WithInterceptors(clientInterceptor),
 		}, &pluggablePingServer{
