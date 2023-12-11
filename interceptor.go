@@ -388,6 +388,17 @@ func serverSpanStatus(protocol string, err error) (codes.Code, string) {
 			connect.CodeUnavailable,
 			connect.CodeDataLoss:
 			return codes.Error, connectErr.Message()
+		case connect.CodeCanceled,
+			connect.CodeInvalidArgument,
+			connect.CodeNotFound,
+			connect.CodeAlreadyExists,
+			connect.CodePermissionDenied,
+			connect.CodeResourceExhausted,
+			connect.CodeFailedPrecondition,
+			connect.CodeAborted,
+			connect.CodeOutOfRange,
+			connect.CodeUnauthenticated:
+			return codes.Unset, ""
 		default:
 			return codes.Unset, ""
 		}

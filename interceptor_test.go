@@ -1974,7 +1974,7 @@ func TestWithoutTraceEventsUnary(t *testing.T) {
 func TestServerSpanStatus(t *testing.T) {
 	t.Parallel()
 	var propagator propagation.TraceContext
-	for _, tc := range serverSpanStatusTestCases {
+	for _, testcase := range serverSpanStatusTestCases() {
 		spanRecorder := tracetest.NewSpanRecorder()
 		traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 		clientSpanRecorder := tracetest.NewSpanRecorder()
@@ -1995,7 +1995,7 @@ func TestServerSpanStatus(t *testing.T) {
 			connect.WithInterceptors(clientInterceptor),
 		}, &pluggablePingServer{
 			ping: func(ctx context.Context, r *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-				return nil, connect.NewError(tc.connectCode, errors.New(tc.connectCode.String()))
+				return nil, connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
 			},
 		})
 		if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err == nil {
@@ -2003,15 +2003,15 @@ func TestServerSpanStatus(t *testing.T) {
 		}
 		require.Len(t, spanRecorder.Ended(), 1)
 		require.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
-		require.Equal(t, tc.wantServerSpanCode, spanRecorder.Ended()[0].Status().Code)
-		require.Equal(t, tc.wantServerSpanDescription, spanRecorder.Ended()[0].Status().Description)
+		require.Equal(t, testcase.wantServerSpanCode, spanRecorder.Ended()[0].Status().Code)
+		require.Equal(t, testcase.wantServerSpanDescription, spanRecorder.Ended()[0].Status().Description)
 	}
 }
 
 func TestStreamingServerSpanStatus(t *testing.T) {
 	t.Parallel()
 	var propagator propagation.TraceContext
-	for _, tc := range serverSpanStatusTestCases {
+	for _, testcase := range serverSpanStatusTestCases() {
 		handlerSpanRecorder := tracetest.NewSpanRecorder()
 		handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
 		clientSpanRecorder := tracetest.NewSpanRecorder()
@@ -2033,22 +2033,22 @@ func TestStreamingServerSpanStatus(t *testing.T) {
 				connect.WithInterceptors(clientInterceptor),
 			}, &pluggablePingServer{
 				pingStream: func(ctx context.Context, bs *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
-					return connect.NewError(tc.connectCode, errors.New(tc.connectCode.String()))
+					return connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
 				},
 			})
 		stream := client.PingStream(context.Background())
-		assert.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+		require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
 			Data: []byte("Hello, otel!"),
 		}))
 		_, err = stream.Receive()
-		assert.Error(t, err)
-		assert.NoError(t, stream.CloseRequest())
-		assert.NoError(t, stream.CloseResponse())
-		assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
-		assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
-		assert.Equal(t, tc.wantServerSpanCode, handlerSpanRecorder.Ended()[0].Status().Code)
-		assert.Equal(t, tc.wantServerSpanDescription, handlerSpanRecorder.Ended()[0].Status().Description)
-		assert.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Error)
+		require.Error(t, err)
+		require.NoError(t, stream.CloseRequest())
+		require.NoError(t, stream.CloseResponse())
+		assert.Len(t, handlerSpanRecorder.Ended(), 1)
+		assert.Len(t, clientSpanRecorder.Ended(), 1)
+		assert.Equal(t, testcase.wantServerSpanCode, handlerSpanRecorder.Ended()[0].Status().Code)
+		assert.Equal(t, testcase.wantServerSpanDescription, handlerSpanRecorder.Ended()[0].Status().Description)
+		assert.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
 	}
 }
 
@@ -2204,25 +2204,29 @@ func metricResource() *resource.Resource {
 	)
 }
 
-var serverSpanStatusTestCases = []struct {
+type serverSpanStatusTestCase struct {
 	connectCode               connect.Code
 	wantServerSpanCode        codes.Code
 	wantServerSpanDescription string
-}{
-	{connectCode: connect.CodeCanceled, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodeUnknown, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnknown.String()},
-	{connectCode: connect.CodeInvalidArgument, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodeDeadlineExceeded, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDeadlineExceeded.String()},
-	{connectCode: connect.CodeNotFound, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodeAlreadyExists, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodePermissionDenied, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodeResourceExhausted, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodeFailedPrecondition, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodeAborted, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodeOutOfRange, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
-	{connectCode: connect.CodeUnimplemented, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnimplemented.String()},
-	{connectCode: connect.CodeInternal, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeInternal.String()},
-	{connectCode: connect.CodeUnavailable, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnavailable.String()},
-	{connectCode: connect.CodeDataLoss, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDataLoss.String()},
-	{connectCode: connect.CodeUnauthenticated, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+}
+
+func serverSpanStatusTestCases() []serverSpanStatusTestCase {
+	return []serverSpanStatusTestCase{
+		{connectCode: connect.CodeCanceled, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeUnknown, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnknown.String()},
+		{connectCode: connect.CodeInvalidArgument, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeDeadlineExceeded, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDeadlineExceeded.String()},
+		{connectCode: connect.CodeNotFound, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeAlreadyExists, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodePermissionDenied, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeResourceExhausted, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeFailedPrecondition, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeAborted, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeOutOfRange, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeUnimplemented, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnimplemented.String()},
+		{connectCode: connect.CodeInternal, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeInternal.String()},
+		{connectCode: connect.CodeUnavailable, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnavailable.String()},
+		{connectCode: connect.CodeDataLoss, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDataLoss.String()},
+		{connectCode: connect.CodeUnauthenticated, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+	}
 }
