@@ -16,6 +16,7 @@ package otelconnect
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"net"
 	"net/http"
@@ -1970,6 +1971,87 @@ func TestWithoutTraceEventsUnary(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
+func TestServerSpanStatus(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	for _, testcase := range serverSpanStatusTestCases() {
+		spanRecorder := tracetest.NewSpanRecorder()
+		traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+		clientSpanRecorder := tracetest.NewSpanRecorder()
+		clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+		serverInterceptor, err := NewInterceptor(
+			WithTracerProvider(traceProvider),
+			WithoutTraceEvents(),
+		)
+		require.NoError(t, err)
+		clientInterceptor, err := NewInterceptor(
+			WithPropagator(propagator),
+			WithTracerProvider(clientTraceProvider),
+		)
+		require.NoError(t, err)
+		pingClient, _, _ := startServer([]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+		}, &pluggablePingServer{
+			ping: func(ctx context.Context, r *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+				return nil, connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
+			},
+		})
+		if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err == nil {
+			t.Error("want error")
+		}
+		require.Len(t, spanRecorder.Ended(), 1)
+		require.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+		require.Equal(t, testcase.wantServerSpanCode, spanRecorder.Ended()[0].Status().Code)
+		require.Equal(t, testcase.wantServerSpanDescription, spanRecorder.Ended()[0].Status().Description)
+	}
+}
+
+func TestStreamingServerSpanStatus(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	for _, testcase := range serverSpanStatusTestCases() {
+		handlerSpanRecorder := tracetest.NewSpanRecorder()
+		handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+		clientSpanRecorder := tracetest.NewSpanRecorder()
+		clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+		serverInterceptor, err := NewInterceptor(
+			WithTracerProvider(handlerTraceProvider),
+			WithoutTraceEvents(),
+		)
+		require.NoError(t, err)
+		clientInterceptor, err := NewInterceptor(
+			WithPropagator(propagator),
+			WithTracerProvider(clientTraceProvider),
+		)
+		require.NoError(t, err)
+		client, _, _ := startServer(
+			[]connect.HandlerOption{
+				connect.WithInterceptors(serverInterceptor),
+			}, []connect.ClientOption{
+				connect.WithInterceptors(clientInterceptor),
+			}, &pluggablePingServer{
+				pingStream: func(ctx context.Context, bs *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+					return connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
+				},
+			})
+		stream := client.PingStream(context.Background())
+		require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+			Data: []byte("Hello, otel!"),
+		}))
+		_, err = stream.Receive()
+		require.Error(t, err)
+		require.NoError(t, stream.CloseRequest())
+		require.NoError(t, stream.CloseResponse())
+		assert.Len(t, handlerSpanRecorder.Ended(), 1)
+		assert.Len(t, clientSpanRecorder.Ended(), 1)
+		assert.Equal(t, testcase.wantServerSpanCode, handlerSpanRecorder.Ended()[0].Status().Code)
+		assert.Equal(t, testcase.wantServerSpanDescription, handlerSpanRecorder.Ended()[0].Status().Description)
+		assert.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+	}
+}
+
 // streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
 // wraps streaming handler RPCs. It has no effect on unary or streaming client RPCs.
 type streamingHandlerInterceptorFunc func(connect.StreamingHandlerFunc) connect.StreamingHandlerFunc
@@ -2120,4 +2202,31 @@ func metricResource() *resource.Resource {
 		attribute.String("telemetry.sdk.name", "opentelemetry"),
 		attribute.String("telemetry.sdk.version", otel.Version()),
 	)
+}
+
+type serverSpanStatusTestCase struct {
+	connectCode               connect.Code
+	wantServerSpanCode        codes.Code
+	wantServerSpanDescription string
+}
+
+func serverSpanStatusTestCases() []serverSpanStatusTestCase {
+	return []serverSpanStatusTestCase{
+		{connectCode: connect.CodeCanceled, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeUnknown, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnknown.String()},
+		{connectCode: connect.CodeInvalidArgument, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeDeadlineExceeded, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDeadlineExceeded.String()},
+		{connectCode: connect.CodeNotFound, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeAlreadyExists, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodePermissionDenied, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeResourceExhausted, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeFailedPrecondition, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeAborted, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeOutOfRange, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeUnimplemented, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnimplemented.String()},
+		{connectCode: connect.CodeInternal, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeInternal.String()},
+		{connectCode: connect.CodeUnavailable, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnavailable.String()},
+		{connectCode: connect.CodeDataLoss, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDataLoss.String()},
+		{connectCode: connect.CodeUnauthenticated, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+	}
 }
