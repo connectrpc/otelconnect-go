@@ -15,8 +15,6 @@
 package otelconnect
 
 import (
-	"sync"
-
 	connect "connectrpc.com/connect"
 )
 
@@ -26,10 +24,6 @@ type streamingClientInterceptor struct {
 	receive func(any, connect.StreamingClientConn) error
 	send    func(any, connect.StreamingClientConn) error
 	onClose func()
-
-	mu             sync.Mutex
-	requestClosed  bool
-	responseClosed bool
 }
 
 func (s *streamingClientInterceptor) Receive(msg any) error {
@@ -41,26 +35,12 @@ func (s *streamingClientInterceptor) Send(msg any) error {
 }
 
 func (s *streamingClientInterceptor) CloseRequest() error {
-	err := s.StreamingClientConn.CloseRequest()
-	s.mu.Lock()
-	shouldCall := !s.requestClosed && s.responseClosed
-	s.requestClosed = true
-	s.mu.Unlock()
-	if shouldCall {
-		s.onClose()
-	}
-	return err
+	return s.StreamingClientConn.CloseRequest()
 }
 
 func (s *streamingClientInterceptor) CloseResponse() error {
 	err := s.StreamingClientConn.CloseResponse()
-	s.mu.Lock()
-	shouldCall := !s.responseClosed && s.requestClosed
-	s.responseClosed = true
-	s.mu.Unlock()
-	if shouldCall {
-		s.onClose()
-	}
+	s.onClose()
 	return err
 }
 
