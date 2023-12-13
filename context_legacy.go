@@ -24,7 +24,7 @@ import (
 // afterFunc is a simple imitation of context.AfterFunc from Go 1.21.
 // It is not as efficient as the real implementation, but it is sufficient
 // for our purposes.
-func afterFunc2(ctx context.Context, f func()) (stop func() bool) {
+func afterFunc(ctx context.Context, f func()) (stop func() bool) {
 	var once sync.Once
 	go func() {
 		<-ctx.Done()
