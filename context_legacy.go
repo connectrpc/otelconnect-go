@@ -25,6 +25,7 @@ import (
 // It is not as efficient as the real implementation, but it is sufficient
 // for our purposes.
 func afterFunc(ctx context.Context, f func()) (stop func() bool) {
+	ctx, cancel := context.WithCancel(ctx)
 	var once sync.Once
 	go func() {
 		<-ctx.Done()
@@ -32,7 +33,10 @@ func afterFunc(ctx context.Context, f func()) (stop func() bool) {
 	}()
 	return func() bool {
 		var didStop bool
-		once.Do(func() { didStop = true })
+		once.Do(func() {
+			didStop = true
+			cancel()
+		})
 		return didStop
 	}
 }
