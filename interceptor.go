@@ -175,7 +175,11 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			)
 		}
 		attributes = attributeFilter(req, attributes...)
-		span.SetStatus(spanStatus(protocol, err))
+		if isClient {
+			span.SetStatus(clientSpanStatus(protocol, err))
+		} else {
+			span.SetStatus(serverSpanStatus(protocol, err))
+		}
 		span.SetAttributes(attributes...)
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(attributes...))
 		instrumentation.requestSize.Record(ctx, int64(requestSize), metric.WithAttributes(attributes...))
@@ -210,9 +214,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			i.config.omitTraceEvents,
 			requestAttributes(req),
 			instrumentation.responseSize,
-			instrumentation.responsesPerRPC,
 			instrumentation.requestSize,
-			instrumentation.requestsPerRPC,
 		)
 		var span trace.Span
 		var createSpanOnce sync.Once
@@ -243,9 +245,15 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			}
 			span.SetAttributes(state.attributes...)
 			span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
-			span.SetStatus(spanStatus(protocol, state.error))
+			span.SetStatus(clientSpanStatus(protocol, state.error))
 			span.End()
-			instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(state.attributes...))
+			instrumentation.requestsPerRPC.Record(ctx, state.sentCounter,
+				metric.WithAttributes(state.attributes...))
+			instrumentation.responsesPerRPC.Record(ctx, state.receivedCounter,
+				metric.WithAttributes(state.attributes...))
+			duration := i.config.now().Sub(requestStartTime).Milliseconds()
+			instrumentation.duration.Record(ctx, duration,
+				metric.WithAttributes(state.attributes...))
 		}
 		stopCtxClose := afterFunc(ctx, closeSpan)
 		return &streamingClientInterceptor{
@@ -290,9 +298,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			i.config.omitTraceEvents,
 			requestAttributes(req),
 			instrumentation.requestSize,
-			instrumentation.requestsPerRPC,
 			instrumentation.responseSize,
-			instrumentation.responsesPerRPC,
 		)
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
@@ -332,8 +338,14 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		}
 		span.SetAttributes(state.attributes...)
 		span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
-		span.SetStatus(spanStatus(protocol, err))
-		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(state.attributes...))
+		span.SetStatus(serverSpanStatus(protocol, err))
+		instrumentation.requestsPerRPC.Record(ctx, state.receivedCounter,
+			metric.WithAttributes(state.attributes...))
+		instrumentation.responsesPerRPC.Record(ctx, state.sentCounter,
+			metric.WithAttributes(state.attributes...))
+		duration := i.config.now().Sub(requestStartTime).Milliseconds()
+		instrumentation.duration.Record(ctx, duration,
+			metric.WithAttributes(state.attributes...))
 		return err
 	}
 }
@@ -352,7 +364,7 @@ func protocolToSemConv(protocol string) string {
 	}
 }
 
-func spanStatus(protocol string, err error) (codes.Code, string) {
+func clientSpanStatus(protocol string, err error) (codes.Code, string) {
 	if err == nil {
 		return codes.Unset, ""
 	}
@@ -362,5 +374,41 @@ func spanStatus(protocol string, err error) (codes.Code, string) {
 	if connectErr := new(connect.Error); errors.As(err, &connectErr) {
 		return codes.Error, connectErr.Message()
 	}
+	return codes.Error, err.Error()
+}
+
+func serverSpanStatus(protocol string, err error) (codes.Code, string) {
+	if err == nil {
+		return codes.Unset, ""
+	}
+	if protocol == connectProtocol && connect.IsNotModifiedError(err) {
+		return codes.Unset, ""
+	}
+
+	if connectErr := new(connect.Error); errors.As(err, &connectErr) {
+		switch connectErr.Code() {
+		case connect.CodeUnknown,
+			connect.CodeDeadlineExceeded,
+			connect.CodeUnimplemented,
+			connect.CodeInternal,
+			connect.CodeUnavailable,
+			connect.CodeDataLoss:
+			return codes.Error, connectErr.Message()
+		case connect.CodeCanceled,
+			connect.CodeInvalidArgument,
+			connect.CodeNotFound,
+			connect.CodeAlreadyExists,
+			connect.CodePermissionDenied,
+			connect.CodeResourceExhausted,
+			connect.CodeFailedPrecondition,
+			connect.CodeAborted,
+			connect.CodeOutOfRange,
+			connect.CodeUnauthenticated:
+			return codes.Unset, ""
+		default:
+			return codes.Unset, ""
+		}
+	}
+
 	return codes.Error, err.Error()
 }

@@ -16,6 +16,7 @@ package otelconnect
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"net"
 	"net/http"
@@ -96,7 +97,7 @@ func TestStreamingMetrics(t *testing.T) {
 	require.NoError(t, stream.CloseRequest())
 	require.NoError(t, stream.CloseResponse())
 	metrics := &metricdata.ResourceMetrics{}
-	assert.NoError(t, metricReader.Collect(context.Background(), metrics))
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
 	diff := cmp.Diff(&metricdata.ResourceMetrics{
 		Resource: metricResource(),
 		ScopeMetrics: []metricdata.ScopeMetrics{
@@ -107,8 +108,9 @@ func TestStreamingMetrics(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcServerDuration,
-						Unit: unitMilliseconds,
+						Name:        rpcServerDuration,
+						Description: durationDesc,
+						Unit:        unitMilliseconds,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -129,8 +131,9 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerRequestSize,
-						Unit: unitBytes,
+						Name:        rpcServerRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -151,8 +154,9 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerResponseSize,
-						Unit: unitBytes,
+						Name:        rpcServerResponseSize,
+						Description: responseSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -173,8 +177,9 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcServerRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -195,8 +200,9 @@ func TestStreamingMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcServerResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -223,9 +229,7 @@ func TestStreamingMetrics(t *testing.T) {
 		metrics,
 		cmpOpts()...,
 	)
-	if diff != "" {
-		t.Error(diff)
-	}
+	assert.Empty(t, diff)
 }
 
 func TestStreamingMetricsClient(t *testing.T) {
@@ -268,8 +272,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcClientDuration,
-						Unit: unitMilliseconds,
+						Name:        rpcClientDuration,
+						Description: durationDesc,
+						Unit:        unitMilliseconds,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -290,8 +295,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestSize,
-						Unit: unitBytes,
+						Name:        rpcClientRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -312,8 +318,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponseSize,
-						Unit: unitBytes,
+						Name:        rpcClientResponseSize,
+						Description: responseSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -334,8 +341,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -356,8 +364,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -429,8 +438,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcClientDuration,
-						Unit: string("ms"),
+						Name:        rpcClientDuration,
+						Description: durationDesc,
+						Unit:        string("ms"),
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -452,8 +462,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestSize,
-						Unit: unitBytes,
+						Name:        rpcClientRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -474,8 +485,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponseSize,
-						Unit: unitBytes,
+						Name:        rpcClientResponseSize,
+						Description: responseSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -486,6 +498,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   0.0,
@@ -497,8 +510,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -508,6 +522,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1,
@@ -519,8 +534,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -593,8 +609,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcServerDuration,
-						Unit: unitMilliseconds,
+						Name:        rpcServerDuration,
+						Description: durationDesc,
+						Unit:        unitMilliseconds,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -616,8 +633,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerRequestSize,
-						Unit: unitBytes,
+						Name:        rpcServerRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -638,8 +656,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcServerRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcServerRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -649,11 +668,36 @@ func TestStreamingMetricsFail(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1,
 									Min:   metricdata.NewExtrema[int64](1),
 									Max:   metricdata.NewExtrema[int64](1),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+					{
+						Name:        rpcServerResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
+						Data: metricdata.Histogram[int64]{
+							DataPoints: []metricdata.HistogramDataPoint[int64]{
+								{
+									Attributes: attribute.NewSet(
+										semconv.NetPeerNameKey.String(host),
+										semconv.NetPeerPortKey.Int(port),
+										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+										semconv.RPCMethodKey.String(PingStreamMethod),
+										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+									),
+									Count: 1,
+									Sum:   0,
+									Min:   metricdata.NewExtrema[int64](0),
+									Max:   metricdata.NewExtrema[int64](0),
 								},
 							},
 							Temporality: metricdata.CumulativeTemporality,
@@ -703,8 +747,9 @@ func TestMetrics(t *testing.T) {
 				},
 				Metrics: []metricdata.Metrics{
 					{
-						Name: rpcClientDuration,
-						Unit: unitMilliseconds,
+						Name:        rpcClientDuration,
+						Description: durationDesc,
+						Unit:        unitMilliseconds,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -725,8 +770,9 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestSize,
-						Unit: unitBytes,
+						Name:        rpcClientRequestSize,
+						Description: requestSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -747,8 +793,9 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponseSize,
-						Unit: unitBytes,
+						Name:        rpcClientResponseSize,
+						Description: responseSizeDesc,
+						Unit:        unitBytes,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -769,8 +816,9 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientRequestsPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientRequestsPerRPC,
+						Description: requestsPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -791,8 +839,9 @@ func TestMetrics(t *testing.T) {
 						},
 					},
 					{
-						Name: rpcClientResponsesPerRPC,
-						Unit: unitDimensionless,
+						Name:        rpcClientResponsesPerRPC,
+						Description: responsesPerRPCDesc,
+						Unit:        unitDimensionless,
 						Data: metricdata.Histogram[int64]{
 							DataPoints: []metricdata.HistogramDataPoint[int64]{
 								{
@@ -869,7 +918,7 @@ func TestClientSimple(t *testing.T) {
 	clientSpanRecorder := tracetest.NewSpanRecorder()
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	interceptor, err := NewInterceptor(WithTracerProvider(clientTraceProvider))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	pingClient, host, port := startServer(nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
@@ -877,7 +926,7 @@ func TestClientSimple(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 	require.Len(t, clientSpanRecorder.Ended(), 1)
-	require.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Unset)
+	require.Equal(t, codes.Unset, clientSpanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
@@ -925,7 +974,7 @@ func TestHandlerFailCall(t *testing.T) {
 	)
 	require.Error(t, err)
 	require.Len(t, clientSpanRecorder.Ended(), 1)
-	require.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Error)
+	require.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + FailMethod,
@@ -986,7 +1035,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	}
 	assertSpans(t, []wantSpans{}, serverSpanRecorder.Ended())
 	require.Len(t, clientSpanRecorder.Ended(), 1)
-	require.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Unset)
+	require.Equal(t, codes.Unset, clientSpanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
@@ -1131,36 +1180,36 @@ func TestHeaderAttribute(t *testing.T) {
 	require.NoError(t, err)
 	client, _, _ := startServer(
 		[]connect.HandlerOption{
-			connect.WithInterceptors(serverInterceptor)},
+			connect.WithInterceptors(serverInterceptor),
+		},
 		[]connect.ClientOption{
 			connect.WithInterceptors(clientInterceptor),
 		}, &pluggablePingServer{
-			ping: func(ctx context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+			ping: func(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 				response := connect.NewResponse(&pingv1.PingResponse{})
 				response.Header().Set(pingRes, value)
 				response.Header().Add(pingRes, value) // Add two values to test formatting
 				return response, nil
 			},
-			pingStream: func(ctx context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+			pingStream: func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
 				stream.ResponseHeader().Set(cumsumRes, value)
 				_, _ = stream.Receive()
-				assert.NoError(t, stream.Send(&pingv1.PingStreamResponse{}))
-				return nil
+				return stream.Send(&pingv1.PingStreamResponse{})
 			},
 		})
 	pingRequest := connect.NewRequest(&pingv1.PingRequest{Id: 1})
 	// Set request metadata for unary ping request
 	pingRequest.Header().Set(pingReq, value)
 	_, err = client.Ping(context.Background(), pingRequest)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	stream := client.PingStream(context.Background())
 	// Set request metadata for streaming cumsum
 	stream.RequestHeader().Set(cumsumReq, value)
-	assert.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
-	assert.Equal(t, len(handlerSpanRecorder.Ended()), 2)
-	assert.Equal(t, len(clientSpanRecorder.Ended()), 2)
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, handlerSpanRecorder.Ended(), 2)
+	assert.Len(t, clientSpanRecorder.Ended(), 2)
 	handlerSpans := handlerSpanRecorder.Ended()
 	handlerPingSpan := handlerSpans[0]
 	handlerCumsumSpan := handlerSpans[1]
@@ -1259,9 +1308,9 @@ func TestInterceptors(t *testing.T) {
 
 func TestUnaryHandlerNoTraceParent(t *testing.T) {
 	t.Parallel()
-	assertTraceParent := func(ctx context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+	assertTraceParent := func(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 		assert.Zero(t, req.Header().Get(TraceParentKey))
-		return connect.NewResponse(&pingv1.PingResponse{Id: req.Msg.Id}), nil
+		return connect.NewResponse(&pingv1.PingResponse{Id: req.Msg.GetId()}), nil
 	}
 	serverInterceptor, err := NewInterceptor(
 		WithPropagator(propagation.TraceContext{}),
@@ -1272,8 +1321,8 @@ func TestUnaryHandlerNoTraceParent(t *testing.T) {
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, &pluggablePingServer{ping: assertTraceParent})
 	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
-	assert.NoError(t, err)
-	assert.Equal(t, int64(1), resp.Msg.Id)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Msg.GetId())
 }
 
 func TestStreamingHandlerNoTraceParent(t *testing.T) {
@@ -1281,10 +1330,9 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 	msg := &pingv1.PingStreamResponse{
 		Data: []byte("Hello, otel!"),
 	}
-	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
 		assert.Zero(t, stream.RequestHeader().Get(TraceParentKey))
-		assert.NoError(t, stream.Send(msg))
-		return nil
+		return stream.Send(msg)
 	}
 	serverInterceptor, err := NewInterceptor(
 		WithPropagator(propagation.TraceContext{}),
@@ -1296,11 +1344,11 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 	}, nil, &pluggablePingServer{pingStream: assertTraceParent},
 	)
 	stream := client.PingStream(context.Background())
-	assert.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseRequest())
 	resp, err := stream.Receive()
-	assert.NoError(t, stream.CloseResponse())
-	assert.NoError(t, err)
-	assert.Equal(t, msg.Data, resp.Data)
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseResponse())
+	assert.Equal(t, msg.GetData(), resp.GetData())
 }
 
 func TestPropagationBaggage(t *testing.T) {
@@ -1335,7 +1383,7 @@ func TestPropagationBaggage(t *testing.T) {
 	bag, _ := baggage.Parse("foo=bar")
 	ctx := baggage.ContextWithBaggage(context.Background(), bag)
 	_, err = client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestUnaryPropagation(t *testing.T) {
@@ -1365,9 +1413,9 @@ func TestUnaryPropagation(t *testing.T) {
 			connect.WithInterceptors(clientInterceptor),
 		}, okayPingServer())
 	_, err = client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
-	assert.NoError(t, err)
-	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
-	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	require.NoError(t, err)
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
 	assertSpanParent(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
 }
 
@@ -1393,9 +1441,9 @@ func TestUnaryInterceptorPropagation(t *testing.T) {
 		connect.WithInterceptors(clientInterceptor),
 	}, nil, okayPingServer())
 	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
-	assert.NoError(t, err)
-	assert.Equal(t, int64(1), resp.Msg.Id)
-	assert.Equal(t, len(spanRecorder.Ended()), 1)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Msg.GetId())
+	assert.Len(t, spanRecorder.Ended(), 1)
 	recordedSpan := spanRecorder.Ended()[0]
 	assert.True(t, recordedSpan.Parent().IsValid())
 	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
@@ -1430,9 +1478,9 @@ func TestUnaryInterceptorNotModifiedError(t *testing.T) {
 	req := connect.NewRequest(&pingv1.PingRequest{Id: 1})
 	req.Header().Set("If-None-Match", cacheablePingEtag)
 	_, err = client.Ping(context.Background(), req)
-	assert.ErrorContains(t, err, "not modified")
+	require.ErrorContains(t, err, "not modified")
 	assert.True(t, connect.IsNotModifiedError(err))
-	assert.Equal(t, len(spanRecorder.Ended()), 1)
+	assert.Len(t, spanRecorder.Ended(), 1)
 	recordedSpan := spanRecorder.Ended()[0]
 	assert.Equal(t, codes.Unset, recordedSpan.Status().Code)
 	var codeAttributes []attribute.KeyValue
@@ -1474,9 +1522,9 @@ func TestWithUntrustedRemoteUnary(t *testing.T) {
 			connect.WithInterceptors(clientInterceptor),
 		}, okayPingServer())
 	_, err = client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
-	assert.NoError(t, err)
-	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
-	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	require.NoError(t, err)
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
 	assertSpanLink(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
 }
 
@@ -1502,9 +1550,9 @@ func TestStreamingHandlerInterceptorPropagation(t *testing.T) {
 	}, nil, okayPingServer(),
 	)
 	stream := client.PingStream(context.Background())
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
-	assert.Equal(t, len(spanRecorder.Ended()), 1)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, spanRecorder.Ended(), 1)
 	recordedSpan := spanRecorder.Ended()[0]
 	assert.True(t, recordedSpan.Parent().IsValid())
 	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
@@ -1524,12 +1572,12 @@ func TestStreamingPropagation(t *testing.T) {
 		WithTracerProvider(handlerTraceProvider),
 		WithTrustRemote(),
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	clientInterceptor, err := NewInterceptor(
 		WithPropagator(propagator),
 		WithTracerProvider(clientTraceProvider),
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	client, _, _ := startServer(
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
@@ -1537,11 +1585,11 @@ func TestStreamingPropagation(t *testing.T) {
 			connect.WithInterceptors(clientInterceptor),
 		}, okayPingServer())
 	stream := client.PingStream(ctx)
-	assert.NoError(t, stream.Send(nil))
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
-	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
-	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
 	assertSpanParent(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
 }
 
@@ -1571,11 +1619,11 @@ func TestWithUntrustedRemoteStreaming(t *testing.T) {
 			connect.WithInterceptors(clientInterceptor),
 		}, okayPingServer())
 	stream := client.PingStream(ctx)
-	assert.NoError(t, stream.Send(nil))
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
-	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
-	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
 	assertSpanLink(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
 }
 
@@ -1584,9 +1632,9 @@ func TestStreamingClientPropagation(t *testing.T) {
 	msg := &pingv1.PingStreamResponse{
 		Data: []byte("Hello, otel!"),
 	}
-	assertTraceParent := func(ctx context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
 		assert.NotZero(t, stream.RequestHeader().Get(TraceParentKey))
-		assert.NoError(t, stream.Send(msg))
+		require.NoError(t, stream.Send(msg))
 		return nil
 	}
 	clientInterceptor, err := NewInterceptor(
@@ -1599,12 +1647,12 @@ func TestStreamingClientPropagation(t *testing.T) {
 	}, &pluggablePingServer{pingStream: assertTraceParent},
 	)
 	stream := client.PingStream(context.Background())
-	assert.NoError(t, stream.Send(nil))
-	assert.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
 	resp, err := stream.Receive()
-	assert.NoError(t, stream.CloseResponse())
-	assert.NoError(t, err)
-	assert.Equal(t, msg.Data, resp.Data)
+	require.NoError(t, stream.CloseResponse())
+	require.NoError(t, err)
+	assert.Equal(t, msg.GetData(), resp.GetData())
 }
 
 func TestStreamingHandlerTracing(t *testing.T) {
@@ -1622,13 +1670,13 @@ func TestStreamingHandlerTracing(t *testing.T) {
 		Data: []byte("Hello, otel!"),
 	}
 	size := proto.Size(msg)
-	assert.NoError(t, stream.Send(msg))
+	require.NoError(t, stream.Send(msg))
 	_, err = stream.Receive()
-	assert.NoError(t, err)
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
 	require.Len(t, spanRecorder.Ended(), 1)
-	require.Equal(t, spanRecorder.Ended()[0].Status().Code, codes.Unset)
+	require.Equal(t, codes.Unset, spanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
@@ -1637,16 +1685,16 @@ func TestStreamingHandlerTracing(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 			},
@@ -1674,13 +1722,13 @@ func TestStreamingClientTracing(t *testing.T) {
 
 	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
 	size := proto.Size(msg)
-	assert.NoError(t, stream.Send(msg))
+	require.NoError(t, stream.Send(msg))
 	_, err = stream.Receive()
-	assert.NoError(t, err)
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
 	require.Len(t, spanRecorder.Ended(), 1)
-	require.Equal(t, spanRecorder.Ended()[0].Status().Code, codes.Unset)
+	require.Equal(t, codes.Unset, spanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
@@ -1689,16 +1737,16 @@ func TestStreamingClientTracing(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 			},
@@ -1738,11 +1786,11 @@ func TestWithAttributeFilter(t *testing.T) {
 
 	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
 	size := proto.Size(msg)
-	assert.NoError(t, stream.Send(msg))
+	require.NoError(t, stream.Send(msg))
 	_, err = stream.Receive()
-	assert.NoError(t, err)
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
@@ -1787,11 +1835,11 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 	stream := pingClient.PingStream(context.Background())
 	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
 	size := proto.Size(msg)
-	assert.NoError(t, stream.Send(msg))
+	require.NoError(t, stream.Send(msg))
 	_, err = stream.Receive()
-	assert.NoError(t, err)
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
@@ -1800,16 +1848,16 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeReceived,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 				{
 					Name: messageKey,
 					Attributes: []attribute.KeyValue{
 						semconv.MessageTypeSent,
-						semconv.MessageUncompressedSizeKey.Int(size),
 						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(size),
 					},
 				},
 			},
@@ -1846,17 +1894,17 @@ func TestStreamingSpanStatus(t *testing.T) {
 			connect.WithInterceptors(clientInterceptor),
 		}, failPingServer())
 	stream := client.PingStream(context.Background())
-	assert.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
 		Data: []byte("Hello, otel!"),
 	}))
 	_, err = stream.Receive()
-	assert.Error(t, err)
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
-	assert.Equal(t, len(handlerSpanRecorder.Ended()), 1)
-	assert.Equal(t, len(clientSpanRecorder.Ended()), 1)
-	assert.Equal(t, handlerSpanRecorder.Ended()[0].Status().Code, codes.Error)
-	assert.Equal(t, clientSpanRecorder.Ended()[0].Status().Code, codes.Error)
+	require.Error(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
+	assert.Equal(t, codes.Error, handlerSpanRecorder.Ended()[0].Status().Code)
+	assert.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
 }
 
 func TestWithoutTraceEventsStreaming(t *testing.T) {
@@ -1872,13 +1920,13 @@ func TestWithoutTraceEventsStreaming(t *testing.T) {
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
-	assert.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
 		Data: []byte("Hello, otel!"),
 	}))
 	_, err = stream.Receive()
-	assert.NoError(t, err)
-	assert.NoError(t, stream.CloseRequest())
-	assert.NoError(t, stream.CloseResponse())
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
@@ -1907,7 +1955,7 @@ func TestWithoutTraceEventsUnary(t *testing.T) {
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	_, err = pingClient.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assertSpans(t, []wantSpans{
 		{
 			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
@@ -1921,6 +1969,87 @@ func TestWithoutTraceEventsUnary(t *testing.T) {
 			},
 		},
 	}, spanRecorder.Ended())
+}
+
+func TestServerSpanStatus(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	for _, testcase := range serverSpanStatusTestCases() {
+		spanRecorder := tracetest.NewSpanRecorder()
+		traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+		clientSpanRecorder := tracetest.NewSpanRecorder()
+		clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+		serverInterceptor, err := NewInterceptor(
+			WithTracerProvider(traceProvider),
+			WithoutTraceEvents(),
+		)
+		require.NoError(t, err)
+		clientInterceptor, err := NewInterceptor(
+			WithPropagator(propagator),
+			WithTracerProvider(clientTraceProvider),
+		)
+		require.NoError(t, err)
+		pingClient, _, _ := startServer([]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+		}, &pluggablePingServer{
+			ping: func(ctx context.Context, r *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+				return nil, connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
+			},
+		})
+		if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err == nil {
+			t.Error("want error")
+		}
+		require.Len(t, spanRecorder.Ended(), 1)
+		require.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+		require.Equal(t, testcase.wantServerSpanCode, spanRecorder.Ended()[0].Status().Code)
+		require.Equal(t, testcase.wantServerSpanDescription, spanRecorder.Ended()[0].Status().Description)
+	}
+}
+
+func TestStreamingServerSpanStatus(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	for _, testcase := range serverSpanStatusTestCases() {
+		handlerSpanRecorder := tracetest.NewSpanRecorder()
+		handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+		clientSpanRecorder := tracetest.NewSpanRecorder()
+		clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+		serverInterceptor, err := NewInterceptor(
+			WithTracerProvider(handlerTraceProvider),
+			WithoutTraceEvents(),
+		)
+		require.NoError(t, err)
+		clientInterceptor, err := NewInterceptor(
+			WithPropagator(propagator),
+			WithTracerProvider(clientTraceProvider),
+		)
+		require.NoError(t, err)
+		client, _, _ := startServer(
+			[]connect.HandlerOption{
+				connect.WithInterceptors(serverInterceptor),
+			}, []connect.ClientOption{
+				connect.WithInterceptors(clientInterceptor),
+			}, &pluggablePingServer{
+				pingStream: func(ctx context.Context, bs *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+					return connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
+				},
+			})
+		stream := client.PingStream(context.Background())
+		require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+			Data: []byte("Hello, otel!"),
+		}))
+		_, err = stream.Receive()
+		require.Error(t, err)
+		require.NoError(t, stream.CloseRequest())
+		require.NoError(t, stream.CloseResponse())
+		assert.Len(t, handlerSpanRecorder.Ended(), 1)
+		assert.Len(t, clientSpanRecorder.Ended(), 1)
+		assert.Equal(t, testcase.wantServerSpanCode, handlerSpanRecorder.Ended()[0].Status().Code)
+		assert.Equal(t, testcase.wantServerSpanDescription, handlerSpanRecorder.Ended()[0].Status().Description)
+		assert.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+	}
 }
 
 // streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
@@ -1950,22 +2079,14 @@ type wantSpans struct {
 
 func assertSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 	t.Helper()
-	if len(want) != len(got) {
-		t.Errorf("unexpected spans: want %d spans, got %d", len(want), len(got))
-	}
+	require.Len(t, got, len(want), "unexpected spans length")
 	for i, span := range got {
 		wantEvents := want[i].events
 		wantAttributes := want[i].attrs
-		if span.EndTime().IsZero() {
-			t.Fail()
-		}
-		if span.Name() != want[i].spanName {
-			t.Errorf("span name not %s", want[i].spanName)
-		}
+		assert.False(t, span.StartTime().IsZero(), "span start time is nil")
+		assert.Equal(t, want[i].spanName, span.Name(), "unexpected span name")
 		gotEvents := span.Events()
-		if len(wantEvents) != len(gotEvents) {
-			t.Fatal("event lengths do not match")
-		}
+		require.Len(t, gotEvents, len(wantEvents), "unexpected events length")
 		for i, e := range wantEvents {
 			if e.Name != gotEvents[i].Name {
 				t.Error("names do not match")
@@ -1974,9 +2095,7 @@ func assertSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 				cmp.Comparer(func(x, y attribute.KeyValue) bool {
 					return x.Value == y.Value && x.Key == y.Key
 				}))
-			if diff != "" {
-				t.Error(diff)
-			}
+			assert.Empty(t, diff)
 		}
 		diff := cmp.Diff(wantAttributes, span.Attributes(),
 			cmpopts.IgnoreUnexported(attribute.Value{}),
@@ -1987,9 +2106,7 @@ func assertSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 				return x.Key == y.Key && x.Value == y.Value
 			},
 			))
-		if diff != "" {
-			t.Error(diff)
-		}
+		assert.Empty(t, diff)
 	}
 }
 
@@ -2085,4 +2202,31 @@ func metricResource() *resource.Resource {
 		attribute.String("telemetry.sdk.name", "opentelemetry"),
 		attribute.String("telemetry.sdk.version", otel.Version()),
 	)
+}
+
+type serverSpanStatusTestCase struct {
+	connectCode               connect.Code
+	wantServerSpanCode        codes.Code
+	wantServerSpanDescription string
+}
+
+func serverSpanStatusTestCases() []serverSpanStatusTestCase {
+	return []serverSpanStatusTestCase{
+		{connectCode: connect.CodeCanceled, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeUnknown, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnknown.String()},
+		{connectCode: connect.CodeInvalidArgument, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeDeadlineExceeded, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDeadlineExceeded.String()},
+		{connectCode: connect.CodeNotFound, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeAlreadyExists, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodePermissionDenied, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeResourceExhausted, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeFailedPrecondition, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeAborted, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeOutOfRange, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+		{connectCode: connect.CodeUnimplemented, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnimplemented.String()},
+		{connectCode: connect.CodeInternal, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeInternal.String()},
+		{connectCode: connect.CodeUnavailable, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnavailable.String()},
+		{connectCode: connect.CodeDataLoss, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDataLoss.String()},
+		{connectCode: connect.CodeUnauthenticated, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+	}
 }
