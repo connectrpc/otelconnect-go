@@ -16,7 +16,6 @@ package otelconnect
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	connect "connectrpc.com/connect"
@@ -36,17 +35,8 @@ const (
 	connectProtocol     = "connect_rpc"
 )
 
-// Request is the information about each RPC available to filter functions. It
-// contains the common subset of [connect.AnyRequest],
-// [connect.StreamingClientConn], and [connect.StreamingHandlerConn].
-type Request struct {
-	Spec   connect.Spec
-	Peer   connect.Peer
-	Header http.Header
-}
-
 type config struct {
-	filter             func(context.Context, *Request) bool
+	filter             func(context.Context, connect.Spec) bool
 	filterAttribute    AttributeFilter
 	meter              metric.Meter
 	tracer             trace.Tracer

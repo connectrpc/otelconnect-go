@@ -20,6 +20,7 @@ import (
 	"io"
 	"sync"
 
+	connect "connectrpc.com/connect"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
@@ -29,8 +30,8 @@ import (
 
 type streamingState struct {
 	mu              sync.Mutex
+	spec            connect.Spec
 	protocol        string
-	req             *Request
 	attributeFilter AttributeFilter
 	omitTraceEvents bool
 	attributes      []attribute.KeyValue
@@ -42,18 +43,21 @@ type streamingState struct {
 }
 
 func newStreamingState(
-	req *Request,
+	spec connect.Spec,
+	peer connect.Peer,
 	attributeFilter AttributeFilter,
 	omitTraceEvents bool,
-	attributes []attribute.KeyValue,
 	receiveSize, sendSize metric.Int64Histogram,
 ) *streamingState {
-	attributes = attributeFilter.filter(req, attributes...)
+	protocol := protocolToSemConv(peer.Protocol)
+	attributes := attributeFilter.filter(spec,
+		requestAttributes(spec, peer)...,
+	)
 	return &streamingState{
-		protocol:        protocolToSemConv(req.Peer.Protocol),
+		spec:            spec,
+		protocol:        protocol,
 		attributeFilter: attributeFilter,
 		omitTraceEvents: omitTraceEvents,
-		req:             req,
 		attributes:      attributes,
 		receiveSize:     receiveSize,
 		sendSize:        sendSize,
@@ -66,7 +70,7 @@ type sendReceiver interface {
 }
 
 func (s *streamingState) addAttributes(attributes ...attribute.KeyValue) {
-	s.attributes = append(s.attributes, s.attributeFilter.filter(s.req, attributes...)...)
+	s.attributes = append(s.attributes, s.attributeFilter.filter(s.spec, attributes...)...)
 }
 
 func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver) error {
@@ -131,6 +135,6 @@ func (s *streamingState) emitEvent(ctx context.Context, msgType attribute.KeyVal
 		attrs = append(attrs, semconv.MessageUncompressedSizeKey.Int(msgSize))
 	}
 	span.AddEvent(messageKey, trace.WithAttributes(
-		s.attributeFilter.filter(s.req, attrs...)...,
+		s.attributeFilter.filter(s.spec, attrs...)...,
 	))
 }

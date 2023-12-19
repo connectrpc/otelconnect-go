@@ -26,12 +26,12 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
-// AttributeFilter is used to filter attributes out based on the [Request] and [attribute.KeyValue].
-// If the filter returns true the attribute will be kept else it will be removed.
-// AttributeFilter must be safe to call concurrently.
-type AttributeFilter func(*Request, attribute.KeyValue) bool
+// AttributeFilter is used to filter attributes out based on the [connect.Spec]
+// and [attribute.KeyValue]. If the filter returns true the attribute will be
+// kept else it will be removed. AttributeFilter must be safe to call concurrently.
+type AttributeFilter func(connect.Spec, attribute.KeyValue) bool
 
-func (filter AttributeFilter) filter(request *Request, values ...attribute.KeyValue) []attribute.KeyValue {
+func (filter AttributeFilter) filter(spec connect.Spec, values ...attribute.KeyValue) []attribute.KeyValue {
 	if filter == nil {
 		return values
 	}
@@ -39,7 +39,7 @@ func (filter AttributeFilter) filter(request *Request, values ...attribute.KeyVa
 	// array as the values slice. This avoids unnecessary memory allocations.
 	filteredValues := values[:0]
 	for _, attr := range values {
-		if filter(request, attr) {
+		if filter(spec, attr) {
 			filteredValues = append(filteredValues, attr)
 		}
 	}
@@ -71,13 +71,13 @@ func procedureAttributes(procedure string) []attribute.KeyValue {
 	return attrs
 }
 
-func requestAttributes(req *Request) []attribute.KeyValue {
+func requestAttributes(spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
-	if addr := req.Peer.Addr; addr != "" {
+	if addr := peer.Addr; addr != "" {
 		attrs = append(attrs, addressAttributes(addr)...)
 	}
-	name := strings.TrimLeft(req.Spec.Procedure, "/")
-	protocol := protocolToSemConv(req.Peer.Protocol)
+	name := strings.TrimLeft(spec.Procedure, "/")
+	protocol := protocolToSemConv(peer.Protocol)
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
 	attrs = append(attrs, procedureAttributes(name)...)
 	return attrs
