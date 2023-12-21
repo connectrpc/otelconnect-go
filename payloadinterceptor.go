@@ -34,10 +34,6 @@ func (s *streamingClientInterceptor) Send(msg any) error {
 	return s.send(msg, s.StreamingClientConn)
 }
 
-func (s *streamingClientInterceptor) CloseRequest() error {
-	return s.StreamingClientConn.CloseRequest()
-}
-
 func (s *streamingClientInterceptor) CloseResponse() error {
 	err := s.StreamingClientConn.CloseResponse()
 	s.onClose()

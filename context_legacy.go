@@ -18,7 +18,7 @@ package otelconnect
 
 import (
 	"context"
-	"sync"
+	"sync/atomic"
 )
 
 // afterFunc is a simple imitation of context.AfterFunc from Go 1.21.
@@ -26,17 +26,18 @@ import (
 // for our purposes.
 func afterFunc(ctx context.Context, f func()) (stop func() bool) {
 	ctx, cancel := context.WithCancel(ctx)
-	var once sync.Once
+	var once atomic.Bool
 	go func() {
 		<-ctx.Done()
-		once.Do(f)
+		if once.CompareAndSwap(false, true) {
+			f()
+		}
 	}()
 	return func() bool {
-		var didStop bool
-		once.Do(func() {
-			didStop = true
+		didStop := once.CompareAndSwap(false, true)
+		if didStop {
 			cancel()
-		})
+		}
 		return didStop
 	}
 }
