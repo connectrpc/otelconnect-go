@@ -1016,7 +1016,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	serverInterceptor, err := NewInterceptor(
 		WithTracerProvider(serverTraceProvider),
-		WithFilter(func(ctx context.Context, request *Request) bool {
+		WithFilter(func(ctx context.Context, spec connect.Spec) bool {
 			return false
 		}),
 	)
@@ -1073,7 +1073,7 @@ func TestBasicFilter(t *testing.T) {
 	headerKey, headerVal := "Some-Header", "foobar"
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
+	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, spec connect.Spec) bool {
 		return false
 	}))
 	require.NoError(t, err)
@@ -1089,58 +1089,6 @@ func TestBasicFilter(t *testing.T) {
 		t.Error("unexpected spans recorded")
 	}
 	assertSpans(t, []wantSpans{}, spanRecorder.Ended())
-}
-
-func TestFilterHeader(t *testing.T) {
-	t.Parallel()
-	headerKey, headerVal := "Some-Header", "foobar"
-	spanRecorder := tracetest.NewSpanRecorder()
-	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, request *Request) bool {
-		return request.Header.Get(headerKey) == headerVal
-	}))
-	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
-		connect.WithInterceptors(serverInterceptor),
-	}, nil, okayPingServer())
-	req := requestOfSize(1, 0)
-	req.Header().Set(headerKey, headerVal)
-	if _, err := pingClient.Ping(context.Background(), req); err != nil {
-		t.Errorf(err.Error())
-	}
-	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
-		t.Errorf(err.Error())
-	}
-	assertSpans(t, []wantSpans{
-		{
-			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
-			events: []trace.Event{
-				{
-					Name: messageKey,
-					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeReceived,
-						semconv.MessageIDKey.Int(1),
-						semconv.MessageUncompressedSizeKey.Int(2),
-					},
-				},
-				{
-					Name: messageKey,
-					Attributes: []attribute.KeyValue{
-						semconv.MessageTypeSent,
-						semconv.MessageIDKey.Int(1),
-						semconv.MessageUncompressedSizeKey.Int(2),
-					},
-				},
-			},
-			attrs: []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
-				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingMethod),
-			},
-		},
-	}, spanRecorder.Ended())
 }
 
 func TestHeaderAttribute(t *testing.T) {
@@ -1408,9 +1356,9 @@ func TestUnaryPropagation(t *testing.T) {
 	require.NoError(t, err)
 	client, _, _ := startServer(
 		[]connect.HandlerOption{
-			connect.WithInterceptors(serverInterceptor),
+			connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 		}, []connect.ClientOption{
-			connect.WithInterceptors(clientInterceptor),
+			connect.WithInterceptors(clientInterceptor, assertSpanInterceptor{t: t}),
 		}, okayPingServer())
 	_, err = client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
 	require.NoError(t, err)
@@ -1643,7 +1591,7 @@ func TestStreamingClientPropagation(t *testing.T) {
 	)
 	require.NoError(t, err)
 	client, _, _ := startServer(nil, []connect.ClientOption{
-		connect.WithInterceptors(clientInterceptor),
+		connect.WithInterceptors(clientInterceptor, assertSpanInterceptor{t: t}),
 	}, &pluggablePingServer{pingStream: assertTraceParent},
 	)
 	stream := client.PingStream(context.Background())
@@ -1662,7 +1610,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
 	pingClient, host, port := startServer([]connect.HandlerOption{
-		connect.WithInterceptors(serverInterceptor),
+		connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
 
@@ -1767,7 +1715,7 @@ func TestWithAttributeFilter(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	clientInterceptor, err := NewInterceptor(
 		WithTracerProvider(traceProvider),
-		WithAttributeFilter(func(_ *Request, value attribute.KeyValue) bool {
+		WithAttributeFilter(func(_ connect.Spec, value attribute.KeyValue) bool {
 			if value.Key == semconv.MessageIDKey {
 				return false
 			}
@@ -2228,5 +2176,31 @@ func serverSpanStatusTestCases() []serverSpanStatusTestCase {
 		{connectCode: connect.CodeUnavailable, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeUnavailable.String()},
 		{connectCode: connect.CodeDataLoss, wantServerSpanCode: codes.Error, wantServerSpanDescription: connect.CodeDataLoss.String()},
 		{connectCode: connect.CodeUnauthenticated, wantServerSpanCode: codes.Unset, wantServerSpanDescription: ""},
+	}
+}
+
+type assertSpanInterceptor struct{ t testing.TB }
+
+func (i assertSpanInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+		i.assertSpanContext(ctx)
+		return next(ctx, request)
+	}
+}
+func (i assertSpanInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		i.assertSpanContext(ctx)
+		return next(ctx, spec)
+	}
+}
+func (i assertSpanInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		i.assertSpanContext(ctx)
+		return next(ctx, conn)
+	}
+}
+func (i assertSpanInterceptor) assertSpanContext(ctx context.Context) {
+	if !traceapi.SpanContextFromContext(ctx).IsValid() {
+		i.t.Error("invalid span context")
 	}
 }

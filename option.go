@@ -18,6 +18,7 @@ import (
 	"context"
 	"net/http"
 
+	connect "connectrpc.com/connect"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -54,7 +55,7 @@ func WithTracerProvider(provider trace.TracerProvider) Option {
 
 // WithFilter configures the instrumentation to emit traces and metrics only
 // when the filter function returns true. Filter functions must be safe to call concurrently.
-func WithFilter(filter func(context.Context, *Request) bool) Option {
+func WithFilter(filter func(context.Context, connect.Spec) bool) Option {
 	return &filterOption{filter}
 }
 
@@ -79,8 +80,8 @@ func WithAttributeFilter(filter AttributeFilter) Option {
 // high-cardinality data; this option significantly reduces cardinality in most
 // environments.
 func WithoutServerPeerAttributes() Option {
-	return WithAttributeFilter(func(request *Request, value attribute.KeyValue) bool {
-		if request.Spec.IsClient {
+	return WithAttributeFilter(func(spec connect.Spec, value attribute.KeyValue) bool {
+		if spec.IsClient {
 			return true
 		}
 		if value.Key == semconv.NetPeerPortKey {
@@ -158,7 +159,7 @@ func (o *tracerProviderOption) apply(c *config) {
 }
 
 type filterOption struct {
-	filter func(context.Context, *Request) bool
+	filter func(context.Context, connect.Spec) bool
 }
 
 func (o *filterOption) apply(c *config) {
