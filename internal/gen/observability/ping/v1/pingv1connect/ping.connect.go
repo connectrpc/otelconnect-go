@@ -32,7 +32,7 @@ import (
 // generated with a version of connect newer than the one compiled into your binary. You can fix the
 // problem by either regenerating this code with an older version of connect or updating the connect
 // version compiled into your binary.
-const _ = connect.IsAtLeastVersion1_7_0
+const _ = connect.IsAtLeastVersion1_13_0
 
 const (
 	// PingServiceName is the fully-qualified name of the PingService service.
@@ -53,6 +53,14 @@ const (
 	PingServicePingStreamProcedure = "/observability.ping.v1.PingService/PingStream"
 	// PingServiceFailProcedure is the fully-qualified name of the PingService's Fail RPC.
 	PingServiceFailProcedure = "/observability.ping.v1.PingService/Fail"
+)
+
+// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
+var (
+	pingServiceServiceDescriptor          = v1.File_observability_ping_v1_ping_proto.Services().ByName("PingService")
+	pingServicePingMethodDescriptor       = pingServiceServiceDescriptor.Methods().ByName("Ping")
+	pingServicePingStreamMethodDescriptor = pingServiceServiceDescriptor.Methods().ByName("PingStream")
+	pingServiceFailMethodDescriptor       = pingServiceServiceDescriptor.Methods().ByName("Fail")
 )
 
 // PingServiceClient is a client for the observability.ping.v1.PingService service.
@@ -78,18 +86,21 @@ func NewPingServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 		ping: connect.NewClient[v1.PingRequest, v1.PingResponse](
 			httpClient,
 			baseURL+PingServicePingProcedure,
+			connect.WithSchema(pingServicePingMethodDescriptor),
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		pingStream: connect.NewClient[v1.PingStreamRequest, v1.PingStreamResponse](
 			httpClient,
 			baseURL+PingServicePingStreamProcedure,
-			opts...,
+			connect.WithSchema(pingServicePingStreamMethodDescriptor),
+			connect.WithClientOptions(opts...),
 		),
 		fail: connect.NewClient[v1.FailRequest, v1.FailResponse](
 			httpClient,
 			baseURL+PingServiceFailProcedure,
-			opts...,
+			connect.WithSchema(pingServiceFailMethodDescriptor),
+			connect.WithClientOptions(opts...),
 		),
 	}
 }
@@ -135,18 +146,21 @@ func NewPingServiceHandler(svc PingServiceHandler, opts ...connect.HandlerOption
 	pingServicePingHandler := connect.NewUnaryHandler(
 		PingServicePingProcedure,
 		svc.Ping,
+		connect.WithSchema(pingServicePingMethodDescriptor),
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	pingServicePingStreamHandler := connect.NewBidiStreamHandler(
 		PingServicePingStreamProcedure,
 		svc.PingStream,
-		opts...,
+		connect.WithSchema(pingServicePingStreamMethodDescriptor),
+		connect.WithHandlerOptions(opts...),
 	)
 	pingServiceFailHandler := connect.NewUnaryHandler(
 		PingServiceFailProcedure,
 		svc.Fail,
-		opts...,
+		connect.WithSchema(pingServiceFailMethodDescriptor),
+		connect.WithHandlerOptions(opts...),
 	)
 	return "/observability.ping.v1.PingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
