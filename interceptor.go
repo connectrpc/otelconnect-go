@@ -225,28 +225,34 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				)...,
 			)
 		}
+		closeSpan := func() {
+			requestOnce.Do(setRequestAttributes)
+			// state.attributes is updated with the final error that was recorded.
+			// If error is nil a "success" is recorded on the span and on the final duration
+			// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
+			// streams because the error only exists when finishing the stream.
+			if statusCode, ok := statusCodeAttribute(protocol, state.error); ok {
+				state.addAttributes(statusCode)
+			}
+			span.SetAttributes(state.attributes...)
+			span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
+			span.SetStatus(clientSpanStatus(protocol, state.error))
+			span.End()
+			instrumentation.requestsPerRPC.Record(ctx, state.sentCounter,
+				metric.WithAttributes(state.attributes...))
+			instrumentation.responsesPerRPC.Record(ctx, state.receivedCounter,
+				metric.WithAttributes(state.attributes...))
+			duration := i.config.now().Sub(requestStartTime).Milliseconds()
+			instrumentation.duration.Record(ctx, duration,
+				metric.WithAttributes(state.attributes...))
+		}
+		stopCtxClose := afterFunc(ctx, closeSpan)
 		return &streamingClientInterceptor{
 			StreamingClientConn: conn,
 			onClose: func() {
-				requestOnce.Do(setRequestAttributes)
-				// state.attributes is updated with the final error that was recorded.
-				// If error is nil a "success" is recorded on the span and on the final duration
-				// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
-				// streams because the error only exists when finishing the stream.
-				if statusCode, ok := statusCodeAttribute(protocol, state.error); ok {
-					state.addAttributes(statusCode)
+				if stopCtxClose() {
+					closeSpan()
 				}
-				span.SetAttributes(state.attributes...)
-				span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
-				span.SetStatus(clientSpanStatus(protocol, state.error))
-				span.End()
-				instrumentation.requestsPerRPC.Record(ctx, state.sentCounter,
-					metric.WithAttributes(state.attributes...))
-				instrumentation.responsesPerRPC.Record(ctx, state.receivedCounter,
-					metric.WithAttributes(state.attributes...))
-				duration := i.config.now().Sub(requestStartTime).Milliseconds()
-				instrumentation.duration.Record(ctx, duration,
-					metric.WithAttributes(state.attributes...))
 			},
 			receive: func(msg any, conn connect.StreamingClientConn) error {
 				return state.receive(ctx, msg, conn)
