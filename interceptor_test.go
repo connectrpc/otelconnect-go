@@ -1410,8 +1410,8 @@ func TestUnaryInterceptorNotModifiedError(t *testing.T) {
 	client, _, _ := startServer(
 		[]connect.HandlerOption{
 			connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
-				return func(_ context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
-					ctx, span := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+				return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+					ctx, span := trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
 					defer span.End()
 					return unaryFunc(ctx, request)
 				}
