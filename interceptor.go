@@ -195,7 +195,8 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		}
 		requestStartTime := i.config.now()
 		name := strings.TrimLeft(spec.Procedure, "/")
-		ctx, span := i.config.tracer.Start(
+		// Span is closed on context cancelation or when the stream is closed.
+		ctx, span := i.config.tracer.Start( //nolint:spancheck
 			ctx,
 			name,
 			trace.WithSpanKind(trace.SpanKindClient),
@@ -247,7 +248,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 				metric.WithAttributes(state.attributes...))
 		}
 		stopCtxClose := afterFunc(ctx, closeSpan)
-		return &streamingClientInterceptor{
+		return &streamingClientInterceptor{ //nolint:spancheck
 			StreamingClientConn: conn,
 			onClose: func() {
 				if stopCtxClose() {
