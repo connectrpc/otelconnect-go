@@ -135,4 +135,4 @@ Offered under the [Apache 2 license][license].
 [opentelemetry.io]: https://opentelemetry.io/
 [otel-go-quickstart]: https://opentelemetry.io/docs/instrumentation/go/getting-started/
 [otel-go]: https://github.com/open-telemetry/opentelemetry-go
-[otel-rpc-conventions]: https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/trace/semantic_conventions/rpc.md
+[otel-rpc-conventions]: https://github.com/open-telemetry/semantic-conventions/blob/main/docs/rpc/README.md
