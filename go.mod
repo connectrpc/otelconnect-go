@@ -1,6 +1,6 @@
 module connectrpc.com/otelconnect
 
-go 1.19
+go 1.20
 
 require (
 	connectrpc.com/connect v1.14.0

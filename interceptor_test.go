@@ -1016,7 +1016,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	serverInterceptor, err := NewInterceptor(
 		WithTracerProvider(serverTraceProvider),
-		WithFilter(func(ctx context.Context, spec connect.Spec) bool {
+		WithFilter(func(_ context.Context, _ connect.Spec) bool {
 			return false
 		}),
 	)
@@ -1073,7 +1073,7 @@ func TestBasicFilter(t *testing.T) {
 	headerKey, headerVal := "Some-Header", "foobar"
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(ctx context.Context, spec connect.Spec) bool {
+	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(_ context.Context, _ connect.Spec) bool {
 		return false
 	}))
 	require.NoError(t, err)
@@ -1401,7 +1401,6 @@ func TestUnaryInterceptorNotModifiedError(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-	var ctx context.Context
 	serverInterceptor, err := NewInterceptor(
 		WithPropagator(propagation.TraceContext{}),
 		WithTracerProvider(traceProvider),
@@ -1411,8 +1410,9 @@ func TestUnaryInterceptorNotModifiedError(t *testing.T) {
 	client, _, _ := startServer(
 		[]connect.HandlerOption{
 			connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
-				return func(_ context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
-					ctx, _ = trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+				return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+					ctx, span := trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
+					defer span.End()
 					return unaryFunc(ctx, request)
 				}
 			})),
@@ -1942,7 +1942,7 @@ func TestServerSpanStatus(t *testing.T) {
 		}, []connect.ClientOption{
 			connect.WithInterceptors(clientInterceptor),
 		}, &pluggablePingServer{
-			ping: func(ctx context.Context, r *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+			ping: func(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
 				return nil, connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
 			},
 		})
@@ -1980,7 +1980,7 @@ func TestStreamingServerSpanStatus(t *testing.T) {
 			}, []connect.ClientOption{
 				connect.WithInterceptors(clientInterceptor),
 			}, &pluggablePingServer{
-				pingStream: func(ctx context.Context, bs *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+				pingStream: func(_ context.Context, _ *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
 					return connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
 				},
 			})
