@@ -17,6 +17,7 @@ package otelconnect
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -1601,6 +1602,39 @@ func TestStreamingClientPropagation(t *testing.T) {
 	require.NoError(t, stream.CloseResponse())
 	require.NoError(t, err)
 	assert.Equal(t, msg.GetData(), resp.GetData())
+}
+
+func TestStreamingClientContextCancellation(t *testing.T) {
+	// Test race on context cancellation and receiving an error response.
+	t.Parallel()
+	msg := &pingv1.PingStreamResponse{
+		Data: []byte("Hello, otel!"),
+	}
+	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+		assert.NotZero(t, stream.RequestHeader().Get(TraceParentKey))
+		require.NoError(t, stream.Send(msg))
+		return fmt.Errorf("stream closed") // Simulate error in stream.
+	}
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagation.TraceContext{}),
+		WithTracerProvider(trace.NewTracerProvider()),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServer(nil, []connect.ClientOption{
+		connect.WithInterceptors(clientInterceptor, assertSpanInterceptor{t: t}),
+	}, &pluggablePingServer{pingStream: assertTraceParent},
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := client.PingStream(ctx)
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	require.NoError(t, err)
+	assert.Equal(t, msg.GetData(), resp.GetData())
+	go cancel()               // Cancel the stream before the response is received.
+	_, err = stream.Receive() // Receive the end of the stream.
+	assert.Error(t, err)
+	assert.Nil(t, stream.CloseResponse())
 }
 
 func TestStreamingHandlerTracing(t *testing.T) {
