@@ -17,7 +17,6 @@ package otelconnect
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -1613,7 +1612,7 @@ func TestStreamingClientContextCancellation(t *testing.T) {
 	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
 		assert.NotZero(t, stream.RequestHeader().Get(TraceParentKey))
 		require.NoError(t, stream.Send(msg))
-		return fmt.Errorf("stream closed") // Simulate error in stream.
+		return errors.New("stream closed") // Simulate error in stream.
 	}
 	clientInterceptor, err := NewInterceptor(
 		WithPropagator(propagation.TraceContext{}),
@@ -1633,8 +1632,8 @@ func TestStreamingClientContextCancellation(t *testing.T) {
 	assert.Equal(t, msg.GetData(), resp.GetData())
 	go cancel()               // Cancel the stream before the response is received.
 	_, err = stream.Receive() // Receive the end of the stream.
-	assert.Error(t, err)
-	assert.Nil(t, stream.CloseResponse())
+	require.Error(t, err)
+	assert.NoError(t, stream.CloseResponse())
 }
 
 func TestStreamingHandlerTracing(t *testing.T) {
