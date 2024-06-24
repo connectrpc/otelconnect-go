@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -1601,6 +1602,41 @@ func TestStreamingClientPropagation(t *testing.T) {
 	require.NoError(t, stream.CloseResponse())
 	require.NoError(t, err)
 	assert.Equal(t, msg.GetData(), resp.GetData())
+}
+
+func TestStreamingClientContextCancellation(t *testing.T) {
+	t.Parallel()
+	msg := &pingv1.PingStreamResponse{
+		Data: []byte("Hello, otel!"),
+	}
+	server := &pluggablePingServer{
+		pingStream: func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+			require.NoError(t, stream.Send(msg))
+			return errors.New("stream closed") // Simulate error in stream.
+		},
+	}
+	clientInterceptor, err := NewInterceptor()
+	require.NoError(t, err)
+	client, _, _ := startServer(
+		nil,
+		[]connect.ClientOption{connect.WithInterceptors(clientInterceptor)},
+		server,
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := client.PingStream(ctx)
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	require.NoError(t, err)
+	assert.Equal(t, msg.GetData(), resp.GetData())
+	// Cancel context in parallel with response receive. Either the context will
+	// fail the stream or the error is received. This test is to ensure that the
+	// context cancellation does not race with the stream response.
+	go cancel()
+	runtime.Gosched()
+	_, err = stream.Receive()
+	require.Error(t, err)
+	assert.NoError(t, stream.CloseResponse())
 }
 
 func TestStreamingHandlerTracing(t *testing.T) {

@@ -228,6 +228,8 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		}
 		closeSpan := func() {
 			requestOnce.Do(setRequestAttributes)
+			state.mu.Lock()
+			defer state.mu.Unlock()
 			// state.attributes is updated with the final error that was recorded.
 			// If error is nil a "success" is recorded on the span and on the final duration
 			// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
