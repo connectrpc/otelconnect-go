@@ -3,7 +3,8 @@ otelconnect
 
 [![Build](https://github.com/connectrpc/otelconnect-go/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/connectrpc/otelconnect-go/actions/workflows/ci.yaml)
 [![Report Card](https://goreportcard.com/badge/connectrpc.com/otelconnect)](https://goreportcard.com/report/connectrpc.com/otelconnect)
-[![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect.svg)][godoc]
+[![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect.svg)][![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fconnectrpc%2Fotelconnect-go.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fconnectrpc%2Fotelconnect-go?ref=badge_shield)
+[godoc]
 
 `connectrpc.com/otelconnect` adds support for [OpenTelemetry][opentelemetry.io]
 tracing and metrics collection to [Connect][connect] servers and clients.
@@ -136,3 +137,7 @@ Offered under the [Apache 2 license][license].
 [otel-go-quickstart]: https://opentelemetry.io/docs/instrumentation/go/getting-started/
 [otel-go]: https://github.com/open-telemetry/opentelemetry-go
 [otel-rpc-conventions]: https://github.com/open-telemetry/semantic-conventions/blob/main/docs/rpc/README.md
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fconnectrpc%2Fotelconnect-go.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fconnectrpc%2Fotelconnect-go?ref=badge_large)
