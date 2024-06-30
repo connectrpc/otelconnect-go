@@ -33,6 +33,10 @@ import (
 
 func main() {
 	mux := http.NewServeMux()
+	otelInterceptor, err := otelconnect.NewInterceptor()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// otelconnect.NewInterceptor provides an interceptor that adds tracing and
 	// metrics to both clients and handlers. By default, it uses OpenTelemetry's
@@ -42,17 +46,22 @@ func main() {
 	// otelconnect.WithMeterProvider.
 	mux.Handle(pingv1connect.NewPingServiceHandler(
 		&pingv1connect.UnimplementedPingServiceHandler{},
-		connect.WithInterceptors(otelconnect.NewInterceptor()),
+		connect.WithInterceptors(otelInterceptor),
 	))
 
 	http.ListenAndServe("localhost:8080", mux)
 }
 
 func makeRequest() {
+	otelInterceptor, err := otelconnect.NewInterceptor()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	client := pingv1connect.NewPingServiceClient(
 		http.DefaultClient,
 		"http://localhost:8080",
-		connect.WithInterceptors(otelconnect.NewInterceptor()),
+		connect.WithInterceptors(otelInterceptor),
 	)
 	resp, err := client.Ping(
 		context.Background(),
