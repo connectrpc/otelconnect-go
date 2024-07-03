@@ -124,7 +124,8 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 func headerAttributes(protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
 	attributes := make([]attribute.KeyValue, 0, len(allowedKeys))
 	for _, allowedKey := range allowedKeys {
-		if val, ok := metadata[allowedKey]; ok {
+		val := metadata.Values(allowedKey)
+		if len(val) > 0 {
 			keyValue := attribute.StringSlice(
 				formatHeaderAttributeKey(protocol, eventType, allowedKey),
 				val,
