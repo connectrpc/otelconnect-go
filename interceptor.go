@@ -249,7 +249,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			instrumentation.duration.Record(ctx, duration,
 				metric.WithAttributes(state.attributes...))
 		}
-		stopCtxClose := afterFunc(ctx, closeSpan)
+		stopCtxClose := context.AfterFunc(ctx, closeSpan)
 		return &streamingClientInterceptor{ //nolint:spancheck
 			StreamingClientConn: conn,
 			onClose: func() {
