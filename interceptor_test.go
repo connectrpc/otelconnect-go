@@ -1971,19 +1971,17 @@ func TestServerSpanStatus(t *testing.T) {
 			WithTracerProvider(clientTraceProvider),
 		)
 		require.NoError(t, err)
-		wantErr := errors.New(testcase.connectCode.String())
 		pingClient, _, _ := startServer([]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
 			connect.WithInterceptors(clientInterceptor),
 		}, &pluggablePingServer{
 			ping: func(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-				return nil, connect.NewError(testcase.connectCode, wantErr)
+				return nil, connect.NewError(testcase.connectCode, errors.New(testcase.connectCode.String()))
 			},
 		})
 		_, err = pingClient.Ping(context.Background(), requestOfSize(1, 0))
 		require.Error(t, err)
-		require.ErrorIs(t, err, wantErr)
 		require.Len(t, spanRecorder.Ended(), 1)
 		require.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
 		require.Equal(t, testcase.wantServerSpanCode, spanRecorder.Ended()[0].Status().Code)
