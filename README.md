@@ -127,7 +127,6 @@ more customizable attribute filtering, use
 Offered under the [Apache 2 license][license].
 
 [Buf Studio]: https://buf.build/studio
-[Getting Started]: https://connectrpc.com/docs/go/getting-started
 [WithFilter]: https://pkg.go.dev/connectrpc.com/otelconnect#WithFilter
 [WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect#WithTrustRemote
 [WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
@@ -138,10 +137,8 @@ Offered under the [Apache 2 license][license].
 [connect-swift]: https://github.com/connectrpc/connect-swift
 [connect-es]: https://github.com/connectrpc/connect-es
 [docs]: https://connectrpc.com
-[go-support-policy]: https://golang.org/doc/devel/release#policy
+[go-support-policy]: https://go.dev/doc/devel/release#policy
 [godoc]: https://pkg.go.dev/connectrpc.com/otelconnect
 [license]: https://github.com/connectrpc/otelconnect-go/blob/main/LICENSE
 [opentelemetry.io]: https://opentelemetry.io/
-[otel-go-quickstart]: https://opentelemetry.io/docs/instrumentation/go/getting-started/
-[otel-go]: https://github.com/open-telemetry/opentelemetry-go
-[otel-rpc-conventions]: https://github.com/open-telemetry/semantic-conventions/blob/main/docs/rpc/README.md
+[otel-rpc-conventions]: https://opentelemetry.io/docs/specs/semconv/rpc/
