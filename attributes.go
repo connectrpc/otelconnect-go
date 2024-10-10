@@ -74,7 +74,7 @@ func procedureAttributes(procedure string) []attribute.KeyValue {
 func requestAttributes(spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
 	var attrs []attribute.KeyValue
 	if addr := peer.Addr; addr != "" {
-		attrs = append(attrs, addressAttributes(addr)...)
+		attrs = append(attrs, addressAttributes(spec, addr)...)
 	}
 	name := strings.TrimLeft(spec.Procedure, "/")
 	protocol := protocolToSemConv(peer.Protocol)
@@ -83,17 +83,26 @@ func requestAttributes(spec connect.Spec, peer connect.Peer) []attribute.KeyValu
 	return attrs
 }
 
-func addressAttributes(address string) []attribute.KeyValue {
+func addressAttributes(spec connect.Spec, address string) []attribute.KeyValue {
 	if host, port, err := net.SplitHostPort(address); err == nil {
 		portInt, err := strconv.Atoi(port)
 		if err == nil {
+			if spec.IsClient {
+				return []attribute.KeyValue{
+					semconv.ServerAddressKey.String(host),
+					semconv.ServerPortKey.Int(portInt),
+				}
+			}
 			return []attribute.KeyValue{
-				semconv.NetPeerNameKey.String(host),
-				semconv.NetPeerPortKey.Int(portInt),
+				semconv.ClientAddressKey.String(host),
+				semconv.ClientPortKey.Int(portInt),
 			}
 		}
 	}
-	return []attribute.KeyValue{semconv.NetPeerNameKey.String(address)}
+	if spec.IsClient {
+		return []attribute.KeyValue{semconv.ServerAddressKey.String(address)}
+	}
+	return []attribute.KeyValue{semconv.ClientAddressKey.String(address)}
 }
 
 func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, bool) {
@@ -111,7 +120,7 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 			// A "not modified" error is special: it's code is technically "unknown" but
 			// it would be misleading to label it as an unknown error since it's not really
 			// an error, but rather a sentinel to trigger a "304 Not Modified" HTTP status.
-			return semconv.HTTPStatusCodeKey.Int(http.StatusNotModified), true
+			return semconv.HTTPResponseStatusCodeKey.Int(http.StatusNotModified), true
 		}
 		codeKey := attribute.Key("rpc." + protocol + ".error_code")
 		if serverErr != nil {
