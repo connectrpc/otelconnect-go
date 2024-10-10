@@ -21,10 +21,11 @@ import (
 	connect "connectrpc.com/connect"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/noop"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
 // An Option configures the OpenTelemetry instrumentation.
@@ -61,12 +62,12 @@ func WithFilter(filter func(context.Context, connect.Spec) bool) Option {
 
 // WithoutTracing disables tracing.
 func WithoutTracing() Option {
-	return WithTracerProvider(trace.NewNoopTracerProvider())
+	return WithTracerProvider(tracenoop.NewTracerProvider())
 }
 
 // WithoutMetrics disables metrics.
 func WithoutMetrics() Option {
-	return WithMeterProvider(noop.NewMeterProvider())
+	return WithMeterProvider(metricnoop.NewMeterProvider())
 }
 
 // WithAttributeFilter sets the attribute filter for all metrics and trace attributes.
