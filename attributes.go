@@ -91,18 +91,32 @@ func addressAttributes(spec connect.Spec, address string) []attribute.KeyValue {
 				return []attribute.KeyValue{
 					semconv.ServerAddressKey.String(host),
 					semconv.ServerPortKey.Int(portInt),
+					// Deprecated, but kept for backwards compatibility.
+					semconv.NetPeerNameKey.String(host),
+					semconv.NetPeerPortKey.Int(portInt),
 				}
 			}
 			return []attribute.KeyValue{
 				semconv.ClientAddressKey.String(host),
 				semconv.ClientPortKey.Int(portInt),
+				// Deprecated, but kept for backwards compatibility.
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.Int(portInt),
 			}
 		}
 	}
 	if spec.IsClient {
-		return []attribute.KeyValue{semconv.ServerAddressKey.String(address)}
+		return []attribute.KeyValue{
+			semconv.ServerAddressKey.String(address),
+			// Deprecated, but kept for backwards compatibility.
+			semconv.NetPeerNameKey.String(address),
+		}
 	}
-	return []attribute.KeyValue{semconv.ClientAddressKey.String(address)}
+	return []attribute.KeyValue{
+		semconv.ClientAddressKey.String(address),
+		// Deprecated, but kept for backwards compatibility.
+		semconv.NetPeerNameKey.String(address),
+	}
 }
 
 func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, bool) {
