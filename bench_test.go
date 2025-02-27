@@ -1,4 +1,4 @@
-// Copyright 2022-2024 The Connect Authors
+// Copyright 2022-2025 The Connect Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	connect "connectrpc.com/connect"
+	"connectrpc.com/connect"
 	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
 	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
 )
@@ -59,6 +59,7 @@ func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []
 	b.Helper()
 	svr, client := startBenchServer(handleropts, clientopts)
 	b.Cleanup(svr.Close)
+	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		ctx := context.Background()
@@ -76,6 +77,7 @@ func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []
 func benchStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
 	b.Helper()
 	_, client := startBenchServer(handleropts, clientopts)
+	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		ctx := context.Background()

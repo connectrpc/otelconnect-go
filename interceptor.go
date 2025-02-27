@@ -1,4 +1,4 @@
-// Copyright 2022-2024 The Connect Authors
+// Copyright 2022-2025 The Connect Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,8 +22,9 @@ import (
 	"sync"
 	"time"
 
-	connect "connectrpc.com/connect"
+	"connectrpc.com/connect"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
@@ -100,15 +101,15 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		isClient := request.Spec().IsClient
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol)
-		attributes := attributeFilter(request.Spec(), requestAttributes(request.Spec(), request.Peer())...)
+		attributes := make([]attribute.KeyValue, 0, 6+len(i.config.requestHeaderKeys)) // 5 max request attrs + status code attr + headers
+		attributes = attributeFilter(request.Spec(), addRequestAttributes(attributes, request.Spec(), request.Peer())...)
 		instrumentation := i.getInstruments(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
 		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
-		traceOpts := []trace.SpanStartOption{
-			trace.WithAttributes(attributes...),
-			trace.WithAttributes(headerAttributes(protocol, requestKey, request.Header(), i.config.requestHeaderKeys)...),
-		}
+		attributes = addHeaderAttributes(attributes, protocol, requestKey, request.Header(), i.config.requestHeaderKeys)
+		traceOpts := make([]trace.SpanStartOption, 0, 4)
+		traceOpts = append(traceOpts, trace.WithAttributes(attributes...))
 		if !isClient {
 			spanKind = trace.SpanKindServer
 			requestSpan, responseSpan = semconv.MessageTypeReceived, semconv.MessageTypeSent
@@ -176,11 +177,12 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			span.SetStatus(serverSpanStatus(protocol, err))
 		}
 		span.SetAttributes(attributes...)
-		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributes(attributes...))
-		instrumentation.requestSize.Record(ctx, int64(requestSize), metric.WithAttributes(attributes...))
-		instrumentation.requestsPerRPC.Record(ctx, 1, metric.WithAttributes(attributes...))
-		instrumentation.responseSize.Record(ctx, int64(responseSize), metric.WithAttributes(attributes...))
-		instrumentation.responsesPerRPC.Record(ctx, 1, metric.WithAttributes(attributes...))
+		attributesSet := attribute.NewSet(attributes...)
+		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributeSet(attributesSet))
+		instrumentation.requestSize.Record(ctx, int64(requestSize), metric.WithAttributeSet(attributesSet))
+		instrumentation.requestsPerRPC.Record(ctx, 1, metric.WithAttributeSet(attributesSet))
+		instrumentation.responseSize.Record(ctx, int64(responseSize), metric.WithAttributeSet(attributesSet))
+		instrumentation.responsesPerRPC.Record(ctx, 1, metric.WithAttributeSet(attributesSet))
 		return response, err
 	}
 }
@@ -241,13 +243,11 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 			span.SetStatus(clientSpanStatus(protocol, state.error))
 			span.End()
-			instrumentation.requestsPerRPC.Record(ctx, state.sentCounter,
-				metric.WithAttributes(state.attributes...))
-			instrumentation.responsesPerRPC.Record(ctx, state.receivedCounter,
-				metric.WithAttributes(state.attributes...))
+			attributeSet := attribute.NewSet(state.attributes...)
+			instrumentation.requestsPerRPC.Record(ctx, state.sentCounter, metric.WithAttributeSet(attributeSet))
+			instrumentation.responsesPerRPC.Record(ctx, state.receivedCounter, metric.WithAttributeSet(attributeSet))
 			duration := i.config.now().Sub(requestStartTime).Milliseconds()
-			instrumentation.duration.Record(ctx, duration,
-				metric.WithAttributes(state.attributes...))
+			instrumentation.duration.Record(ctx, duration, metric.WithAttributeSet(attributeSet))
 		}
 		stopCtxClose := context.AfterFunc(ctx, closeSpan)
 		return &streamingClientInterceptor{ //nolint:spancheck
@@ -291,11 +291,12 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		)
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
-		traceOpts := []trace.SpanStartOption{
+		traceOpts := make([]trace.SpanStartOption, 0, 5)
+		traceOpts = append(traceOpts,
 			trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(state.attributes...),
 			trace.WithAttributes(headerAttributes(protocol, requestKey, conn.RequestHeader(), i.config.requestHeaderKeys)...),
-		}
+		)
 		if !trace.SpanContextFromContext(ctx).IsValid() {
 			ctx = i.config.propagator.Extract(ctx, carrier)
 			if !i.config.trustRemote {
@@ -328,13 +329,11 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		span.SetAttributes(state.attributes...)
 		span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 		span.SetStatus(serverSpanStatus(protocol, err))
-		instrumentation.requestsPerRPC.Record(ctx, state.receivedCounter,
-			metric.WithAttributes(state.attributes...))
-		instrumentation.responsesPerRPC.Record(ctx, state.sentCounter,
-			metric.WithAttributes(state.attributes...))
+		attributeSet := attribute.NewSet(state.attributes...)
+		instrumentation.requestsPerRPC.Record(ctx, state.receivedCounter, metric.WithAttributeSet(attributeSet))
+		instrumentation.responsesPerRPC.Record(ctx, state.sentCounter, metric.WithAttributeSet(attributeSet))
 		duration := i.config.now().Sub(requestStartTime).Milliseconds()
-		instrumentation.duration.Record(ctx, duration,
-			metric.WithAttributes(state.attributes...))
+		instrumentation.duration.Record(ctx, duration, metric.WithAttributeSet(attributeSet))
 		return err
 	}
 }

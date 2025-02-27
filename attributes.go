@@ -1,4 +1,4 @@
-// Copyright 2022-2024 The Connect Authors
+// Copyright 2022-2025 The Connect Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"strings"
 
-	connect "connectrpc.com/connect"
+	"connectrpc.com/connect"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
@@ -43,57 +43,47 @@ func (filter AttributeFilter) filter(spec connect.Spec, values ...attribute.KeyV
 			filteredValues = append(filteredValues, attr)
 		}
 	}
-	for i := len(filteredValues); i < len(values); i++ {
-		values[i] = attribute.KeyValue{}
-	}
+	clear(values[len(filteredValues):])
 	return filteredValues
 }
 
-func procedureAttributes(procedure string) []attribute.KeyValue {
-	parts := strings.SplitN(procedure, "/", 2)
-	var attrs []attribute.KeyValue
-	switch len(parts) {
-	case 0:
-		return attrs // invalid
-	case 1:
+func addProcedureAttributes(attrs []attribute.KeyValue, procedure string) []attribute.KeyValue {
+	svc, method, ok := strings.Cut(procedure, "/")
+	if !ok {
 		// fall back to treating the whole string as the method
-		if method := parts[0]; method != "" {
-			attrs = append(attrs, semconv.RPCMethodKey.String(method))
-		}
-	default:
-		if svc := parts[0]; svc != "" {
-			attrs = append(attrs, semconv.RPCServiceKey.String(svc))
-		}
-		if method := parts[1]; method != "" {
-			attrs = append(attrs, semconv.RPCMethodKey.String(method))
-		}
+		return append(attrs, semconv.RPCMethodKey.String(procedure))
+	}
+	if svc != "" {
+		attrs = append(attrs, semconv.RPCServiceKey.String(svc))
+	}
+	if method != "" {
+		attrs = append(attrs, semconv.RPCMethodKey.String(method))
 	}
 	return attrs
 }
 
-func requestAttributes(spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
-	var attrs []attribute.KeyValue
+func addRequestAttributes(attrs []attribute.KeyValue, spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
 	if addr := peer.Addr; addr != "" {
-		attrs = append(attrs, addressAttributes(addr)...)
+		attrs = addAddressAttributes(attrs, addr)
 	}
 	name := strings.TrimLeft(spec.Procedure, "/")
 	protocol := protocolToSemConv(peer.Protocol)
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
-	attrs = append(attrs, procedureAttributes(name)...)
+	attrs = addProcedureAttributes(attrs, name)
 	return attrs
 }
 
-func addressAttributes(address string) []attribute.KeyValue {
+func addAddressAttributes(attrs []attribute.KeyValue, address string) []attribute.KeyValue {
 	if host, port, err := net.SplitHostPort(address); err == nil {
 		portInt, err := strconv.Atoi(port)
 		if err == nil {
-			return []attribute.KeyValue{
+			return append(attrs,
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(portInt),
-			}
+			)
 		}
 	}
-	return []attribute.KeyValue{semconv.NetPeerNameKey.String(address)}
+	return append(attrs, semconv.NetPeerNameKey.String(address))
 }
 
 func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, bool) {
@@ -113,8 +103,8 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 			// an error, but rather a sentinel to trigger a "304 Not Modified" HTTP status.
 			return semconv.HTTPStatusCodeKey.Int(http.StatusNotModified), true
 		}
-		codeKey := attribute.Key("rpc." + protocol + ".error_code")
 		if serverErr != nil {
+			codeKey := attribute.Key("rpc." + protocol + ".error_code")
 			return codeKey.String(connect.CodeOf(serverErr).String()), true
 		}
 	}
@@ -123,6 +113,10 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 
 func headerAttributes(protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
 	attributes := make([]attribute.KeyValue, 0, len(allowedKeys))
+	return addHeaderAttributes(attributes, protocol, eventType, metadata, allowedKeys)
+}
+
+func addHeaderAttributes(attributes []attribute.KeyValue, protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
 	for _, allowedKey := range allowedKeys {
 		if val, ok := metadata[allowedKey]; ok {
 			keyValue := attribute.StringSlice(

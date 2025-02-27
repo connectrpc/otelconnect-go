@@ -1,4 +1,4 @@
-// Copyright 2022-2024 The Connect Authors
+// Copyright 2022-2025 The Connect Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import (
 	"io"
 	"net/http"
 
-	connect "connectrpc.com/connect"
+	"connectrpc.com/connect"
 	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
 	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
 )

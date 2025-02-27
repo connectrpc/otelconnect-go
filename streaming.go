@@ -1,4 +1,4 @@
-// Copyright 2022-2024 The Connect Authors
+// Copyright 2022-2025 The Connect Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	"io"
 	"sync"
 
-	connect "connectrpc.com/connect"
+	"connectrpc.com/connect"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
@@ -50,8 +50,9 @@ func newStreamingState(
 	receiveSize, sendSize metric.Int64Histogram,
 ) *streamingState {
 	protocol := protocolToSemConv(peer.Protocol)
-	attributes := attributeFilter.filter(spec,
-		requestAttributes(spec, peer)...,
+	attributes := make([]attribute.KeyValue, 0, 6) // 5 max request attrs + status code attr
+	attributes = attributeFilter.filter(spec,
+		addRequestAttributes(attributes, spec, peer)...,
 	)
 	return &streamingState{
 		spec:            spec,
@@ -128,9 +129,11 @@ func (s *streamingState) emitEvent(ctx context.Context, msgType attribute.KeyVal
 	if !span.IsRecording() {
 		return
 	}
-	attrs := []attribute.KeyValue{
-		msgType, semconv.MessageIDKey.Int64(msgID),
-	}
+	attrs := make([]attribute.KeyValue, 0, 3)
+	attrs = append(attrs,
+		msgType,
+		semconv.MessageIDKey.Int64(msgID),
+	)
 	if hasSize {
 		attrs = append(attrs, semconv.MessageUncompressedSizeKey.Int(msgSize))
 	}
