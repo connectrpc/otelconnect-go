@@ -12,13 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package otelconnect provides OpenTelemetry tracing and metrics for
-// [connectrpc.com/connect] servers and clients.
-// The specification followed was the [OpenTelemetry specification]
-// with both the [rpc metrics specification]
-// and [rpc spans specification] implemented.
-//
-// [OpenTelemetry specification]: https://github.com/open-telemetry/opentelemetry-specification
-// [rpc metrics specification]: https://opentelemetry.io/docs/specs/semconv/rpc/rpc-metrics/
-// [rpc spans specification]: https://opentelemetry.io/docs/specs/semconv/rpc/rpc-spans/
 package otelconnect
+
+import (
+	"testing"
+
+	"connectrpc.com/connect"
+	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/attribute"
+)
+
+func TestAttributeFilter(t *testing.T) {
+	t.Parallel()
+	filterOdd := AttributeFilter(func(_ connect.Spec, kv attribute.KeyValue) bool {
+		return kv.Value.AsInt64()%2 != 0
+	})
+	assert.Equal(t,
+		[]attribute.KeyValue{
+			attribute.Int64("one", 1),
+			attribute.Int64("three", 3),
+		},
+		filterOdd.filter(
+			connect.Spec{},
+			attribute.Int64("zero", 0),
+			attribute.Int64("one", 1),
+			attribute.Int64("two", 2),
+			attribute.Int64("three", 3),
+			attribute.Int64("four", 4),
+		))
+}
