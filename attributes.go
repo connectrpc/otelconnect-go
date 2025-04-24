@@ -86,29 +86,29 @@ func addAddressAttributes(attrs []attribute.KeyValue, address string) []attribut
 	return append(attrs, semconv.NetPeerNameKey.String(address))
 }
 
-func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, bool) {
-	// Following the respective specifications, use integers and "status_code" for
-	// gRPC codes in contrast to strings and "error_code" for Connect codes.
-	switch protocol {
-	case grpcProtocol, grpcwebProtocol:
-		codeKey := attribute.Key("rpc." + protocol + ".status_code")
-		if serverErr != nil {
-			return codeKey.Int64(int64(connect.CodeOf(serverErr))), true
-		}
-		return codeKey.Int64(0), true // gRPC uses 0 for success
-	case connectProtocol:
+func statusCodeAttributes(onStreaming bool, serverErr error) []attribute.KeyValue {
+	var attributes []attribute.KeyValue
+
+	if serverErr != nil {
 		if connect.IsNotModifiedError(serverErr) {
 			// A "not modified" error is special: it's code is technically "unknown" but
 			// it would be misleading to label it as an unknown error since it's not really
 			// an error, but rather a sentinel to trigger a "304 Not Modified" HTTP status.
-			return semconv.HTTPStatusCodeKey.Int(http.StatusNotModified), true
+			attributes = append(attributes, semconv.HTTPStatusCodeKey.Int(http.StatusNotModified))
+			attributes = append(attributes, semconv.RPCGRPCStatusCodeKey.Int64(0))
+		} else {
+			code := connect.CodeOf(serverErr)
+			attributes = append(attributes, semconv.RPCConnectRPCErrorCodeKey.String(code.String()))
+			attributes = append(attributes, semconv.RPCGRPCStatusCodeKey.Int64(int64(code)))
 		}
-		if serverErr != nil {
-			codeKey := attribute.Key("rpc." + protocol + ".error_code")
-			return codeKey.String(connect.CodeOf(serverErr).String()), true
+	} else {
+		// No status code for streaming until the stream is ended
+		if !onStreaming {
+			attributes = append(attributes, semconv.RPCGRPCStatusCodeKey.Int64(0))
 		}
 	}
-	return attribute.KeyValue{}, false
+
+	return attributes
 }
 
 func headerAttributes(protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
