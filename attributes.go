@@ -86,9 +86,7 @@ func addAddressAttributes(attrs []attribute.KeyValue, address string) []attribut
 	return append(attrs, semconv.NetPeerNameKey.String(address))
 }
 
-func statusCodeAttributes(onStreaming bool, serverErr error) []attribute.KeyValue {
-	var attributes []attribute.KeyValue
-
+func addStatusCodeAttributes(attributes []attribute.KeyValue, onStreaming bool, serverErr error) []attribute.KeyValue {
 	if serverErr != nil {
 		if connect.IsNotModifiedError(serverErr) {
 			// A "not modified" error is special: it's code is technically "unknown" but

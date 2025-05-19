@@ -86,7 +86,7 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 		s.error = err
 		// If error add it to the attributes because the stream is about to terminate.
 		// If no error don't add anything because status only exists at end of stream.
-		s.addAttributes(statusCodeAttributes(true, err)...)
+		s.addAttributes(addStatusCodeAttributes(make([]attribute.KeyValue, 0, 2), true, err)...)
 	}
 	protomsg, ok := msg.(proto.Message)
 	size := proto.Size(protomsg)
@@ -109,7 +109,7 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 		s.error = err
 		// If error add it to the attributes because the stream is about to terminate.
 		// If no error don't add anything because status only exists at end of stream.
-		s.addAttributes(statusCodeAttributes(true, err)...)
+		s.addAttributes(addStatusCodeAttributes(make([]attribute.KeyValue, 0, 2), true, err)...)
 	}
 	protomsg, ok := msg.(proto.Message)
 	size := proto.Size(protomsg)
