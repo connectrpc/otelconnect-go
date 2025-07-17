@@ -101,7 +101,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		isClient := request.Spec().IsClient
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol)
-		attributes := make([]attribute.KeyValue, 0, 6+len(i.config.requestHeaderKeys)) // 5 max request attrs + status code attr + headers
+		attributes := make([]attribute.KeyValue, 0, 7+len(i.config.requestHeaderKeys)) // 5 max request attrs + 2 status code attrs + headers
 		attributes = attributeFilter(request.Spec(), addRequestAttributes(attributes, request.Spec(), request.Peer())...)
 		instrumentation := i.getInstruments(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
@@ -151,9 +151,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			)
 		}
 		response, err := next(ctx, request)
-		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
-			attributes = append(attributes, statusCode)
-		}
+		attributes = addStatusCodeAttributes(attributes, false, err)
 		var responseSize int
 		if err == nil {
 			if msg, ok := response.Any().(proto.Message); ok {
@@ -236,9 +234,8 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			// If error is nil a "success" is recorded on the span and on the final duration
 			// metric. The "rpc.<protocol>.status_code" is not defined for any other metrics for
 			// streams because the error only exists when finishing the stream.
-			if statusCode, ok := statusCodeAttribute(protocol, state.error); ok {
-				state.addAttributes(statusCode)
-			}
+			state.addAttributes(addStatusCodeAttributes(make([]attribute.KeyValue, 0, 2), false, state.error)...)
+
 			span.SetAttributes(state.attributes...)
 			span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 			span.SetStatus(clientSpanStatus(protocol, state.error))
@@ -323,9 +320,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			},
 		}
 		err := next(ctx, streamingHandler)
-		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
-			state.addAttributes(statusCode)
-		}
+		state.addAttributes(addStatusCodeAttributes(make([]attribute.KeyValue, 0, 2), false, err)...)
 		span.SetAttributes(state.attributes...)
 		span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 		span.SetStatus(serverSpanStatus(protocol, err))

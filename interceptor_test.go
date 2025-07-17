@@ -121,6 +121,7 @@ func TestStreamingMetrics(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -190,6 +191,7 @@ func TestStreamingMetrics(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   1,
@@ -213,6 +215,7 @@ func TestStreamingMetrics(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   1,
@@ -285,6 +288,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -354,6 +358,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   1,
@@ -377,6 +382,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   1,
@@ -452,6 +458,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
 										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCGRPCStatusCodeKey.Int64(int64(connect.CodeDataLoss)),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -499,7 +506,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCGRPCStatusCodeKey.Int64(int64(connect.CodeDataLoss)),
 									),
 									Count: 1,
 									Sum:   0.0,
@@ -524,6 +531,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
 										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCGRPCStatusCodeKey.Int64(int64(connect.CodeDataLoss)),
 									),
 									Count: 1,
 									Sum:   1,
@@ -548,6 +556,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
 										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCGRPCStatusCodeKey.Int64(int64(connect.CodeDataLoss)),
 									),
 									Count: 1,
 									Sum:   1,
@@ -623,6 +632,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 										semconv.RPCSystemKey.String(bufConnect),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCGRPCStatusCodeKey.Int64(int64(connect.CodeDataLoss)),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -670,6 +680,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
 										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCGRPCStatusCodeKey.Int64(int64(connect.CodeDataLoss)),
 									),
 									Count: 1,
 									Sum:   1,
@@ -694,6 +705,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCMethodKey.String(PingStreamMethod),
 										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCGRPCStatusCodeKey.Int64(int64(connect.CodeDataLoss)),
 									),
 									Count: 1,
 									Sum:   0,
@@ -760,6 +772,7 @@ func TestMetrics(t *testing.T) {
 										semconv.RPCMethodKey.String(PingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   time.Second.Milliseconds(),
@@ -783,6 +796,7 @@ func TestMetrics(t *testing.T) {
 										semconv.RPCMethodKey.String(PingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   16,
@@ -806,6 +820,7 @@ func TestMetrics(t *testing.T) {
 										semconv.RPCMethodKey.String(PingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   16,
@@ -829,6 +844,7 @@ func TestMetrics(t *testing.T) {
 										semconv.RPCMethodKey.String(PingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   1,
@@ -852,6 +868,7 @@ func TestMetrics(t *testing.T) {
 										semconv.RPCMethodKey.String(PingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCGRPCStatusCodeKey.Int64(0),
 									),
 									Count: 1,
 									Sum:   1,
@@ -955,6 +972,7 @@ func TestClientSimple(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -1004,6 +1022,7 @@ func TestHandlerFailCall(t *testing.T) {
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(FailMethod),
 				attribute.Key(rpcBufConnectStatusCode).String(UnimplementedString),
+				semconv.RPCGRPCStatusCodeKey.Int64(int64(connect.CodeUnimplemented)),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -1064,6 +1083,7 @@ func TestClientHandlerOpts(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -1222,6 +1242,7 @@ func TestInterceptors(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 		{
@@ -1250,6 +1271,7 @@ func TestInterceptors(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1439,8 +1461,12 @@ func TestUnaryInterceptorNotModifiedError(t *testing.T) {
 			codeAttributes = append(codeAttributes, attr)
 		}
 	}
-	// should not be any RPC status attribute, only the HTTP status attribute
-	expectedCodeAttributes := []attribute.KeyValue{semconv.HTTPStatusCodeKey.Int(304)}
+	// should not be any RPC error status attribute, only the HTTP status attribute
+	// and the RPC status code attribute should be 0
+	expectedCodeAttributes := []attribute.KeyValue{
+		semconv.HTTPStatusCodeKey.Int(304),
+		semconv.RPCGRPCStatusCodeKey.Int64(0),
+	}
 	assert.Equal(t, expectedCodeAttributes, codeAttributes)
 }
 
@@ -1686,6 +1712,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1738,6 +1765,7 @@ func TestStreamingClientTracing(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1797,6 +1825,7 @@ func TestWithAttributeFilter(t *testing.T) {
 				semconv.NetPeerPortKey.Int(port),
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1847,6 +1876,7 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1919,6 +1949,7 @@ func TestWithoutTraceEventsStreaming(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1948,6 +1979,7 @@ func TestWithoutTraceEventsUnary(t *testing.T) {
 				semconv.RPCSystemKey.String(bufConnect),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCGRPCStatusCodeKey.Int64(0),
 			},
 		},
 	}, spanRecorder.Ended())
