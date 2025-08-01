@@ -126,6 +126,13 @@ func WithoutTraceEvents() Option {
 	return &omitTraceEventsOption{}
 }
 
+// WithTraceParentResponseHeader enables injecting the traceparent header
+// into response headers for server-side interceptors. This allows clients
+// to correlate their requests with server-side traces.
+func WithTraceParentResponseHeader() Option {
+	return &traceParentResponseHeaderOption{}
+}
+
 type attributeFilterOption struct {
 	filterAttribute AttributeFilter
 }
@@ -210,4 +217,10 @@ type omitTraceEventsOption struct{}
 
 func (o *omitTraceEventsOption) apply(c *config) {
 	c.omitTraceEvents = true
+}
+
+type traceParentResponseHeaderOption struct{}
+
+func (o *traceParentResponseHeaderOption) apply(c *config) {
+	c.injectTraceParentResponseHeader = true
 }
