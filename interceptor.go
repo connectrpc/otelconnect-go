@@ -160,6 +160,10 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				responseSize = proto.Size(msg)
 			}
 			span.SetAttributes(headerAttributes(protocol, responseKey, response.Header(), i.config.responseHeaderKeys)...)
+			if !isClient && i.config.injectTraceParentResponseHeader {
+				responseCarrier := propagation.HeaderCarrier(response.Header())
+				i.config.propagator.Inject(ctx, responseCarrier)
+			}
 		}
 		if !i.config.omitTraceEvents {
 			span.AddEvent(messageKey,
@@ -313,6 +317,13 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			traceOpts...,
 		)
 		defer span.End()
+		
+		// Inject traceparent into response headers if enabled
+		if i.config.injectTraceParentResponseHeader {
+			responseCarrier := propagation.HeaderCarrier(conn.ResponseHeader())
+			i.config.propagator.Inject(ctx, responseCarrier)
+		}
+		
 		streamingHandler := &streamingHandlerInterceptor{
 			StreamingHandlerConn: conn,
 			receive: func(msg any, conn connect.StreamingHandlerConn) error {

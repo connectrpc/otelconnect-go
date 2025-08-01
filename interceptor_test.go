@@ -2237,3 +2237,100 @@ func (i assertSpanInterceptor) assertSpanContext(ctx context.Context) {
 		i.t.Error("invalid span context")
 	}
 }
+
+func TestWithTraceParentResponseHeader(t *testing.T) {
+	t.Parallel()
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	serverInterceptor, err := NewInterceptor(
+		WithTraceParentResponseHeader(),
+		WithTracerProvider(traceProvider),
+		WithPropagator(propagation.TraceContext{}),
+	)
+	require.NoError(t, err)
+
+	client, _, _ := startServer(
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		},
+		[]connect.ClientOption{},
+		&pluggablePingServer{
+			ping: func(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+				return connect.NewResponse(&pingv1.PingResponse{}), nil
+			},
+		})
+
+	pingRequest := connect.NewRequest(&pingv1.PingRequest{Id: 1})
+	response, err := client.Ping(context.Background(), pingRequest)
+	require.NoError(t, err)
+
+	// Check that the traceparent header is present in the response
+	traceparent := response.Header().Get("traceparent")
+	assert.NotEmpty(t, traceparent, "traceparent header should be present in response")
+
+	// Validate traceparent format
+	assertValidTraceParent(t, traceparent)
+}
+
+func TestWithTraceParentResponseHeaderStreaming(t *testing.T) {
+	t.Parallel()
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	serverInterceptor, err := NewInterceptor(
+		WithTraceParentResponseHeader(),
+		WithTracerProvider(traceProvider),
+		WithPropagator(propagation.TraceContext{}),
+	)
+	require.NoError(t, err)
+
+	client, _, _ := startServer(
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		},
+		[]connect.ClientOption{},
+		&pluggablePingServer{
+			pingStream: func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+				_, _ = stream.Receive()
+				return stream.Send(&pingv1.PingStreamResponse{})
+			},
+		})
+
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
+	require.NoError(t, stream.CloseRequest())
+
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseResponse())
+
+	// Check that the traceparent header is present in the response headers
+	traceparent := stream.ResponseHeader().Get("traceparent")
+	assert.NotEmpty(t, traceparent, "traceparent header should be present in streaming response")
+
+	// Validate traceparent format
+	assertValidTraceParent(t, traceparent)
+}
+
+// assertValidTraceParent validates that a traceparent header follows the W3C Trace Context format:
+// "00-{32 hex chars}-{16 hex chars}-{2 hex chars}"
+func assertValidTraceParent(t *testing.T, traceparent string) {
+	t.Helper()
+
+	parts := strings.Split(traceparent, "-")
+	assert.Len(t, parts, 4, "traceparent should have 4 parts separated by dashes")
+	if len(parts) == 4 {
+		assert.Equal(t, "00", parts[0], "version should be 00")
+		assert.Len(t, parts[1], 32, "trace-id should be 32 hex characters")
+		assert.Len(t, parts[2], 16, "span-id should be 16 hex characters")
+		assert.Len(t, parts[3], 2, "trace-flags should be 2 hex characters")
+
+		// Validate that trace-id and span-id contain only hex characters
+		assert.Regexp(t, "^[0-9a-f]{32}$", parts[1], "trace-id should contain only lowercase hex characters")
+		assert.Regexp(t, "^[0-9a-f]{16}$", parts[2], "span-id should contain only lowercase hex characters")
+		assert.Regexp(t, "^[0-9a-f]{2}$", parts[3], "trace-flags should contain only lowercase hex characters")
+	}
+}
