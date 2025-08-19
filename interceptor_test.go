@@ -2220,32 +2220,35 @@ func (i assertSpanInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFu
 		return next(ctx, request)
 	}
 }
+
 func (i assertSpanInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		i.assertSpanContext(ctx)
 		return next(ctx, spec)
 	}
 }
+
 func (i assertSpanInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		i.assertSpanContext(ctx)
 		return next(ctx, conn)
 	}
 }
+
 func (i assertSpanInterceptor) assertSpanContext(ctx context.Context) {
 	if !traceapi.SpanContextFromContext(ctx).IsValid() {
 		i.t.Error("invalid span context")
 	}
 }
 
-func TestWithTraceParentResponseHeader(t *testing.T) {
+func TestPropagateResponseHeader(t *testing.T) {
 	t.Parallel()
 
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 
 	serverInterceptor, err := NewInterceptor(
-		WithTraceParentResponseHeader(),
+		WithPropagateResponseHeader(),
 		WithTracerProvider(traceProvider),
 		WithPropagator(propagation.TraceContext{}),
 	)
@@ -2270,18 +2273,18 @@ func TestWithTraceParentResponseHeader(t *testing.T) {
 	traceparent := response.Header().Get("traceparent")
 	assert.NotEmpty(t, traceparent, "traceparent header should be present in response")
 
-	// Validate traceparent format
-	assertValidTraceParent(t, traceparent)
+	// Validate traceparent
+	assertUsableTraceparent(t, response.Header())
 }
 
-func TestWithTraceParentResponseHeaderStreaming(t *testing.T) {
+func TestPropagateResponseHeaderStreaming(t *testing.T) {
 	t.Parallel()
 
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 
 	serverInterceptor, err := NewInterceptor(
-		WithTraceParentResponseHeader(),
+		WithPropagateResponseHeader(),
 		WithTracerProvider(traceProvider),
 		WithPropagator(propagation.TraceContext{}),
 	)
@@ -2311,26 +2314,21 @@ func TestWithTraceParentResponseHeaderStreaming(t *testing.T) {
 	traceparent := stream.ResponseHeader().Get("traceparent")
 	assert.NotEmpty(t, traceparent, "traceparent header should be present in streaming response")
 
-	// Validate traceparent format
-	assertValidTraceParent(t, traceparent)
+	// Validate traceparent
+	assertUsableTraceparent(t, stream.ResponseHeader())
 }
 
-// assertValidTraceParent validates that a traceparent header follows the W3C Trace Context format:
-// "00-{32 hex chars}-{16 hex chars}-{2 hex chars}"
-func assertValidTraceParent(t *testing.T, traceparent string) {
+// assertUsableTraceparent validates that a traceparent header can be used fromthe response
+func assertUsableTraceparent(t *testing.T, header http.Header) {
 	t.Helper()
 
-	parts := strings.Split(traceparent, "-")
-	assert.Len(t, parts, 4, "traceparent should have 4 parts separated by dashes")
-	if len(parts) == 4 {
-		assert.Equal(t, "00", parts[0], "version should be 00")
-		assert.Len(t, parts[1], 32, "trace-id should be 32 hex characters")
-		assert.Len(t, parts[2], 16, "span-id should be 16 hex characters")
-		assert.Len(t, parts[3], 2, "trace-flags should be 2 hex characters")
-
-		// Validate that trace-id and span-id contain only hex characters
-		assert.Regexp(t, "^[0-9a-f]{32}$", parts[1], "trace-id should contain only lowercase hex characters")
-		assert.Regexp(t, "^[0-9a-f]{16}$", parts[2], "span-id should contain only lowercase hex characters")
-		assert.Regexp(t, "^[0-9a-f]{2}$", parts[3], "trace-flags should contain only lowercase hex characters")
-	}
+	// Use the same propagator that was configured in the test
+	tc := propagation.TraceContext{}
+	ctx := tc.Extract(context.Background(), propagation.HeaderCarrier(header))
+	// Ensure the span context is valid
+	spanContext := traceapi.SpanContextFromContext(ctx)
+	assert.True(t, spanContext.IsValid(), "span context should be valid after extracting traceparent")
+	// Ensure the trace ID and span ID are not empty
+	assert.NotEmpty(t, spanContext.SpanID(), "span ID should not be empty")
+	assert.NotEmpty(t, spanContext.TraceID(), "trace ID should not be empty")
 }

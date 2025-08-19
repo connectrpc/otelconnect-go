@@ -36,15 +36,15 @@ const (
 )
 
 type config struct {
-	filter                        func(context.Context, connect.Spec) bool
-	filterAttribute               AttributeFilter
-	meter                         metric.Meter
-	tracer                        trace.Tracer
-	propagator                    propagation.TextMapPropagator
-	now                           func() time.Time
-	trustRemote                   bool
-	requestHeaderKeys             []string
-	responseHeaderKeys            []string
-	omitTraceEvents               bool
-	injectTraceParentResponseHeader bool
+	filter                  func(context.Context, connect.Spec) bool
+	filterAttribute         AttributeFilter
+	meter                   metric.Meter
+	tracer                  trace.Tracer
+	propagator              propagation.TextMapPropagator
+	now                     func() time.Time
+	trustRemote             bool
+	requestHeaderKeys       []string
+	responseHeaderKeys      []string
+	omitTraceEvents         bool
+	propagateResponseHeader bool
 }
