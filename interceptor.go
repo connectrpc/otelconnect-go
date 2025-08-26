@@ -80,14 +80,6 @@ func NewInterceptor(options ...Option) (*Interceptor, error) {
 	}, nil
 }
 
-// getInstruments returns the correct instrumentation for the interceptor.
-func (i *Interceptor) getInstruments(isClient bool) *instruments {
-	if isClient {
-		return &i.clientInstruments
-	}
-	return &i.serverInstruments
-}
-
 // WrapUnary implements otel tracing and metrics for unary handlers.
 func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
@@ -141,7 +133,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				requestSize = proto.Size(msg)
 			}
 		}
-		if !i.config.omitTraceEvents {
+		if !i.config.omitTraceEvents && span.IsRecording() {
 			span.AddEvent(messageKey,
 				trace.WithAttributes(
 					requestSpan,
@@ -159,9 +151,11 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			if msg, ok := response.Any().(proto.Message); ok {
 				responseSize = proto.Size(msg)
 			}
-			span.SetAttributes(headerAttributes(protocol, responseKey, response.Header(), i.config.responseHeaderKeys)...)
+			if span.IsRecording() {
+				span.SetAttributes(headerAttributes(protocol, responseKey, response.Header(), i.config.responseHeaderKeys)...)
+			}
 		}
-		if !i.config.omitTraceEvents {
+		if !i.config.omitTraceEvents && span.IsRecording() {
 			span.AddEvent(messageKey,
 				trace.WithAttributes(
 					responseSpan,
@@ -219,14 +213,16 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		protocol := protocolToSemConv(conn.Peer().Protocol)
 		var requestOnce sync.Once
 		setRequestAttributes := func() {
-			span.SetAttributes(
-				headerAttributes(
-					protocol,
-					requestKey,
-					conn.RequestHeader(),
-					i.config.requestHeaderKeys,
-				)...,
-			)
+			if span.IsRecording() {
+				span.SetAttributes(
+					headerAttributes(
+						protocol,
+						requestKey,
+						conn.RequestHeader(),
+						i.config.requestHeaderKeys,
+					)...,
+				)
+			}
 		}
 		closeSpan := func() {
 			requestOnce.Do(setRequestAttributes)
@@ -239,8 +235,10 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			if statusCode, ok := statusCodeAttribute(protocol, state.error); ok {
 				state.addAttributes(statusCode)
 			}
-			span.SetAttributes(state.attributes...)
-			span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
+			if span.IsRecording() {
+				span.SetAttributes(state.attributes...)
+				span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
+			}
 			span.SetStatus(clientSpanStatus(protocol, state.error))
 			span.End()
 			attributeSet := attribute.NewSet(state.attributes...)
@@ -326,8 +324,10 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		if statusCode, ok := statusCodeAttribute(protocol, err); ok {
 			state.addAttributes(statusCode)
 		}
-		span.SetAttributes(state.attributes...)
-		span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
+		if span.IsRecording() {
+			span.SetAttributes(state.attributes...)
+			span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
+		}
 		span.SetStatus(serverSpanStatus(protocol, err))
 		attributeSet := attribute.NewSet(state.attributes...)
 		instrumentation.requestsPerRPC.Record(ctx, state.receivedCounter, metric.WithAttributeSet(attributeSet))
@@ -336,6 +336,14 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		instrumentation.duration.Record(ctx, duration, metric.WithAttributeSet(attributeSet))
 		return err
 	}
+}
+
+// getInstruments returns the correct instrumentation for the interceptor.
+func (i *Interceptor) getInstruments(isClient bool) *instruments {
+	if isClient {
+		return &i.clientInstruments
+	}
+	return &i.serverInstruments
 }
 
 // protocolToSemConv converts the protocol string to the OpenTelemetry format.
