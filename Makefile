@@ -7,7 +7,9 @@ MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --no-print-directory
 BIN := $(abspath .tmp/bin)
+BUF_VERSION := 1.56.0
 COPYRIGHT_YEARS := 2022-2025
+GOLANGCI_VERSION := 2.4.0
 LICENSE_IGNORE := -e /gen/
 # Set to use a different compiler. For example, `GO=go1.18rc1 make test`.
 GO ?= go
@@ -37,6 +39,7 @@ build: generate ## Build all packages
 .PHONY: lint
 lint: $(BIN)/golangci-lint $(BIN)/buf ## Lint Go and protobuf
 	test -z "$$($(BIN)/buf format -d . | tee /dev/stderr)"
+	$(BIN)/golangci-lint fmt --diff
 	$(GO) vet ./...
 	$(BIN)/golangci-lint run
 	$(BIN)/buf lint
@@ -44,6 +47,7 @@ lint: $(BIN)/golangci-lint $(BIN)/buf ## Lint Go and protobuf
 .PHONY: lintfix
 lintfix: $(BIN)/golangci-lint $(BIN)/buf ## Automatically fix some lint errors
 	$(BIN)/golangci-lint run --fix
+	$(BIN)/golangci-lint fmt
 	$(BIN)/buf format -w .
 
 .PHONY: generate
@@ -80,16 +84,16 @@ $(BIN)/protoc-gen-connect-go: go.mod
 
 $(BIN)/buf: Makefile
 	@mkdir -p $(@D)
-	GOBIN=$(abspath $(@D)) $(GO) install github.com/bufbuild/buf/cmd/buf@v1.50.0
+	GOBIN=$(abspath $(@D)) $(GO) install github.com/bufbuild/buf/cmd/buf@v$(BUF_VERSION)
 
 $(BIN)/license-header: Makefile
 	@mkdir -p $(@D)
 	GOBIN=$(abspath $(@D)) $(GO) install \
-		  github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v1.50.0
+		  github.com/bufbuild/buf/private/pkg/licenseheader/cmd/license-header@v$(BUF_VERSION)
 
 $(BIN)/golangci-lint: Makefile
 	@mkdir -p $(@D)
-	GOBIN=$(abspath $(@D)) $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
+	GOBIN=$(abspath $(@D)) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_VERSION)
 
 $(BIN)/protoc-gen-go: Makefile
 	@mkdir -p $(@D)

@@ -1258,7 +1258,7 @@ func TestInterceptors(t *testing.T) {
 func TestUnaryHandlerNoTraceParent(t *testing.T) {
 	t.Parallel()
 	assertTraceParent := func(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-		assert.Zero(t, req.Header().Get(TraceParentKey))
+		assert.Empty(t, req.Header().Get(TraceParentKey))
 		return connect.NewResponse(&pingv1.PingResponse{Id: req.Msg.GetId()}), nil
 	}
 	serverInterceptor, err := NewInterceptor(
@@ -1280,7 +1280,7 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 		Data: []byte("Hello, otel!"),
 	}
 	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
-		assert.Zero(t, stream.RequestHeader().Get(TraceParentKey))
+		assert.Empty(t, stream.RequestHeader().Get(TraceParentKey))
 		return stream.Send(msg)
 	}
 	serverInterceptor, err := NewInterceptor(
@@ -1580,7 +1580,7 @@ func TestStreamingClientPropagation(t *testing.T) {
 		Data: []byte("Hello, otel!"),
 	}
 	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
-		assert.NotZero(t, stream.RequestHeader().Get(TraceParentKey))
+		assert.NotEmpty(t, stream.RequestHeader().Get(TraceParentKey))
 		require.NoError(t, stream.Send(msg))
 		return nil
 	}
