@@ -2270,7 +2270,7 @@ func TestPropagateResponseHeader(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that the traceparent header is present in the response
-	traceparent := response.Header().Get("traceparent")
+	traceparent := response.Header().Get("Traceparent")
 	assert.NotEmpty(t, traceparent, "traceparent header should be present in response")
 
 	// Validate traceparent
@@ -2311,14 +2311,14 @@ func TestPropagateResponseHeaderStreaming(t *testing.T) {
 	require.NoError(t, stream.CloseResponse())
 
 	// Check that the traceparent header is present in the response headers
-	traceparent := stream.ResponseHeader().Get("traceparent")
+	traceparent := stream.ResponseHeader().Get("Traceparent")
 	assert.NotEmpty(t, traceparent, "traceparent header should be present in streaming response")
 
 	// Validate traceparent
 	assertUsableTraceparent(t, stream.ResponseHeader())
 }
 
-// assertUsableTraceparent validates that a traceparent header can be used fromthe response
+// assertUsableTraceparent validates that a traceparent header can be used fromthe response.
 func assertUsableTraceparent(t *testing.T, header http.Header) {
 	t.Helper()
 
