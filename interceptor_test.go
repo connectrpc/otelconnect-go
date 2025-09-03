@@ -2220,20 +2220,115 @@ func (i assertSpanInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFu
 		return next(ctx, request)
 	}
 }
+
 func (i assertSpanInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		i.assertSpanContext(ctx)
 		return next(ctx, spec)
 	}
 }
+
 func (i assertSpanInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 		i.assertSpanContext(ctx)
 		return next(ctx, conn)
 	}
 }
+
 func (i assertSpanInterceptor) assertSpanContext(ctx context.Context) {
 	if !traceapi.SpanContextFromContext(ctx).IsValid() {
 		i.t.Error("invalid span context")
 	}
+}
+
+func TestPropagateResponseHeader(t *testing.T) {
+	t.Parallel()
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	serverInterceptor, err := NewInterceptor(
+		WithPropagateResponseHeader(),
+		WithTracerProvider(traceProvider),
+		WithPropagator(propagation.TraceContext{}),
+	)
+	require.NoError(t, err)
+
+	client, _, _ := startServer(
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		},
+		[]connect.ClientOption{},
+		&pluggablePingServer{
+			ping: func(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+				return connect.NewResponse(&pingv1.PingResponse{}), nil
+			},
+		})
+
+	pingRequest := connect.NewRequest(&pingv1.PingRequest{Id: 1})
+	response, err := client.Ping(context.Background(), pingRequest)
+	require.NoError(t, err)
+
+	// Check that the traceparent header is present in the response
+	traceparent := response.Header().Get("Traceparent")
+	assert.NotEmpty(t, traceparent, "traceparent header should be present in response")
+
+	// Validate traceparent
+	assertUsableTraceparent(t, response.Header())
+}
+
+func TestPropagateResponseHeaderStreaming(t *testing.T) {
+	t.Parallel()
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	serverInterceptor, err := NewInterceptor(
+		WithPropagateResponseHeader(),
+		WithTracerProvider(traceProvider),
+		WithPropagator(propagation.TraceContext{}),
+	)
+	require.NoError(t, err)
+
+	client, _, _ := startServer(
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		},
+		[]connect.ClientOption{},
+		&pluggablePingServer{
+			pingStream: func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+				_, _ = stream.Receive()
+				return stream.Send(&pingv1.PingStreamResponse{})
+			},
+		})
+
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
+	require.NoError(t, stream.CloseRequest())
+
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseResponse())
+
+	// Check that the traceparent header is present in the response headers
+	traceparent := stream.ResponseHeader().Get("Traceparent")
+	assert.NotEmpty(t, traceparent, "traceparent header should be present in streaming response")
+
+	// Validate traceparent
+	assertUsableTraceparent(t, stream.ResponseHeader())
+}
+
+// assertUsableTraceparent validates that a traceparent header can be used fromthe response.
+func assertUsableTraceparent(t *testing.T, header http.Header) {
+	t.Helper()
+
+	// Use the same propagator that was configured in the test
+	tc := propagation.TraceContext{}
+	ctx := tc.Extract(context.Background(), propagation.HeaderCarrier(header))
+	// Ensure the span context is valid
+	spanContext := traceapi.SpanContextFromContext(ctx)
+	assert.True(t, spanContext.IsValid(), "span context should be valid after extracting traceparent")
+	// Ensure the trace ID and span ID are not empty
+	assert.NotEmpty(t, spanContext.SpanID(), "span ID should not be empty")
+	assert.NotEmpty(t, spanContext.TraceID(), "trace ID should not be empty")
 }
