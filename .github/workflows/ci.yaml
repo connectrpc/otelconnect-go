@@ -12,6 +12,7 @@ permissions:
   contents: read
 jobs:
   ci:
+    name: ci (go:${{ matrix.go-version.name }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
