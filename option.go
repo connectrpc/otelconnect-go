@@ -35,21 +35,21 @@ type Option interface {
 
 // WithPropagator configures the instrumentation to use the supplied propagator
 // when extracting and injecting trace context. By default, the instrumentation
-// uses otel.GetTextMapPropagator().
+// uses [otel.GetTextMapPropagator].
 func WithPropagator(propagator propagation.TextMapPropagator) Option {
 	return &propagatorOption{propagator}
 }
 
 // WithMeterProvider configures the instrumentation to use the supplied [metric.MeterProvider]
 // when extracting and injecting trace context. By default, the instrumentation
-// uses global.MeterProvider().
+// uses [otel.GetMeterProvider].
 func WithMeterProvider(provider metric.MeterProvider) Option {
 	return &meterProviderOption{provider: provider}
 }
 
 // WithTracerProvider configures the instrumentation to use the supplied
 // provider when creating a tracer. By default, the instrumentation
-// uses otel.GetTracerProvider().
+// uses [otel.GetTracerProvider].
 func WithTracerProvider(provider trace.TracerProvider) Option {
 	return &tracerProviderOption{provider}
 }
