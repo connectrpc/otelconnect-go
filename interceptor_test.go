@@ -2034,6 +2034,131 @@ func TestStreamingServerSpanStatus(t *testing.T) {
 	}
 }
 
+func TestWithRPCSystem(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		system         RPCSystem
+		expectProtocol string
+	}{
+		{
+			system:         nil,
+			expectProtocol: "", // depends on request
+		},
+		{
+			system:         ConnectRPCSystem,
+			expectProtocol: connectProtocol,
+		},
+		{
+			system:         GRPCSystem,
+			expectProtocol: grpcProtocol,
+		},
+	}
+	clients := []struct {
+		protocol     string
+		expectSystem RPCSystem
+		opt          connect.ClientOption
+	}{
+		{
+			protocol:     connectString,
+			expectSystem: ConnectRPCSystem,
+		},
+		{
+			protocol:     grpcString,
+			expectSystem: GRPCSystem,
+			opt:          connect.WithGRPC(),
+		},
+		{
+			protocol:     grpcwebString,
+			expectSystem: GRPCSystem,
+			opt:          connect.WithGRPCWeb(),
+		},
+	}
+	for _, testCase := range testCases {
+		name := "based-on-wire-request"
+		if testCase.system != nil {
+			name = testCase.system.protocol()
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, clientCase := range clients {
+				t.Run("client="+clientCase.protocol, func(t *testing.T) {
+					t.Parallel()
+					var opts []connect.ClientOption
+					if clientCase.opt != nil {
+						opts = []connect.ClientOption{clientCase.opt}
+					}
+					metricReader := metricsdk.NewManualReader()
+					meterProvider := metricsdk.NewMeterProvider(
+						metricsdk.WithReader(
+							metricReader,
+						),
+					)
+					interceptor, err := NewInterceptor(
+						WithMeterProvider(meterProvider),
+						WithRPCSystem(testCase.system),
+					)
+					require.NoError(t, err)
+					rpcClient, _, _ := startServer(t,
+						[]connect.HandlerOption{connect.WithInterceptors(interceptor)},
+						opts,
+						failPingServer(),
+					)
+					_, err = rpcClient.Ping(t.Context(), connect.NewRequest(&pingv1.PingRequest{}))
+					require.Equal(t, connect.CodeDataLoss, connect.CodeOf(err))
+					bidiStream := rpcClient.PingStream(t.Context())
+					defer func() {
+						require.NoError(t, bidiStream.CloseResponse())
+					}()
+					require.NoError(t, bidiStream.Send(&pingv1.PingStreamRequest{}))
+					require.NoError(t, bidiStream.CloseRequest())
+					_, err = bidiStream.Receive()
+					require.Equal(t, connect.CodeDataLoss, connect.CodeOf(err))
+
+					expectedMetricsConventions := testCase.system
+					if expectedMetricsConventions == nil {
+						expectedMetricsConventions = clientCase.expectSystem
+					}
+					metrics := &metricdata.ResourceMetrics{}
+					require.NoError(t, metricReader.Collect(context.Background(), metrics))
+
+					// Assert metrics have the right "shape" per expected RPC system.
+					require.Len(t, metrics.ScopeMetrics, 1)
+					require.NotEmpty(t, metrics.ScopeMetrics[0].Metrics)
+					var hasStatusCode bool
+					for _, metric := range metrics.ScopeMetrics[0].Metrics {
+						// For now, all the metrics we emit are integer histograms.
+						histo, ok := metric.Data.(metricdata.Histogram[int64])
+						require.True(t, ok)
+						require.NotEmpty(t, histo.DataPoints)
+						for _, dataPoint := range histo.DataPoints {
+							val, ok := dataPoint.Attributes.Value(rpcSystem)
+							require.True(t, ok)
+							require.Equal(t, expectedMetricsConventions.protocol(), val.AsString())
+							if metric.Name != rpcServerRequestSize {
+								// Request size doesn't include status code because the
+								// status is not yet known at the time the size is recorded.
+								// But all other metrics do include the status code.
+								hasStatusCode = true
+								if expectedMetricsConventions.protocol() == grpcProtocol {
+									val, ok := dataPoint.Attributes.Value(rpcGRPCStatusCode)
+									require.True(t, ok)
+									require.Equal(t, int64(connect.CodeDataLoss), val.AsInt64())
+								} else {
+									val, ok := dataPoint.Attributes.Value(rpcConnectErrorCode)
+									require.True(t, ok)
+									require.Equal(t, connect.CodeDataLoss.String(), val.AsString())
+								}
+							}
+						}
+					}
+					// Should have encountered at least one metric with the status code.
+					require.True(t, hasStatusCode)
+				})
+			}
+		})
+	}
+}
+
 // streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
 // wraps streaming handler RPCs. It has no effect on unary or streaming client RPCs.
 type streamingHandlerInterceptorFunc func(connect.StreamingHandlerFunc) connect.StreamingHandlerFunc
