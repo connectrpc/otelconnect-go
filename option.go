@@ -28,6 +28,15 @@ import (
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
 
+var (
+	// ConnectRPCSystem indicates that the semantic conventions for
+	// ConnectRPC should be used.
+	ConnectRPCSystem = connectRPCSystem{} //nolint:gochecknoglobals
+	// GRPCSystem indicates that the semantic conventions for gRPC
+	// should be used.
+	GRPCSystem = gRPCSystem{} //nolint:gochecknoglobals
+)
+
 // An Option configures the OpenTelemetry instrumentation.
 type Option interface {
 	apply(*config)
@@ -133,6 +142,36 @@ func WithPropagateResponseHeader() Option {
 	return &propagateResponseHeaderOption{}
 }
 
+// WithRPCSystem forces the use of the semantic conventions for the given
+// RPC system. By default, the conventions used vary based on the actual
+// protocol of a request: so requests that a client sends or a server
+// receives that use the gRPC or gRPC-Web protocols use the gRPC semantic
+// conventions; requests that use ConnectRPC use the ConnectRPC semantic
+// conventions.
+//
+// In a system where a server handles requests for the same service but
+// from clients that use multiple protocols, this causes the telemetry
+// data to be partitioned by the RPC system conventions. But it is often
+// desirable to instead emit uniform telemetry, to allow optics and
+// aggregation across RPC systems.
+//
+// So this option can be used to force uniform metrics and spans, using
+// the given RPC system conventions, regardless of the actual protocol.
+func WithRPCSystem(system RPCSystem) Option {
+	return &rpcSystemOption{system: system}
+}
+
+// RPCSystem represents an RPC system, like ConnectRPC or gRPC. Different
+// systems have different semantic conventions for how metrics and spans are
+// defined.
+//
+//	https://opentelemetry.io/docs/specs/semconv/rpc/
+//
+// Valid values currently are ConnectRPCSystem and GRPCSystem.
+type RPCSystem interface {
+	protocol() string
+}
+
 type attributeFilterOption struct {
 	filterAttribute AttributeFilter
 }
@@ -224,3 +263,19 @@ type propagateResponseHeaderOption struct{}
 func (o *propagateResponseHeaderOption) apply(c *config) {
 	c.propagateResponseHeader = true
 }
+
+type rpcSystemOption struct {
+	system RPCSystem
+}
+
+func (o *rpcSystemOption) apply(c *config) {
+	c.rpcSystem = o.system
+}
+
+type connectRPCSystem struct{}
+
+func (connectRPCSystem) protocol() string { return connectProtocol }
+
+type gRPCSystem struct{}
+
+func (gRPCSystem) protocol() string { return grpcProtocol }

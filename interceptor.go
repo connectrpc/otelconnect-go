@@ -92,9 +92,9 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		attributeFilter := i.config.filterAttribute.filter
 		isClient := request.Spec().IsClient
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
-		protocol := protocolToSemConv(request.Peer().Protocol)
+		protocol := protocolToSemConv(request.Peer().Protocol, i.config.rpcSystem)
 		attributes := make([]attribute.KeyValue, 0, 6+len(i.config.requestHeaderKeys)) // 5 max request attrs + status code attr + headers
-		attributes = attributeFilter(request.Spec(), addRequestAttributes(attributes, request.Spec(), request.Peer())...)
+		attributes = attributeFilter(request.Spec(), addRequestAttributes(protocol, attributes, request.Spec(), request.Peer())...)
 		instrumentation := i.getInstruments(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
@@ -206,7 +206,9 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		// inject the newly created span into the carrier
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		i.config.propagator.Inject(ctx, carrier)
+		protocol := protocolToSemConv(conn.Peer().Protocol, i.config.rpcSystem)
 		state := newStreamingState(
+			protocol,
 			spec,
 			conn.Peer(),
 			i.config.filterAttribute,
@@ -214,7 +216,6 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			instrumentation.responseSize,
 			instrumentation.requestSize,
 		)
-		protocol := protocolToSemConv(conn.Peer().Protocol)
 		var requestOnce sync.Once
 		setRequestAttributes := func() {
 			if span.IsRecording() {
@@ -282,8 +283,9 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			}
 		}
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
-		protocol := protocolToSemConv(conn.Peer().Protocol)
+		protocol := protocolToSemConv(conn.Peer().Protocol, i.config.rpcSystem)
 		state := newStreamingState(
+			protocol,
 			conn.Spec(),
 			conn.Peer(),
 			i.config.filterAttribute,
@@ -358,11 +360,13 @@ func (i *Interceptor) getInstruments(isClient bool) *instruments {
 }
 
 // protocolToSemConv converts the protocol string to the OpenTelemetry format.
-func protocolToSemConv(protocol string) string {
+func protocolToSemConv(protocol string, system RPCSystem) string {
+	if system != nil {
+		// If an explicit system was configured, that overrides the wire protocol.
+		return system.protocol()
+	}
 	switch protocol {
-	case grpcwebString:
-		return grpcwebProtocol
-	case grpcProtocol:
+	case grpcwebString, grpcString:
 		return grpcProtocol
 	case connectString:
 		return connectProtocol

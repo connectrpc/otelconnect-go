@@ -28,11 +28,13 @@ const (
 	version             = "0.8.1-dev"
 	semanticVersion     = "semver:" + version
 	instrumentationName = "connectrpc.com/otelconnect"
-	grpcProtocol        = "grpc"
-	grpcwebString       = "grpcweb"
-	grpcwebProtocol     = "grpc_web"
-	connectString       = "connect"
-	connectProtocol     = "connect_rpc"
+
+	grpcString    = "grpc"
+	grpcwebString = "grpcweb"
+	connectString = "connect"
+
+	grpcProtocol    = "grpc"
+	connectProtocol = "connect_rpc"
 )
 
 type config struct {
@@ -47,4 +49,5 @@ type config struct {
 	responseHeaderKeys      []string
 	omitTraceEvents         bool
 	propagateResponseHeader bool
+	rpcSystem               RPCSystem
 }
