@@ -83,7 +83,7 @@ func TestStreamingMetrics(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	connectClient, host, port := startServer(
+	connectClient, host, port := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(interceptor),
 		}, []connect.ClientOption{}, okayPingServer())
@@ -246,7 +246,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	connectClient, host, port := startServer(
+	connectClient, host, port := startServer(t,
 		[]connect.HandlerOption{},
 		[]connect.ClientOption{
 			connect.WithInterceptors(interceptor),
@@ -412,7 +412,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	connectClient, host, port := startServer(
+	connectClient, host, port := startServer(t,
 		[]connect.HandlerOption{},
 		[]connect.ClientOption{
 			connect.WithInterceptors(interceptor),
@@ -583,7 +583,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	connectClient, host, port := startServer(
+	connectClient, host, port := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(interceptor),
 		}, []connect.ClientOption{}, failPingServer())
@@ -730,7 +730,7 @@ func TestMetrics(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
@@ -884,7 +884,7 @@ func TestWithoutMetrics(t *testing.T) {
 	)
 	interceptor, err := NewInterceptor(WithMeterProvider(meterProvider), WithoutMetrics())
 	require.NoError(t, err)
-	pingClient, _, _ := startServer(nil, []connect.ClientOption{
+	pingClient, _, _ := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
@@ -903,7 +903,7 @@ func TestWithoutTracing(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	interceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithoutTracing())
 	require.NoError(t, err)
-	pingClient, _, _ := startServer([]connect.HandlerOption{
+	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(interceptor),
 	}, nil, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
@@ -920,7 +920,7 @@ func TestClientSimple(t *testing.T) {
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	interceptor, err := NewInterceptor(WithTracerProvider(clientTraceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
@@ -966,7 +966,7 @@ func TestHandlerFailCall(t *testing.T) {
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	interceptor, err := NewInterceptor(WithTracerProvider(clientTraceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
 	_, err = pingClient.Fail(
@@ -1026,7 +1026,7 @@ func TestClientHandlerOpts(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor),
@@ -1078,7 +1078,7 @@ func TestBasicFilter(t *testing.T) {
 		return false
 	}))
 	require.NoError(t, err)
-	pingClient, _, _ := startServer([]connect.HandlerOption{
+	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	req := requestOfSize(1, 0)
@@ -1127,7 +1127,7 @@ func TestHeaderAttribute(t *testing.T) {
 		responseHeaderOption,
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		},
@@ -1186,7 +1186,7 @@ func TestInterceptors(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
@@ -1266,7 +1266,7 @@ func TestUnaryHandlerNoTraceParent(t *testing.T) {
 		WithTracerProvider(trace.NewTracerProvider()),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer([]connect.HandlerOption{
+	client, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, &pluggablePingServer{ping: assertTraceParent})
 	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
@@ -1288,7 +1288,7 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 		WithTracerProvider(trace.NewTracerProvider()),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer([]connect.HandlerOption{
+	client, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, &pluggablePingServer{pingStream: assertTraceParent},
 	)
@@ -1321,7 +1321,7 @@ func TestPropagationBaggage(t *testing.T) {
 		WithTracerProvider(traceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 			assertBaggage,
@@ -1355,7 +1355,7 @@ func TestUnaryPropagation(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 		}, []connect.ClientOption{
@@ -1379,7 +1379,7 @@ func TestUnaryInterceptorPropagation(t *testing.T) {
 		WithTrustRemote(),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer([]connect.HandlerOption{
+	client, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
 			return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 				ctx, span = trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
@@ -1407,7 +1407,7 @@ func TestUnaryInterceptorNotModifiedError(t *testing.T) {
 		WithTrustRemote(),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
 				return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
@@ -1463,7 +1463,7 @@ func TestWithUntrustedRemoteUnary(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
@@ -1486,7 +1486,7 @@ func TestStreamingHandlerInterceptorPropagation(t *testing.T) {
 		WithTracerProvider(traceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer([]connect.HandlerOption{
+	client, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(streamingHandlerInterceptorFunc(func(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 			return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 				ctx, span = trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
@@ -1525,7 +1525,7 @@ func TestStreamingPropagation(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
@@ -1559,7 +1559,7 @@ func TestWithUntrustedRemoteStreaming(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
@@ -1589,7 +1589,7 @@ func TestStreamingClientPropagation(t *testing.T) {
 		WithTracerProvider(trace.NewTracerProvider()),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(nil, []connect.ClientOption{
+	client, _, _ := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor, assertSpanInterceptor{t: t}),
 	}, &pluggablePingServer{pingStream: assertTraceParent},
 	)
@@ -1615,7 +1615,7 @@ func TestStreamingClientContextCancellation(t *testing.T) {
 	}
 	clientInterceptor, err := NewInterceptor()
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		nil,
 		[]connect.ClientOption{connect.WithInterceptors(clientInterceptor)},
 		server,
@@ -1643,7 +1643,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1697,7 +1697,7 @@ func TestStreamingClientTracing(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	clientInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor),
 	}, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1761,7 +1761,7 @@ func TestWithAttributeFilter(t *testing.T) {
 		),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor),
 	}, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1811,7 +1811,7 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 		WithoutServerPeerAttributes(),
 	)
 	require.NoError(t, err)
-	pingClient, _, _ := startServer([]connect.HandlerOption{
+	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1869,7 +1869,7 @@ func TestStreamingSpanStatus(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
@@ -1898,7 +1898,7 @@ func TestWithoutTraceEventsStreaming(t *testing.T) {
 		WithoutTraceEvents(),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1933,7 +1933,7 @@ func TestWithoutTraceEventsUnary(t *testing.T) {
 		WithoutTraceEvents(),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	_, err = pingClient.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
@@ -1971,7 +1971,7 @@ func TestServerSpanStatus(t *testing.T) {
 			WithTracerProvider(clientTraceProvider),
 		)
 		require.NoError(t, err)
-		pingClient, _, _ := startServer([]connect.HandlerOption{
+		pingClient, _, _ := startServer(t, []connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
 			connect.WithInterceptors(clientInterceptor),
@@ -2007,7 +2007,7 @@ func TestStreamingServerSpanStatus(t *testing.T) {
 			WithTracerProvider(clientTraceProvider),
 		)
 		require.NoError(t, err)
-		client, _, _ := startServer(
+		client, _, _ := startServer(t,
 			[]connect.HandlerOption{
 				connect.WithInterceptors(serverInterceptor),
 			}, []connect.ClientOption{
@@ -2115,15 +2115,19 @@ func assertSpanLink(t *testing.T, rootSpan traceapi.Span, clientSpan trace.ReadO
 	assert.Equal(t, handlerSpan.Links()[0].SpanContext.SpanID(), clientSpan.SpanContext().SpanID())
 }
 
-func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption, svc pingv1connect.PingServiceHandler) (pingv1connect.PingServiceClient, string, int) {
+func startServer(t *testing.T, handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption, svc pingv1connect.PingServiceHandler) (pingv1connect.PingServiceClient, string, int) {
+	t.Helper()
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(svc, handlerOpts...))
 	server := httptest.NewUnstartedServer(mux)
 	server.EnableHTTP2 = true
 	server.StartTLS()
+	t.Cleanup(server.Close)
 	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
-	host, port, _ := net.SplitHostPort(strings.ReplaceAll(server.URL, "https://", ""))
-	portint, _ := strconv.Atoi(port)
+	host, port, err := net.SplitHostPort(strings.ReplaceAll(server.URL, "https://", ""))
+	require.NoError(t, err)
+	portint, err := strconv.Atoi(port)
+	require.NoError(t, err)
 	return pingClient, host, portint
 }
 
@@ -2254,7 +2258,7 @@ func TestPropagateResponseHeader(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		},
@@ -2290,7 +2294,7 @@ func TestPropagateResponseHeaderStreaming(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		},
