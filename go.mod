@@ -1,6 +1,6 @@
 module connectrpc.com/otelconnect
 
-go 1.24
+go 1.24.0
 
 require (
 	connectrpc.com/connect v1.17.0
@@ -11,6 +11,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.29.0
 	go.opentelemetry.io/otel/sdk/metric v1.29.0
 	go.opentelemetry.io/otel/trace v1.29.0
+	golang.org/x/sync v0.17.0
 	google.golang.org/protobuf v1.35.1
 )
 

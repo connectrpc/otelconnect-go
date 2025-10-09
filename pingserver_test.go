@@ -24,6 +24,7 @@ import (
 	"connectrpc.com/connect"
 	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
 	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
+	"golang.org/x/sync/errgroup"
 )
 
 const cacheablePingEtag = "ABCDEFGH"
@@ -76,6 +77,39 @@ func pingStreamFail(
 	return connect.NewError(connect.CodeDataLoss, errors.New("Oh no"))
 }
 
+func pingStreamMultipleGoroutines(
+	ctx context.Context,
+	stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse],
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	ch := make(chan []byte)
+	grp, ctx := errgroup.WithContext(ctx)
+	grp.Go(func() error {
+		for data := range ch {
+			err := stream.Send(&pingv1.PingStreamResponse{Data: data})
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	for {
+		req, err := stream.Receive()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			close(ch)
+			return err
+		}
+		ch <- req.Data
+	}
+	close(ch)
+	return grp.Wait()
+}
+
 func okayPingServer() *pluggablePingServer {
 	return &pluggablePingServer{
 		ping:       pingOkay,
@@ -87,6 +121,13 @@ func failPingServer() *pluggablePingServer {
 	return &pluggablePingServer{
 		ping:       pingFail,
 		pingStream: pingStreamFail,
+	}
+}
+
+func multigoroutinePingServer() *pluggablePingServer {
+	return &pluggablePingServer{
+		ping:       pingOkay,
+		pingStream: pingStreamMultipleGoroutines,
 	}
 }
 
