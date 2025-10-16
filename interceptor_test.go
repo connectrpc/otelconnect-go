@@ -51,12 +51,11 @@ import (
 )
 
 const (
-	bufConnect               = "connect_rpc"
-	PingMethod               = "Ping"
-	FailMethod               = "Fail"
-	PingStreamMethod         = "PingStream"
-	UnimplementedString      = "unimplemented"
-	TraceParentKey           = "Traceparent"
+	pingMethod               = "Ping"
+	failMethod               = "Fail"
+	pingStreamMethod         = "PingStream"
+	unimplementedString      = "unimplemented"
+	traceParentKey           = "Traceparent"
 	rpcClientDuration        = "rpc.client.duration"
 	rpcClientRequestSize     = "rpc.client.request.size"
 	rpcClientResponseSize    = "rpc.client.response.size"
@@ -67,7 +66,9 @@ const (
 	rpcServerResponseSize    = "rpc.server.response.size"
 	rpcServerRequestsPerRPC  = "rpc.server.requests_per_rpc"
 	rpcServerResponsesPerRPC = "rpc.server.responses_per_rpc"
-	rpcBufConnectStatusCode  = "rpc.connect_rpc.error_code"
+	rpcConnectErrorCode      = "rpc.connect_rpc.error_code"
+	rpcGRPCStatusCode        = "rpc.grpc.status_code"
+	rpcSystem                = "rpc.system"
 )
 
 func TestStreamingMetrics(t *testing.T) {
@@ -83,7 +84,7 @@ func TestStreamingMetrics(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	connectClient, host, port := startServer(
+	connectClient, host, port := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(interceptor),
 		}, []connect.ClientOption{}, okayPingServer())
@@ -118,9 +119,9 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -141,9 +142,9 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   size,
@@ -164,9 +165,9 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   size,
@@ -187,9 +188,9 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   1,
@@ -210,9 +211,9 @@ func TestStreamingMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   1,
@@ -246,7 +247,7 @@ func TestStreamingMetricsClient(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	connectClient, host, port := startServer(
+	connectClient, host, port := startServer(t,
 		[]connect.HandlerOption{},
 		[]connect.ClientOption{
 			connect.WithInterceptors(interceptor),
@@ -282,9 +283,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -305,9 +306,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   size,
@@ -328,9 +329,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   size,
@@ -351,9 +352,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   1,
@@ -374,9 +375,9 @@ func TestStreamingMetricsClient(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   1,
@@ -412,7 +413,7 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	connectClient, host, port := startServer(
+	connectClient, host, port := startServer(t,
 		[]connect.HandlerOption{},
 		[]connect.ClientOption{
 			connect.WithInterceptors(interceptor),
@@ -448,10 +449,10 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCMethodKey.String(pingStreamMethod),
+										attribute.Key(rpcConnectErrorCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -472,9 +473,9 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   size,
@@ -495,11 +496,11 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
-										semconv.RPCSystemKey.String(bufConnect),
+										attribute.Key(rpcConnectErrorCode).String("data_loss"),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCMethodKey.String(pingStreamMethod),
+										attribute.Key(rpcConnectErrorCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   0.0,
@@ -520,10 +521,10 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCMethodKey.String(pingStreamMethod),
+										attribute.Key(rpcConnectErrorCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1,
@@ -544,10 +545,10 @@ func TestStreamingMetricsClientFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCMethodKey.String(pingStreamMethod),
+										attribute.Key(rpcConnectErrorCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1,
@@ -583,7 +584,7 @@ func TestStreamingMetricsFail(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	connectClient, host, port := startServer(
+	connectClient, host, port := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(interceptor),
 		}, []connect.ClientOption{}, failPingServer())
@@ -619,10 +620,10 @@ func TestStreamingMetricsFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
-										semconv.RPCSystemKey.String(bufConnect),
+										attribute.Key(rpcConnectErrorCode).String("data_loss"),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   1000.0,
@@ -643,9 +644,9 @@ func TestStreamingMetricsFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
+										semconv.RPCMethodKey.String(pingStreamMethod),
 									),
 									Count: 1,
 									Sum:   size,
@@ -666,10 +667,10 @@ func TestStreamingMetricsFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCMethodKey.String(pingStreamMethod),
+										attribute.Key(rpcConnectErrorCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   1,
@@ -690,10 +691,10 @@ func TestStreamingMetricsFail(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCMethodKey.String(PingStreamMethod),
-										attribute.Key(rpcBufConnectStatusCode).String("data_loss"),
+										semconv.RPCMethodKey.String(pingStreamMethod),
+										attribute.Key(rpcConnectErrorCode).String("data_loss"),
 									),
 									Count: 1,
 									Sum:   0,
@@ -730,7 +731,7 @@ func TestMetrics(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
@@ -757,9 +758,9 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCMethodKey.String(pingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 									),
 									Count: 1,
 									Sum:   time.Second.Milliseconds(),
@@ -780,9 +781,9 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCMethodKey.String(pingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 									),
 									Count: 1,
 									Sum:   16,
@@ -803,9 +804,9 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCMethodKey.String(pingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 									),
 									Count: 1,
 									Sum:   16,
@@ -826,9 +827,9 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCMethodKey.String(pingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 									),
 									Count: 1,
 									Sum:   1,
@@ -849,9 +850,9 @@ func TestMetrics(t *testing.T) {
 									Attributes: attribute.NewSet(
 										semconv.NetPeerNameKey.String(host),
 										semconv.NetPeerPortKey.Int(port),
-										semconv.RPCMethodKey.String(PingMethod),
+										semconv.RPCMethodKey.String(pingMethod),
 										semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-										semconv.RPCSystemKey.String(bufConnect),
+										semconv.RPCSystemKey.String(connectProtocol),
 									),
 									Count: 1,
 									Sum:   1,
@@ -884,7 +885,7 @@ func TestWithoutMetrics(t *testing.T) {
 	)
 	interceptor, err := NewInterceptor(WithMeterProvider(meterProvider), WithoutMetrics())
 	require.NoError(t, err)
-	pingClient, _, _ := startServer(nil, []connect.ClientOption{
+	pingClient, _, _ := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 12)); err != nil {
@@ -903,7 +904,7 @@ func TestWithoutTracing(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	interceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithoutTracing())
 	require.NoError(t, err)
-	pingClient, _, _ := startServer([]connect.HandlerOption{
+	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(interceptor),
 	}, nil, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
@@ -920,7 +921,7 @@ func TestClientSimple(t *testing.T) {
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	interceptor, err := NewInterceptor(WithTracerProvider(clientTraceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
@@ -930,7 +931,7 @@ func TestClientSimple(t *testing.T) {
 	require.Equal(t, codes.Unset, clientSpanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -952,9 +953,9 @@ func TestClientSimple(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCMethodKey.String(pingMethod),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -966,7 +967,7 @@ func TestHandlerFailCall(t *testing.T) {
 	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
 	interceptor, err := NewInterceptor(WithTracerProvider(clientTraceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(interceptor),
 	}, okayPingServer())
 	_, err = pingClient.Fail(
@@ -978,7 +979,7 @@ func TestHandlerFailCall(t *testing.T) {
 	require.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + FailMethod,
+			spanName: pingv1connect.PingServiceName + "/" + failMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -1000,10 +1001,10 @@ func TestHandlerFailCall(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(FailMethod),
-				attribute.Key(rpcBufConnectStatusCode).String(UnimplementedString),
+				semconv.RPCMethodKey.String(failMethod),
+				attribute.Key(rpcConnectErrorCode).String(unimplementedString),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -1026,7 +1027,7 @@ func TestClientHandlerOpts(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor),
@@ -1039,7 +1040,7 @@ func TestClientHandlerOpts(t *testing.T) {
 	require.Equal(t, codes.Unset, clientSpanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -1061,9 +1062,9 @@ func TestClientHandlerOpts(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCMethodKey.String(pingMethod),
 			},
 		},
 	}, clientSpanRecorder.Ended())
@@ -1078,7 +1079,7 @@ func TestBasicFilter(t *testing.T) {
 		return false
 	}))
 	require.NoError(t, err)
-	pingClient, _, _ := startServer([]connect.HandlerOption{
+	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	req := requestOfSize(1, 0)
@@ -1127,7 +1128,7 @@ func TestHeaderAttribute(t *testing.T) {
 		responseHeaderOption,
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		},
@@ -1186,7 +1187,7 @@ func TestInterceptors(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
@@ -1197,7 +1198,7 @@ func TestInterceptors(t *testing.T) {
 	}
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -1219,13 +1220,13 @@ func TestInterceptors(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCMethodKey.String(pingMethod),
 			},
 		},
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -1247,9 +1248,9 @@ func TestInterceptors(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCMethodKey.String(pingMethod),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1258,7 +1259,7 @@ func TestInterceptors(t *testing.T) {
 func TestUnaryHandlerNoTraceParent(t *testing.T) {
 	t.Parallel()
 	assertTraceParent := func(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-		assert.Empty(t, req.Header().Get(TraceParentKey))
+		assert.Empty(t, req.Header().Get(traceParentKey))
 		return connect.NewResponse(&pingv1.PingResponse{Id: req.Msg.GetId()}), nil
 	}
 	serverInterceptor, err := NewInterceptor(
@@ -1266,7 +1267,7 @@ func TestUnaryHandlerNoTraceParent(t *testing.T) {
 		WithTracerProvider(trace.NewTracerProvider()),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer([]connect.HandlerOption{
+	client, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, &pluggablePingServer{ping: assertTraceParent})
 	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
@@ -1280,7 +1281,7 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 		Data: []byte("Hello, otel!"),
 	}
 	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
-		assert.Empty(t, stream.RequestHeader().Get(TraceParentKey))
+		assert.Empty(t, stream.RequestHeader().Get(traceParentKey))
 		return stream.Send(msg)
 	}
 	serverInterceptor, err := NewInterceptor(
@@ -1288,7 +1289,7 @@ func TestStreamingHandlerNoTraceParent(t *testing.T) {
 		WithTracerProvider(trace.NewTracerProvider()),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer([]connect.HandlerOption{
+	client, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, &pluggablePingServer{pingStream: assertTraceParent},
 	)
@@ -1321,7 +1322,7 @@ func TestPropagationBaggage(t *testing.T) {
 		WithTracerProvider(traceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 			assertBaggage,
@@ -1355,7 +1356,7 @@ func TestUnaryPropagation(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 		}, []connect.ClientOption{
@@ -1379,7 +1380,7 @@ func TestUnaryInterceptorPropagation(t *testing.T) {
 		WithTrustRemote(),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer([]connect.HandlerOption{
+	client, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
 			return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 				ctx, span = trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
@@ -1407,7 +1408,7 @@ func TestUnaryInterceptorNotModifiedError(t *testing.T) {
 		WithTrustRemote(),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
 				return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
@@ -1463,7 +1464,7 @@ func TestWithUntrustedRemoteUnary(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
@@ -1486,7 +1487,7 @@ func TestStreamingHandlerInterceptorPropagation(t *testing.T) {
 		WithTracerProvider(traceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer([]connect.HandlerOption{
+	client, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(streamingHandlerInterceptorFunc(func(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 			return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
 				ctx, span = trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
@@ -1525,7 +1526,7 @@ func TestStreamingPropagation(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
@@ -1559,7 +1560,7 @@ func TestWithUntrustedRemoteStreaming(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
@@ -1580,7 +1581,7 @@ func TestStreamingClientPropagation(t *testing.T) {
 		Data: []byte("Hello, otel!"),
 	}
 	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
-		assert.NotEmpty(t, stream.RequestHeader().Get(TraceParentKey))
+		assert.NotEmpty(t, stream.RequestHeader().Get(traceParentKey))
 		require.NoError(t, stream.Send(msg))
 		return nil
 	}
@@ -1589,7 +1590,7 @@ func TestStreamingClientPropagation(t *testing.T) {
 		WithTracerProvider(trace.NewTracerProvider()),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(nil, []connect.ClientOption{
+	client, _, _ := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor, assertSpanInterceptor{t: t}),
 	}, &pluggablePingServer{pingStream: assertTraceParent},
 	)
@@ -1615,7 +1616,7 @@ func TestStreamingClientContextCancellation(t *testing.T) {
 	}
 	clientInterceptor, err := NewInterceptor()
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		nil,
 		[]connect.ClientOption{connect.WithInterceptors(clientInterceptor)},
 		server,
@@ -1643,7 +1644,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1661,7 +1662,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	require.Equal(t, codes.Unset, spanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -1683,9 +1684,9 @@ func TestStreamingHandlerTracing(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCMethodKey.String(pingStreamMethod),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1697,7 +1698,7 @@ func TestStreamingClientTracing(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	clientInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor),
 	}, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1713,7 +1714,7 @@ func TestStreamingClientTracing(t *testing.T) {
 	require.Equal(t, codes.Unset, spanRecorder.Ended()[0].Status().Code)
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -1735,9 +1736,9 @@ func TestStreamingClientTracing(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCMethodKey.String(pingStreamMethod),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1761,7 +1762,7 @@ func TestWithAttributeFilter(t *testing.T) {
 		),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer(nil, []connect.ClientOption{
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor),
 	}, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1775,7 +1776,7 @@ func TestWithAttributeFilter(t *testing.T) {
 	require.NoError(t, stream.CloseResponse())
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -1795,8 +1796,8 @@ func TestWithAttributeFilter(t *testing.T) {
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
-				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCSystemKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingStreamMethod),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1811,7 +1812,7 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 		WithoutServerPeerAttributes(),
 	)
 	require.NoError(t, err)
-	pingClient, _, _ := startServer([]connect.HandlerOption{
+	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1824,7 +1825,7 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 	require.NoError(t, stream.CloseResponse())
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethod,
 			events: []trace.Event{
 				{
 					Name: messageKey,
@@ -1844,9 +1845,9 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 				},
 			},
 			attrs: []attribute.KeyValue{
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCMethodKey.String(pingStreamMethod),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1869,7 +1870,7 @@ func TestStreamingSpanStatus(t *testing.T) {
 		WithTracerProvider(clientTraceProvider),
 	)
 	require.NoError(t, err)
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
@@ -1898,7 +1899,7 @@ func TestWithoutTraceEventsStreaming(t *testing.T) {
 		WithoutTraceEvents(),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1911,14 +1912,14 @@ func TestWithoutTraceEventsStreaming(t *testing.T) {
 	require.NoError(t, stream.CloseResponse())
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingStreamMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethod,
 			events:   []trace.Event{},
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingStreamMethod),
+				semconv.RPCMethodKey.String(pingStreamMethod),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1933,21 +1934,21 @@ func TestWithoutTraceEventsUnary(t *testing.T) {
 		WithoutTraceEvents(),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer([]connect.HandlerOption{
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	_, err = pingClient.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
 	require.NoError(t, err)
 	assertSpans(t, []wantSpans{
 		{
-			spanName: pingv1connect.PingServiceName + "/" + PingMethod,
+			spanName: pingv1connect.PingServiceName + "/" + pingMethod,
 			events:   []trace.Event{},
 			attrs: []attribute.KeyValue{
 				semconv.NetPeerNameKey.String(host),
 				semconv.NetPeerPortKey.Int(port),
-				semconv.RPCSystemKey.String(bufConnect),
+				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
-				semconv.RPCMethodKey.String(PingMethod),
+				semconv.RPCMethodKey.String(pingMethod),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1971,7 +1972,7 @@ func TestServerSpanStatus(t *testing.T) {
 			WithTracerProvider(clientTraceProvider),
 		)
 		require.NoError(t, err)
-		pingClient, _, _ := startServer([]connect.HandlerOption{
+		pingClient, _, _ := startServer(t, []connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		}, []connect.ClientOption{
 			connect.WithInterceptors(clientInterceptor),
@@ -2007,7 +2008,7 @@ func TestStreamingServerSpanStatus(t *testing.T) {
 			WithTracerProvider(clientTraceProvider),
 		)
 		require.NoError(t, err)
-		client, _, _ := startServer(
+		client, _, _ := startServer(t,
 			[]connect.HandlerOption{
 				connect.WithInterceptors(serverInterceptor),
 			}, []connect.ClientOption{
@@ -2030,6 +2031,131 @@ func TestStreamingServerSpanStatus(t *testing.T) {
 		assert.Equal(t, testcase.wantServerSpanCode, handlerSpanRecorder.Ended()[0].Status().Code)
 		assert.Equal(t, testcase.wantServerSpanDescription, handlerSpanRecorder.Ended()[0].Status().Description)
 		assert.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+	}
+}
+
+func TestWithRPCSystem(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		system         RPCSystem
+		expectProtocol string
+	}{
+		{
+			system:         nil,
+			expectProtocol: "", // depends on request
+		},
+		{
+			system:         ConnectRPCSystem,
+			expectProtocol: connectProtocol,
+		},
+		{
+			system:         GRPCSystem,
+			expectProtocol: grpcProtocol,
+		},
+	}
+	clients := []struct {
+		protocol     string
+		expectSystem RPCSystem
+		opt          connect.ClientOption
+	}{
+		{
+			protocol:     connectString,
+			expectSystem: ConnectRPCSystem,
+		},
+		{
+			protocol:     grpcString,
+			expectSystem: GRPCSystem,
+			opt:          connect.WithGRPC(),
+		},
+		{
+			protocol:     grpcwebString,
+			expectSystem: GRPCSystem,
+			opt:          connect.WithGRPCWeb(),
+		},
+	}
+	for _, testCase := range testCases {
+		name := "based-on-wire-request"
+		if testCase.system != nil {
+			name = testCase.system.protocol()
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, clientCase := range clients {
+				t.Run("client="+clientCase.protocol, func(t *testing.T) {
+					t.Parallel()
+					var opts []connect.ClientOption
+					if clientCase.opt != nil {
+						opts = []connect.ClientOption{clientCase.opt}
+					}
+					metricReader := metricsdk.NewManualReader()
+					meterProvider := metricsdk.NewMeterProvider(
+						metricsdk.WithReader(
+							metricReader,
+						),
+					)
+					interceptor, err := NewInterceptor(
+						WithMeterProvider(meterProvider),
+						WithRPCSystem(testCase.system),
+					)
+					require.NoError(t, err)
+					rpcClient, _, _ := startServer(t,
+						[]connect.HandlerOption{connect.WithInterceptors(interceptor)},
+						opts,
+						failPingServer(),
+					)
+					_, err = rpcClient.Ping(t.Context(), connect.NewRequest(&pingv1.PingRequest{}))
+					require.Equal(t, connect.CodeDataLoss, connect.CodeOf(err))
+					bidiStream := rpcClient.PingStream(t.Context())
+					defer func() {
+						require.NoError(t, bidiStream.CloseResponse())
+					}()
+					require.NoError(t, bidiStream.Send(&pingv1.PingStreamRequest{}))
+					require.NoError(t, bidiStream.CloseRequest())
+					_, err = bidiStream.Receive()
+					require.Equal(t, connect.CodeDataLoss, connect.CodeOf(err))
+
+					expectedMetricsConventions := testCase.system
+					if expectedMetricsConventions == nil {
+						expectedMetricsConventions = clientCase.expectSystem
+					}
+					metrics := &metricdata.ResourceMetrics{}
+					require.NoError(t, metricReader.Collect(context.Background(), metrics))
+
+					// Assert metrics have the right "shape" per expected RPC system.
+					require.Len(t, metrics.ScopeMetrics, 1)
+					require.NotEmpty(t, metrics.ScopeMetrics[0].Metrics)
+					var hasStatusCode bool
+					for _, metric := range metrics.ScopeMetrics[0].Metrics {
+						// For now, all the metrics we emit are integer histograms.
+						histo, ok := metric.Data.(metricdata.Histogram[int64])
+						require.True(t, ok)
+						require.NotEmpty(t, histo.DataPoints)
+						for _, dataPoint := range histo.DataPoints {
+							val, ok := dataPoint.Attributes.Value(rpcSystem)
+							require.True(t, ok)
+							require.Equal(t, expectedMetricsConventions.protocol(), val.AsString())
+							if metric.Name != rpcServerRequestSize {
+								// Request size doesn't include status code because the
+								// status is not yet known at the time the size is recorded.
+								// But all other metrics do include the status code.
+								hasStatusCode = true
+								if expectedMetricsConventions.protocol() == grpcProtocol {
+									val, ok := dataPoint.Attributes.Value(rpcGRPCStatusCode)
+									require.True(t, ok)
+									require.Equal(t, int64(connect.CodeDataLoss), val.AsInt64())
+								} else {
+									val, ok := dataPoint.Attributes.Value(rpcConnectErrorCode)
+									require.True(t, ok)
+									require.Equal(t, connect.CodeDataLoss.String(), val.AsString())
+								}
+							}
+						}
+					}
+					// Should have encountered at least one metric with the status code.
+					require.True(t, hasStatusCode)
+				})
+			}
+		})
 	}
 }
 
@@ -2115,15 +2241,19 @@ func assertSpanLink(t *testing.T, rootSpan traceapi.Span, clientSpan trace.ReadO
 	assert.Equal(t, handlerSpan.Links()[0].SpanContext.SpanID(), clientSpan.SpanContext().SpanID())
 }
 
-func startServer(handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption, svc pingv1connect.PingServiceHandler) (pingv1connect.PingServiceClient, string, int) {
+func startServer(t *testing.T, handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption, svc pingv1connect.PingServiceHandler) (pingv1connect.PingServiceClient, string, int) {
+	t.Helper()
 	mux := http.NewServeMux()
 	mux.Handle(pingv1connect.NewPingServiceHandler(svc, handlerOpts...))
 	server := httptest.NewUnstartedServer(mux)
 	server.EnableHTTP2 = true
 	server.StartTLS()
+	t.Cleanup(server.Close)
 	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
-	host, port, _ := net.SplitHostPort(strings.ReplaceAll(server.URL, "https://", ""))
-	portint, _ := strconv.Atoi(port)
+	host, port, err := net.SplitHostPort(strings.ReplaceAll(server.URL, "https://", ""))
+	require.NoError(t, err)
+	portint, err := strconv.Atoi(port)
+	require.NoError(t, err)
 	return pingClient, host, portint
 }
 
@@ -2254,7 +2384,7 @@ func TestPropagateResponseHeader(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		},
@@ -2290,7 +2420,7 @@ func TestPropagateResponseHeaderStreaming(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	client, _, _ := startServer(
+	client, _, _ := startServer(t,
 		[]connect.HandlerOption{
 			connect.WithInterceptors(serverInterceptor),
 		},

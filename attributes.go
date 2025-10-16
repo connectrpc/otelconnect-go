@@ -62,12 +62,11 @@ func addProcedureAttributes(attrs []attribute.KeyValue, procedure string) []attr
 	return attrs
 }
 
-func addRequestAttributes(attrs []attribute.KeyValue, spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
+func addRequestAttributes(protocol string, attrs []attribute.KeyValue, spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
 	if addr := peer.Addr; addr != "" {
 		attrs = addAddressAttributes(attrs, addr)
 	}
 	name := strings.TrimLeft(spec.Procedure, "/")
-	protocol := protocolToSemConv(peer.Protocol)
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
 	attrs = addProcedureAttributes(attrs, name)
 	return attrs
@@ -90,7 +89,7 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 	// Following the respective specifications, use integers and "status_code" for
 	// gRPC codes in contrast to strings and "error_code" for Connect codes.
 	switch protocol {
-	case grpcProtocol, grpcwebProtocol:
+	case grpcProtocol:
 		codeKey := attribute.Key("rpc." + protocol + ".status_code")
 		if serverErr != nil {
 			return codeKey.Int64(int64(connect.CodeOf(serverErr))), true

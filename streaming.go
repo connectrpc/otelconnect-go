@@ -43,16 +43,16 @@ type streamingState struct {
 }
 
 func newStreamingState(
+	protocol string,
 	spec connect.Spec,
 	peer connect.Peer,
 	attributeFilter AttributeFilter,
 	omitTraceEvents bool,
 	receiveSize, sendSize metric.Int64Histogram,
 ) *streamingState {
-	protocol := protocolToSemConv(peer.Protocol)
 	attributes := make([]attribute.KeyValue, 0, 6) // 5 max request attrs + status code attr
 	attributes = attributeFilter.filter(spec,
-		addRequestAttributes(attributes, spec, peer)...,
+		addRequestAttributes(protocol, attributes, spec, peer)...,
 	)
 	return &streamingState{
 		spec:            spec,
