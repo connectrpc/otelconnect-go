@@ -99,9 +99,9 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
 		requestSpan, responseSpan := semconv.MessageTypeSent, semconv.MessageTypeReceived
-		attributes = addHeaderAttributes(attributes, protocol, requestKey, request.Header(), i.config.requestHeaderKeys)
+		attributesTrace := addHeaderAttributes(attributes, protocol, requestKey, request.Header(), i.config.requestHeaderKeys)
 		traceOpts := make([]trace.SpanStartOption, 0, 4)
-		traceOpts = append(traceOpts, trace.WithAttributes(attributes...))
+		traceOpts = append(traceOpts, trace.WithAttributes(attributesTrace...))
 		if !isClient {
 			spanKind = trace.SpanKindServer
 			requestSpan, responseSpan = semconv.MessageTypeReceived, semconv.MessageTypeSent
