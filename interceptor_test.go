@@ -2462,3 +2462,136 @@ func assertUsableTraceparent(t *testing.T, header http.Header) {
 	assert.NotEmpty(t, spanContext.SpanID(), "span ID should not be empty")
 	assert.NotEmpty(t, spanContext.TraceID(), "trace ID should not be empty")
 }
+
+func TestWithCustomAttributes(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	customAttrCalled := false
+	serverInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithCustomAttributes(func(ctx context.Context, req connect.AnyRequest) []attribute.KeyValue {
+			customAttrCalled = true
+			// Verify context is valid
+			assert.NotNil(t, ctx)
+			return []attribute.KeyValue{
+				attribute.String("custom.server.attr", "server-value"),
+				attribute.Bool("custom.is.server", true),
+			}
+		}),
+	)
+	require.NoError(t, err)
+
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, okayPingServer())
+
+	_, err = pingClient.Ping(context.Background(), requestOfSize(1, 0))
+	require.NoError(t, err)
+	require.True(t, customAttrCalled, "custom attributes function should be called")
+
+	spans := spanRecorder.Ended()
+	require.Len(t, spans, 1)
+
+	// Verify custom attributes are present
+	attrs := spans[0].Attributes()
+	foundCustomServer := false
+	foundCustomIsServer := false
+	for _, attr := range attrs {
+		if attr.Key == "custom.server.attr" && attr.Value.AsString() == "server-value" {
+			foundCustomServer = true
+		}
+		if attr.Key == "custom.is.server" && attr.Value.AsBool() {
+			foundCustomIsServer = true
+		}
+	}
+	assert.True(t, foundCustomServer, "custom.server.attr should be present in span attributes")
+	assert.True(t, foundCustomIsServer, "custom.is.server should be present in span attributes")
+
+	// Verify standard attributes are still present
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingMethod,
+			events: []trace.Event{
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeReceived,
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				attribute.String("custom.server.attr", "server-value"),
+				attribute.Bool("custom.is.server", true),
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String(connectProtocol),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(pingMethod),
+			},
+		},
+	}, spans)
+}
+
+func TestWithCustomAttributesNil(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	// Pass nil to WithCustomAttributes to ensure it doesn't cause issues
+	clientInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithCustomAttributes(nil),
+	)
+	require.NoError(t, err)
+
+	pingClient, host, port := startServer(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(clientInterceptor),
+	}, okayPingServer())
+
+	_, err = pingClient.Ping(context.Background(), requestOfSize(1, 0))
+	require.NoError(t, err)
+
+	// Should work normally without custom attributes
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingMethod,
+			events: []trace.Event{
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeSent,
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+				{
+					Name: messageKey,
+					Attributes: []attribute.KeyValue{
+						semconv.MessageTypeReceived,
+						semconv.MessageIDKey.Int(1),
+						semconv.MessageUncompressedSizeKey.Int(2),
+					},
+				},
+			},
+			attrs: []attribute.KeyValue{
+				semconv.NetPeerNameKey.String(host),
+				semconv.NetPeerPortKey.Int(port),
+				semconv.RPCSystemKey.String(connectProtocol),
+				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
+				semconv.RPCMethodKey.String(pingMethod),
+			},
+		},
+	}, spanRecorder.Ended())
+}
