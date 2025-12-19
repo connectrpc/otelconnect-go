@@ -40,6 +40,7 @@ const (
 type config struct {
 	filter                  func(context.Context, connect.Spec) bool
 	filterAttribute         AttributeFilter
+	customAttributes        CustomAttributes
 	meter                   metric.Meter
 	tracer                  trace.Tracer
 	propagator              propagation.TextMapPropagator

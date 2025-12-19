@@ -84,6 +84,10 @@ func WithAttributeFilter(filter AttributeFilter) Option {
 	return &attributeFilterOption{filterAttribute: filter}
 }
 
+func WithCustomAttributes(customAttributes CustomAttributes) Option {
+	return &customAttributesOption{customAttributes: customAttributes}
+}
+
 // WithoutServerPeerAttributes removes net.peer.port and net.peer.name
 // attributes from server trace and span attributes. The default behavior
 // follows the OpenTelemetry semantic conventions for RPC, but produces very
@@ -179,6 +183,16 @@ type attributeFilterOption struct {
 func (o *attributeFilterOption) apply(c *config) {
 	if o.filterAttribute != nil {
 		c.filterAttribute = o.filterAttribute
+	}
+}
+
+type customAttributesOption struct {
+	customAttributes CustomAttributes
+}
+
+func (o *customAttributesOption) apply(c *config) {
+	if o.customAttributes != nil {
+		c.customAttributes = o.customAttributes
 	}
 }
 

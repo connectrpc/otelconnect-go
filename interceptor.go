@@ -94,6 +94,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol, i.config.rpcSystem)
 		attributes := make([]attribute.KeyValue, 0, 6+len(i.config.requestHeaderKeys)) // 5 max request attrs + status code attr + headers
+		attributes = append(attributes, i.getCustomAttributes(ctx, request)...)
 		attributes = attributeFilter(request.Spec(), addRequestAttributes(protocol, attributes, request.Spec(), request.Peer())...)
 		instrumentation := i.getInstruments(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
@@ -357,6 +358,13 @@ func (i *Interceptor) getInstruments(isClient bool) *instruments {
 		return &i.clientInstruments
 	}
 	return &i.serverInstruments
+}
+
+func (i *Interceptor) getCustomAttributes(ctx context.Context, request connect.AnyRequest) []attribute.KeyValue {
+	if i.config.customAttributes == nil {
+		return nil
+	}
+	return i.config.customAttributes(ctx, request)
 }
 
 // protocolToSemConv converts the protocol string to the OpenTelemetry format.
