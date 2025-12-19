@@ -1075,9 +1075,13 @@ func TestBasicFilter(t *testing.T) {
 	headerKey, headerVal := "Some-Header", "foobar"
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithFilter(func(_ context.Context, _ connect.Spec) bool {
-		return false
-	}))
+	metricReader, meterProvider := setupMetrics()
+	serverInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithMeterProvider(meterProvider),
+		WithFilter(func(_ context.Context, _ connect.Spec) bool {
+			return false
+		}))
 	require.NoError(t, err)
 	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
@@ -1091,6 +1095,13 @@ func TestBasicFilter(t *testing.T) {
 		t.Error("unexpected spans recorded")
 	}
 	assertSpans(t, []wantSpans{}, spanRecorder.Ended())
+
+	// Verify no metrics are recorded when filtered out
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+
+	// Should have no scope metrics when filtered out
+	assert.Empty(t, metrics.ScopeMetrics, "No metrics should be recorded when filtered out")
 }
 
 func TestHeaderAttribute(t *testing.T) {
@@ -1114,9 +1125,15 @@ func TestHeaderAttribute(t *testing.T) {
 	attributeCumsumRes := attribute.StringSlice(cumsumResKey, attributeValue)
 	requestHeaderOption := WithTraceRequestHeader(pingReq, cumsumReq)
 	responseHeaderOption := WithTraceResponseHeader(pingRes, cumsumRes)
+
+	// Setup metrics for both server and client
+	serverMetricReader, serverMeterProvider := setupMetrics()
+	clientMetricReader, clientMeterProvider := setupMetrics()
+
 	serverInterceptor, err := NewInterceptor(
 		WithPropagator(propagator),
 		WithTracerProvider(handlerTraceProvider),
+		WithMeterProvider(serverMeterProvider),
 		requestHeaderOption,
 		responseHeaderOption,
 	)
@@ -1124,6 +1141,7 @@ func TestHeaderAttribute(t *testing.T) {
 	clientInterceptor, err := NewInterceptor(
 		WithPropagator(propagator),
 		WithTracerProvider(clientTraceProvider),
+		WithMeterProvider(clientMeterProvider),
 		requestHeaderOption,
 		responseHeaderOption,
 	)
@@ -1178,6 +1196,28 @@ func TestHeaderAttribute(t *testing.T) {
 	// Response spans from client
 	require.Contains(t, clientPingSpan.Attributes(), attributePingRes)
 	require.Contains(t, clientCumsumSpan.Attributes(), attributeCumsumRes)
+
+	// Assert server metrics - should NOT contain header metadata
+	assertMetrics(t, serverMetricReader, expectedMetrics{
+		ServerDuration:     true,
+		ServerRequestSize:  true,
+		ServerResponseSize: true,
+		NoHeaderMetadata:   true,
+		RequiredAttrs: map[string]attribute.Value{
+			"rpc.system":  attribute.StringValue(connectProtocol),
+			"rpc.service": attribute.StringValue(pingv1connect.PingServiceName),
+		},
+	})
+
+	// Assert client metrics - should NOT contain header metadata
+	assertMetrics(t, clientMetricReader, expectedMetrics{
+		ClientDuration:   true,
+		NoHeaderMetadata: true,
+		RequiredAttrs: map[string]attribute.Value{
+			"rpc.system":  attribute.StringValue(connectProtocol),
+			"rpc.service": attribute.StringValue(pingv1connect.PingServiceName),
+		},
+	})
 }
 
 func TestInterceptors(t *testing.T) {
@@ -1185,12 +1225,19 @@ func TestInterceptors(t *testing.T) {
 	const largeMessageSize = 1000
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
+	metricReader, meterProvider := setupMetrics()
+	serverInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithMeterProvider(meterProvider),
+		WithTraceRequestHeader("X-Request-Id"),
+	)
 	require.NoError(t, err)
 	pingClient, host, port := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
-	if _, err := pingClient.Ping(context.Background(), requestOfSize(1, 0)); err != nil {
+	pingWithHeader := requestOfSize(1, 0)
+	pingWithHeader.Header().Set("X-Request-Id", "request-123")
+	if _, err := pingClient.Ping(context.Background(), pingWithHeader); err != nil {
 		t.Error(err)
 	}
 	if _, err := pingClient.Ping(context.Background(), requestOfSize(2, largeMessageSize)); err != nil {
@@ -1223,6 +1270,7 @@ func TestInterceptors(t *testing.T) {
 				semconv.RPCSystemKey.String(connectProtocol),
 				semconv.RPCServiceKey.String(pingv1connect.PingServiceName),
 				semconv.RPCMethodKey.String(pingMethod),
+				attribute.StringSlice("rpc.connect_rpc.request.metadata.x_request_id", []string{"request-123"}),
 			},
 		},
 		{
@@ -1254,6 +1302,19 @@ func TestInterceptors(t *testing.T) {
 			},
 		},
 	}, spanRecorder.Ended())
+
+	// Assert metrics - should NOT contain header metadata but should have standard RPC attributes
+	assertMetrics(t, metricReader, expectedMetrics{
+		ServerDuration:     true,
+		ServerRequestSize:  true,
+		ServerResponseSize: true,
+		NoHeaderMetadata:   true,
+		RequiredAttrs: map[string]attribute.Value{
+			"rpc.system":  attribute.StringValue(connectProtocol),
+			"rpc.service": attribute.StringValue(pingv1connect.PingServiceName),
+			"rpc.method":  attribute.StringValue(pingMethod),
+		},
+	})
 }
 
 func TestUnaryHandlerNoTraceParent(t *testing.T) {
@@ -2304,6 +2365,90 @@ func setupMetrics() (metricsdk.Reader, *metricsdk.MeterProvider) {
 		metricsdk.WithResource(metricResource()),
 	)
 	return metricReader, meterProvider
+}
+
+type expectedMetrics struct {
+	ServerDuration     bool
+	ServerRequestSize  bool
+	ServerResponseSize bool
+	ClientDuration     bool
+	NoHeaderMetadata   bool
+	RequiredAttrs      map[string]attribute.Value
+}
+
+// assertMetrics verifies that metrics are collected with expected attributes.
+func assertMetrics(t *testing.T, metricReader metricsdk.Reader, expected expectedMetrics) {
+	t.Helper()
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+
+	foundMetrics := make(map[string]bool)
+
+	for _, scopeMetric := range metrics.ScopeMetrics {
+		for _, metric := range scopeMetric.Metrics {
+			switch {
+			case expected.ServerDuration && metric.Name == rpcServerDuration:
+				foundMetrics[rpcServerDuration] = true
+				assertMetricAttributes(t, metric, expected.NoHeaderMetadata, expected.RequiredAttrs)
+			case expected.ServerRequestSize && metric.Name == rpcServerRequestSize:
+				foundMetrics[rpcServerRequestSize] = true
+				assertMetricAttributes(t, metric, expected.NoHeaderMetadata, expected.RequiredAttrs)
+			case expected.ServerResponseSize && metric.Name == rpcServerResponseSize:
+				foundMetrics[rpcServerResponseSize] = true
+				assertMetricAttributes(t, metric, expected.NoHeaderMetadata, expected.RequiredAttrs)
+			case expected.ClientDuration && metric.Name == rpcClientDuration:
+				foundMetrics[rpcClientDuration] = true
+				assertMetricAttributes(t, metric, expected.NoHeaderMetadata, expected.RequiredAttrs)
+			}
+		}
+	}
+
+	if expected.ServerDuration {
+		assert.True(t, foundMetrics[rpcServerDuration], "Should find server duration metrics")
+	}
+	if expected.ServerRequestSize {
+		assert.True(t, foundMetrics[rpcServerRequestSize], "Should find server request size metrics")
+	}
+	if expected.ServerResponseSize {
+		assert.True(t, foundMetrics[rpcServerResponseSize], "Should find server response size metrics")
+	}
+	if expected.ClientDuration {
+		assert.True(t, foundMetrics[rpcClientDuration], "Should find client duration metrics")
+	}
+}
+
+func assertMetricAttributes(t *testing.T, metric metricdata.Metrics, noHeaderMetadata bool, requiredAttrs map[string]attribute.Value) {
+	t.Helper()
+	if histogram, ok := metric.Data.(metricdata.Histogram[int64]); ok {
+		for _, dataPoint := range histogram.DataPoints {
+			attrs := dataPoint.Attributes.ToSlice()
+
+			if noHeaderMetadata {
+				// Verify that header metadata is NOT present in metrics
+				for _, attr := range attrs {
+					assert.NotContains(t, string(attr.Key), "rpc.connect_rpc.request.metadata",
+						"Metric attributes should not contain request header metadata")
+					assert.NotContains(t, string(attr.Key), "rpc.connect_rpc.response.metadata",
+						"Metric attributes should not contain response header metadata")
+				}
+			}
+
+			// Verify required attributes are present
+			if len(requiredAttrs) > 0 {
+				attrMap := make(map[string]attribute.Value)
+				for _, attr := range attrs {
+					attrMap[string(attr.Key)] = attr.Value
+				}
+				for key, expectedValue := range requiredAttrs {
+					actualValue, exists := attrMap[key]
+					assert.True(t, exists, "Required attribute %s should be present", key)
+					if exists {
+						assert.Equal(t, expectedValue, actualValue, "Attribute %s should have expected value", key)
+					}
+				}
+			}
+		}
+	}
 }
 
 func metricResource() *resource.Resource {
