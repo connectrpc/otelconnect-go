@@ -47,11 +47,8 @@ This document outlines how to create a release of otelconnect-go.
       * A summary may be added if warranted.
       * The items in the list should be broken up into sub-categories. The typical
         sub-categories to use follow:
-         * **Bugfixes**: Self-explanatory -- fixes to defects. These can be bugs in the
-           test runner or bugs in the reference implementations.
+         * **Bugfixes**: Self-explanatory -- fixes to defects.
          * **Enhancements**: New features or additions/improvements to existing features.
-           This can include new command-line flags to enable new functionality and also
-           includes addition of test cases for enhanced test coverage.
          * **Other Changes**: Other noteworthy changes in the codebase or tests. Use your
            best judgement when deciding if something warrants appearing here. Things like
            dependency updates and the like do _not_ warrant appearing here and should be
