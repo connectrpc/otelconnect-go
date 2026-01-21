@@ -15,6 +15,7 @@
 package otelconnect
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -30,6 +31,8 @@ import (
 // and [attribute.KeyValue]. If the filter returns true the attribute will be
 // kept else it will be removed. AttributeFilter must be safe to call concurrently.
 type AttributeFilter func(connect.Spec, attribute.KeyValue) bool
+
+type CustomAttributes func(context.Context, connect.AnyRequest) []attribute.KeyValue
 
 func (filter AttributeFilter) filter(spec connect.Spec, values ...attribute.KeyValue) []attribute.KeyValue {
 	if filter == nil {
