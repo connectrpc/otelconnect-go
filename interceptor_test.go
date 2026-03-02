@@ -2351,6 +2351,7 @@ func cmpOpts() []cmp.Option {
 		cmpopts.SortSlices(func(x, y metricdata.HistogramDataPoint[int64]) bool {
 			return x.Attributes.Len() > y.Attributes.Len()
 		}),
+		cmpopts.EquateEmpty(),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[int64]{}, "StartTime"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[int64]{}, "Time"),
 		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[int64]{}, "Bounds"),
