@@ -17,6 +17,7 @@ package otelconnect
 import (
 	"context"
 	"errors"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -97,6 +98,8 @@ func TestStreamingMetrics(t *testing.T) {
 	_, err = stream.Receive()
 	require.NoError(t, err)
 	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
 	require.NoError(t, stream.CloseResponse())
 	metrics := &metricdata.ResourceMetrics{}
 	require.NoError(t, metricReader.Collect(context.Background(), metrics))
@@ -1718,6 +1721,8 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	_, err = stream.Receive()
 	require.NoError(t, err)
 	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
 	require.NoError(t, stream.CloseResponse())
 	require.Len(t, spanRecorder.Ended(), 1)
 	require.Equal(t, codes.Unset, spanRecorder.Ended()[0].Status().Code)
@@ -1883,6 +1888,8 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 	_, err = stream.Receive()
 	require.NoError(t, err)
 	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
 	require.NoError(t, stream.CloseResponse())
 	assertSpans(t, []wantSpans{
 		{
@@ -1970,6 +1977,8 @@ func TestWithoutTraceEventsStreaming(t *testing.T) {
 	_, err = stream.Receive()
 	require.NoError(t, err)
 	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
 	require.NoError(t, stream.CloseResponse())
 	assertSpans(t, []wantSpans{
 		{
