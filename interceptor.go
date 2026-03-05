@@ -89,6 +89,10 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 				return next(ctx, request)
 			}
 		}
+		labeler, found := LabelerFromContext(ctx)
+		if !found {
+			ctx = ContextWithLabeler(ctx, labeler)
+		}
 		attributeFilter := i.config.filterAttribute.filter
 		isClient := request.Spec().IsClient
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
@@ -175,7 +179,9 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			span.SetStatus(serverSpanStatus(protocol, err))
 		}
 		span.SetAttributes(attributes...)
-		attributesSet := attribute.NewSet(attributes...)
+		metricAttrs := append([]attribute.KeyValue{}, attributes...)
+		metricAttrs = append(metricAttrs, labeler.Get()...)
+		attributesSet := attribute.NewSet(metricAttrs...)
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributeSet(attributesSet))
 		instrumentation.requestSize.Record(ctx, int64(requestSize), metric.WithAttributeSet(attributesSet))
 		instrumentation.requestsPerRPC.Record(ctx, 1, metric.WithAttributeSet(attributesSet))
@@ -192,6 +198,10 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			if !i.config.filter(ctx, spec) {
 				return next(ctx, spec)
 			}
+		}
+		labeler, found := LabelerFromContext(ctx)
+		if !found {
+			ctx = ContextWithLabeler(ctx, labeler)
 		}
 		requestStartTime := i.config.now()
 		name := strings.TrimLeft(spec.Procedure, "/")
@@ -215,6 +225,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			i.config.omitTraceEvents,
 			instrumentation.responseSize,
 			instrumentation.requestSize,
+			labeler,
 		)
 		var requestOnce sync.Once
 		setRequestAttributes := func() {
@@ -246,7 +257,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 			}
 			span.SetStatus(clientSpanStatus(protocol, state.error))
 			span.End()
-			attributeSet := attribute.NewSet(state.attributes...)
+			attributeSet := attribute.NewSet(state.metricAttributes()...)
 			instrumentation.requestsPerRPC.Record(ctx, state.sentCounter, metric.WithAttributeSet(attributeSet))
 			instrumentation.responsesPerRPC.Record(ctx, state.receivedCounter, metric.WithAttributeSet(attributeSet))
 			duration := i.config.now().Sub(requestStartTime).Milliseconds()
@@ -282,6 +293,10 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 				return next(ctx, conn)
 			}
 		}
+		labeler, found := LabelerFromContext(ctx)
+		if !found {
+			ctx = ContextWithLabeler(ctx, labeler)
+		}
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		protocol := protocolToSemConv(conn.Peer().Protocol, i.config.rpcSystem)
 		state := newStreamingState(
@@ -292,6 +307,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			i.config.omitTraceEvents,
 			instrumentation.requestSize,
 			instrumentation.responseSize,
+			labeler,
 		)
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
@@ -342,7 +358,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 			span.SetAttributes(headerAttributes(protocol, responseKey, conn.ResponseHeader(), i.config.responseHeaderKeys)...)
 		}
 		span.SetStatus(serverSpanStatus(protocol, err))
-		attributeSet := attribute.NewSet(state.attributes...)
+		attributeSet := attribute.NewSet(state.metricAttributes()...)
 		instrumentation.requestsPerRPC.Record(ctx, state.receivedCounter, metric.WithAttributeSet(attributeSet))
 		instrumentation.responsesPerRPC.Record(ctx, state.sentCounter, metric.WithAttributeSet(attributeSet))
 		duration := i.config.now().Sub(requestStartTime).Milliseconds()
