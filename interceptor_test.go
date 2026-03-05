@@ -2608,3 +2608,125 @@ func assertUsableTraceparent(t *testing.T, header http.Header) {
 	assert.NotEmpty(t, spanContext.SpanID(), "span ID should not be empty")
 	assert.NotEmpty(t, spanContext.TraceID(), "trace ID should not be empty")
 }
+
+// labelerInterceptor is a test interceptor that retrieves the Labeler from
+// context and adds custom attributes. Used to test that labeler attributes
+// appear in metrics but not in spans.
+type labelerInterceptor struct {
+	attrs []attribute.KeyValue
+}
+
+func (l labelerInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		labeler, _ := LabelerFromContext(ctx)
+		labeler.Add(l.attrs...)
+		return next(ctx, req)
+	}
+}
+
+func (l labelerInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+func (l labelerInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		labeler, _ := LabelerFromContext(ctx)
+		labeler.Add(l.attrs...)
+		return next(ctx, conn)
+	}
+}
+
+func TestLabelerFromContext(t *testing.T) {
+	t.Parallel()
+	// LabelerFromContext on empty context returns a new Labeler and false.
+	labeler, ok := LabelerFromContext(context.Background())
+	assert.False(t, ok)
+	require.NotNil(t, labeler)
+	// Add and Get should not panic even though the labeler is not in a context.
+	labeler.Add(attribute.String("key", "value"))
+	got := labeler.Get()
+	assert.Len(t, got, 1)
+	assert.Equal(t, attribute.String("key", "value"), got[0])
+}
+
+func TestLabelerUnary(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetrics()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	customAttrs := []attribute.KeyValue{
+		attribute.String("custom.label", "test-value"),
+	}
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServer(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(interceptor, labelerInterceptor{attrs: customAttrs}),
+		},
+		nil,
+		okayPingServer(),
+	)
+	_, err = client.Ping(context.Background(), requestOfSize(1, 12))
+	require.NoError(t, err)
+	// Verify custom attributes appear in metrics.
+	assertMetrics(t, metricReader, expectedMetrics{
+		ServerDuration:    true,
+		ServerRequestSize: true,
+		RequiredAttrs: map[string]attribute.Value{
+			"custom.label": attribute.StringValue("test-value"),
+		},
+	})
+	// Verify custom attributes do NOT appear in spans.
+	require.Len(t, spanRecorder.Ended(), 1)
+	for _, attr := range spanRecorder.Ended()[0].Attributes() {
+		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
+			"span should not contain labeler attributes")
+	}
+}
+
+func TestLabelerStreaming(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetrics()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	customAttrs := []attribute.KeyValue{
+		attribute.String("custom.label", "stream-value"),
+	}
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServer(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(interceptor, labelerInterceptor{attrs: customAttrs}),
+		},
+		nil,
+		okayPingServer(),
+	)
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	// Verify custom attributes appear in metrics (including per-message and final).
+	assertMetrics(t, metricReader, expectedMetrics{
+		ServerDuration:    true,
+		ServerRequestSize: true,
+		RequiredAttrs: map[string]attribute.Value{
+			"custom.label": attribute.StringValue("stream-value"),
+		},
+	})
+	// Verify custom attributes do NOT appear in spans.
+	require.Len(t, spanRecorder.Ended(), 1)
+	for _, attr := range spanRecorder.Ended()[0].Attributes() {
+		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
+			"span should not contain labeler attributes")
+	}
+}
