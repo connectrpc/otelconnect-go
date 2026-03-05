@@ -2625,7 +2625,11 @@ func (l labelerInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc 
 }
 
 func (l labelerInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
-	return next
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		labeler, _ := LabelerFromContext(ctx)
+		labeler.Add(l.attrs...)
+		return next(ctx, spec)
+	}
 }
 
 func (l labelerInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
@@ -2724,6 +2728,82 @@ func TestLabelerStreaming(t *testing.T) {
 		},
 	})
 	// Verify custom attributes do NOT appear in spans.
+	require.Len(t, spanRecorder.Ended(), 1)
+	for _, attr := range spanRecorder.Ended()[0].Attributes() {
+		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
+			"span should not contain labeler attributes")
+	}
+}
+
+func TestLabelerUnaryClient(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetrics()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	customAttrs := []attribute.KeyValue{
+		attribute.String("custom.label", "client-value"),
+	}
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServer(t,
+		nil,
+		[]connect.ClientOption{
+			connect.WithInterceptors(interceptor, labelerInterceptor{attrs: customAttrs}),
+		},
+		okayPingServer(),
+	)
+	_, err = client.Ping(context.Background(), requestOfSize(1, 12))
+	require.NoError(t, err)
+	assertMetrics(t, metricReader, expectedMetrics{
+		ClientDuration: true,
+		RequiredAttrs: map[string]attribute.Value{
+			"custom.label": attribute.StringValue("client-value"),
+		},
+	})
+	require.Len(t, spanRecorder.Ended(), 1)
+	for _, attr := range spanRecorder.Ended()[0].Attributes() {
+		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
+			"span should not contain labeler attributes")
+	}
+}
+
+func TestLabelerStreamingClient(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetrics()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	customAttrs := []attribute.KeyValue{
+		attribute.String("custom.label", "client-stream-value"),
+	}
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServer(t,
+		nil,
+		[]connect.ClientOption{
+			connect.WithInterceptors(interceptor, labelerInterceptor{attrs: customAttrs}),
+		},
+		okayPingServer(),
+	)
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assertMetrics(t, metricReader, expectedMetrics{
+		ClientDuration: true,
+		RequiredAttrs: map[string]attribute.Value{
+			"custom.label": attribute.StringValue("client-stream-value"),
+		},
+	})
 	require.Len(t, spanRecorder.Ended(), 1)
 	for _, attr := range spanRecorder.Ended()[0].Attributes() {
 		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
