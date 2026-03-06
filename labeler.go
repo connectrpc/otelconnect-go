@@ -16,6 +16,7 @@ package otelconnect
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -39,9 +40,7 @@ func (l *Labeler) Add(ls ...attribute.KeyValue) {
 func (l *Labeler) Get() []attribute.KeyValue {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	ret := make([]attribute.KeyValue, len(l.attributes))
-	copy(ret, l.attributes)
-	return ret
+	return slices.Clone(l.attributes)
 }
 
 type labelerContextKeyType int
