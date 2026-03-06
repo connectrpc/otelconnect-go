@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"sync"
 
 	"connectrpc.com/connect"
@@ -85,9 +86,7 @@ func (s *streamingState) metricAttributes() []attribute.KeyValue {
 	if len(labelerAttrs) == 0 {
 		return s.attributes
 	}
-	attrs := append([]attribute.KeyValue{}, s.attributes...)
-	attrs = append(attrs, labelerAttrs...)
-	return attrs
+	return slices.Concat(s.attributes, labelerAttrs)
 }
 
 func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver) error {
