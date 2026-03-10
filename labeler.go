@@ -43,16 +43,14 @@ func (l *Labeler) Get() []attribute.KeyValue {
 	return slices.Clone(l.attributes)
 }
 
-type labelerContextKeyType int
-
-const labelerContextKey labelerContextKeyType = 0
+type labelerContextKey struct{}
 
 // ContextWithLabeler returns a new context with the provided Labeler instance.
 // Attributes added to the specified labeler will be injected into metrics
 // emitted by the instrumentation. Only one labeler can be injected into the
 // context. Injecting it multiple times will override the previous calls.
 func ContextWithLabeler(parent context.Context, l *Labeler) context.Context {
-	return context.WithValue(parent, labelerContextKey, l)
+	return context.WithValue(parent, labelerContextKey{}, l)
 }
 
 // LabelerFromContext retrieves a Labeler instance from the provided context if
@@ -60,7 +58,7 @@ func ContextWithLabeler(parent context.Context, l *Labeler) context.Context {
 // Labeler is returned and the second return value is false. In this case it is
 // safe to use the Labeler but any attributes added to it will not be used.
 func LabelerFromContext(ctx context.Context) (*Labeler, bool) {
-	l, ok := ctx.Value(labelerContextKey).(*Labeler)
+	l, ok := ctx.Value(labelerContextKey{}).(*Labeler)
 	if !ok {
 		l = &Labeler{}
 	}
