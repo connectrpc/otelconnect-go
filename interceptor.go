@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -179,9 +180,12 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			span.SetStatus(serverSpanStatus(protocol, err))
 		}
 		span.SetAttributes(attributes...)
-		metricAttrs := append([]attribute.KeyValue{}, attributes...)
-		metricAttrs = append(metricAttrs, labeler.Get()...)
-		attributesSet := attribute.NewSet(metricAttrs...)
+		var attributesSet attribute.Set
+		if labelerAttrs := labeler.Get(); len(labelerAttrs) > 0 {
+			attributesSet = attribute.NewSet(slices.Concat(attributes, labelerAttrs)...)
+		} else {
+			attributesSet = attribute.NewSet(attributes...)
+		}
 		instrumentation.duration.Record(ctx, i.config.now().Sub(requestStartTime).Milliseconds(), metric.WithAttributeSet(attributesSet))
 		instrumentation.requestSize.Record(ctx, int64(requestSize), metric.WithAttributeSet(attributesSet))
 		instrumentation.requestsPerRPC.Record(ctx, 1, metric.WithAttributeSet(attributesSet))
