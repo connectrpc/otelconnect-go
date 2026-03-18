@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"sync"
 
 	"connectrpc.com/connect"
@@ -40,6 +41,7 @@ type streamingState struct {
 	receivedCounter int64
 	receiveSize     metric.Int64Histogram
 	sendSize        metric.Int64Histogram
+	labeler         *Labeler
 }
 
 func newStreamingState(
@@ -49,6 +51,7 @@ func newStreamingState(
 	attributeFilter AttributeFilter,
 	omitTraceEvents bool,
 	receiveSize, sendSize metric.Int64Histogram,
+	labeler *Labeler,
 ) *streamingState {
 	attributes := make([]attribute.KeyValue, 0, 6) // 5 max request attrs + status code attr
 	attributes = attributeFilter.filter(spec,
@@ -62,6 +65,7 @@ func newStreamingState(
 		attributes:      attributes,
 		receiveSize:     receiveSize,
 		sendSize:        sendSize,
+		labeler:         labeler,
 	}
 }
 
@@ -72,6 +76,17 @@ type sendReceiver interface {
 
 func (s *streamingState) addAttributes(attributes ...attribute.KeyValue) {
 	s.attributes = append(s.attributes, s.attributeFilter.filter(s.spec, attributes...)...)
+}
+
+func (s *streamingState) metricAttributes() []attribute.KeyValue {
+	if s.labeler == nil {
+		return s.attributes
+	}
+	labelerAttrs := s.labeler.Get()
+	if len(labelerAttrs) == 0 {
+		return s.attributes
+	}
+	return slices.Concat(s.attributes, labelerAttrs)
 }
 
 func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver) error {
@@ -95,7 +110,7 @@ func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver
 	if !s.omitTraceEvents {
 		s.emitEvent(ctx, semconv.MessageTypeReceived, s.receivedCounter, size, ok)
 	}
-	s.receiveSize.Record(ctx, int64(size), metric.WithAttributes(s.attributes...))
+	s.receiveSize.Record(ctx, int64(size), metric.WithAttributes(s.metricAttributes()...))
 	return err
 }
 
@@ -120,7 +135,7 @@ func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) e
 	if !s.omitTraceEvents {
 		s.emitEvent(ctx, semconv.MessageTypeSent, s.sentCounter, size, ok)
 	}
-	s.sendSize.Record(ctx, int64(size), metric.WithAttributes(s.attributes...))
+	s.sendSize.Record(ctx, int64(size), metric.WithAttributes(s.metricAttributes()...))
 	return err
 }
 
