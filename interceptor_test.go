@@ -2185,7 +2185,9 @@ func TestWithRPCSystem(t *testing.T) {
 					defer func() {
 						_ = bidiStream.CloseResponse()
 					}()
-					require.NoError(t, bidiStream.Send(&pingv1.PingStreamRequest{}))
+					// Send may fail if the server terminates the stream first;
+					// the real error is surfaced by Receive.
+					_ = bidiStream.Send(&pingv1.PingStreamRequest{})
 					require.NoError(t, bidiStream.CloseRequest())
 					_, err = bidiStream.Receive()
 					require.Equal(t, connect.CodeDataLoss, connect.CodeOf(err))
@@ -2733,6 +2735,9 @@ func TestLabelerStreaming(t *testing.T) {
 	_, err = stream.Receive()
 	require.NoError(t, err)
 	require.NoError(t, stream.CloseRequest())
+	// Read until EOF so the server has recorded its metrics and span.
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
 	require.NoError(t, stream.CloseResponse())
 	// Verify custom attributes appear in metrics (including per-message and final).
 	assertMetrics(t, metricReader, expectedMetrics{
