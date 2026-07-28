@@ -55,14 +55,6 @@ const (
 	PingServiceFailProcedure = "/observability.ping.v1.PingService/Fail"
 )
 
-// These variables are the protoreflect.Descriptor objects for the RPCs defined in this package.
-var (
-	pingServiceServiceDescriptor          = v1.File_observability_ping_v1_ping_proto.Services().ByName("PingService")
-	pingServicePingMethodDescriptor       = pingServiceServiceDescriptor.Methods().ByName("Ping")
-	pingServicePingStreamMethodDescriptor = pingServiceServiceDescriptor.Methods().ByName("PingStream")
-	pingServiceFailMethodDescriptor       = pingServiceServiceDescriptor.Methods().ByName("Fail")
-)
-
 // PingServiceClient is a client for the observability.ping.v1.PingService service.
 type PingServiceClient interface {
 	// Ping sends a ping to the server to determine if it's reachable.
@@ -82,24 +74,25 @@ type PingServiceClient interface {
 // http://api.acme.com or https://acme.com/grpc).
 func NewPingServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) PingServiceClient {
 	baseURL = strings.TrimRight(baseURL, "/")
+	pingServiceMethods := v1.File_observability_ping_v1_ping_proto.Services().ByName("PingService").Methods()
 	return &pingServiceClient{
 		ping: connect.NewClient[v1.PingRequest, v1.PingResponse](
 			httpClient,
 			baseURL+PingServicePingProcedure,
-			connect.WithSchema(pingServicePingMethodDescriptor),
+			connect.WithSchema(pingServiceMethods.ByName("Ping")),
 			connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 			connect.WithClientOptions(opts...),
 		),
 		pingStream: connect.NewClient[v1.PingStreamRequest, v1.PingStreamResponse](
 			httpClient,
 			baseURL+PingServicePingStreamProcedure,
-			connect.WithSchema(pingServicePingStreamMethodDescriptor),
+			connect.WithSchema(pingServiceMethods.ByName("PingStream")),
 			connect.WithClientOptions(opts...),
 		),
 		fail: connect.NewClient[v1.FailRequest, v1.FailResponse](
 			httpClient,
 			baseURL+PingServiceFailProcedure,
-			connect.WithSchema(pingServiceFailMethodDescriptor),
+			connect.WithSchema(pingServiceMethods.ByName("Fail")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -143,23 +136,24 @@ type PingServiceHandler interface {
 // By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
 // and JSON codecs. They also support gzip compression.
 func NewPingServiceHandler(svc PingServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	pingServiceMethods := v1.File_observability_ping_v1_ping_proto.Services().ByName("PingService").Methods()
 	pingServicePingHandler := connect.NewUnaryHandler(
 		PingServicePingProcedure,
 		svc.Ping,
-		connect.WithSchema(pingServicePingMethodDescriptor),
+		connect.WithSchema(pingServiceMethods.ByName("Ping")),
 		connect.WithIdempotency(connect.IdempotencyNoSideEffects),
 		connect.WithHandlerOptions(opts...),
 	)
 	pingServicePingStreamHandler := connect.NewBidiStreamHandler(
 		PingServicePingStreamProcedure,
 		svc.PingStream,
-		connect.WithSchema(pingServicePingStreamMethodDescriptor),
+		connect.WithSchema(pingServiceMethods.ByName("PingStream")),
 		connect.WithHandlerOptions(opts...),
 	)
 	pingServiceFailHandler := connect.NewUnaryHandler(
 		PingServiceFailProcedure,
 		svc.Fail,
-		connect.WithSchema(pingServiceFailMethodDescriptor),
+		connect.WithSchema(pingServiceMethods.ByName("Fail")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/observability.ping.v1.PingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -3,7 +3,7 @@ module connectrpc.com/otelconnect
 go 1.25.0
 
 require (
-	connectrpc.com/connect v1.17.0
+	connectrpc.com/connect v1.19.1
 	github.com/google/go-cmp v0.7.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.43.0
@@ -11,7 +11,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
-	google.golang.org/protobuf v1.35.1
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
