@@ -2262,15 +2262,15 @@ type wantSpans struct {
 	attrs    []attribute.KeyValue
 }
 
-func assertSpans(t *testing.T, wants []wantSpans, got []trace.ReadOnlySpan) {
+func assertSpans(t *testing.T, want []wantSpans, got []trace.ReadOnlySpan) {
 	t.Helper()
-	require.Len(t, got, len(wants), "unexpected spans length")
+	require.Len(t, got, len(want), "unexpected spans length")
 	for i, span := range got {
-		want := wants[i] //nolint: gosec // index bounds asserted above
-		wantEvents := want.events
-		wantAttributes := want.attrs
+		wantSpan := want[i] //nolint: gosec // index bounds asserted above
+		wantEvents := wantSpan.events
+		wantAttributes := wantSpan.attrs
 		assert.False(t, span.StartTime().IsZero(), "span start time is nil")
-		assert.Equal(t, want.spanName, span.Name(), "unexpected span name")
+		assert.Equal(t, wantSpan.spanName, span.Name(), "unexpected span name")
 		gotEvents := span.Events()
 		require.Len(t, gotEvents, len(wantEvents), "unexpected events length")
 		for i, e := range wantEvents {
