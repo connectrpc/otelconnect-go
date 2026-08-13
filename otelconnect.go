@@ -18,7 +18,7 @@ import (
 	"context"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -28,10 +28,6 @@ const (
 	version             = "0.10.0-dev"
 	semanticVersion     = "semver:" + version
 	instrumentationName = "connectrpc.com/otelconnect"
-
-	grpcString    = "grpc"
-	grpcwebString = "grpcweb"
-	connectString = "connect"
 
 	grpcProtocol    = "grpc"
 	connectProtocol = "connect_rpc"

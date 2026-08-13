@@ -21,7 +21,8 @@ import (
 	"strconv"
 	"strings"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
@@ -62,9 +63,9 @@ func addProcedureAttributes(attrs []attribute.KeyValue, procedure string) []attr
 	return attrs
 }
 
-func addRequestAttributes(protocol string, attrs []attribute.KeyValue, spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
-	if addr := peer.Addr; addr != "" {
-		attrs = addAddressAttributes(attrs, addr)
+func addRequestAttributes(protocol string, attrs []attribute.KeyValue, spec connect.Spec, peerAddr string) []attribute.KeyValue {
+	if peerAddr != "" {
+		attrs = addAddressAttributes(attrs, peerAddr)
 	}
 	name := strings.TrimLeft(spec.Procedure, "/")
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))
@@ -96,7 +97,7 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 		}
 		return codeKey.Int64(0), true // gRPC uses 0 for success
 	case connectProtocol:
-		if connect.IsNotModifiedError(serverErr) {
+		if connecthttp.IsNotModifiedError(serverErr) {
 			// A "not modified" error is special: it's code is technically "unknown" but
 			// it would be misleading to label it as an unknown error since it's not really
 			// an error, but rather a sentinel to trigger a "304 Not Modified" HTTP status.
@@ -110,17 +111,17 @@ func statusCodeAttribute(protocol string, serverErr error) (attribute.KeyValue, 
 	return attribute.KeyValue{}, false
 }
 
-func headerAttributes(protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
+func headerAttributes(protocol, eventType string, metadata *connect.Header, allowedKeys []string) []attribute.KeyValue {
 	attributes := make([]attribute.KeyValue, 0, len(allowedKeys))
 	return addHeaderAttributes(attributes, protocol, eventType, metadata, allowedKeys)
 }
 
-func addHeaderAttributes(attributes []attribute.KeyValue, protocol, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
+func addHeaderAttributes(attributes []attribute.KeyValue, protocol, eventType string, metadata *connect.Header, allowedKeys []string) []attribute.KeyValue {
 	for _, allowedKey := range allowedKeys {
-		if val, ok := metadata[allowedKey]; ok {
+		if values := metadata.Values(allowedKey); len(values) > 0 {
 			keyValue := attribute.StringSlice(
 				formatHeaderAttributeKey(protocol, eventType, allowedKey),
-				val,
+				values,
 			)
 			attributes = append(attributes, keyValue)
 		}

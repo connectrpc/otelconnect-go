@@ -20,9 +20,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"connectrpc.com/connect"
-	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
-	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+	pingv1 "connectrpc.com/otelconnect/v2/internal/gen/observability/ping/v1"
+	"connectrpc.com/otelconnect/v2/internal/gen/observability/ping/v1/pingv1connect"
 )
 
 func BenchmarkStreamingBase(b *testing.B) {
@@ -30,13 +31,17 @@ func BenchmarkStreamingBase(b *testing.B) {
 }
 
 func BenchmarkStreamingWithInterceptor(b *testing.B) {
-	interceptor, err := NewInterceptor()
+	serverInterceptor, err := NewServerInterceptor()
+	if err != nil {
+		b.Fatal(err)
+	}
+	clientInterceptor, err := NewClientInterceptor()
 	if err != nil {
 		b.Fatal(err)
 	}
 	benchStreaming(b,
-		[]connect.HandlerOption{connect.WithInterceptors(interceptor)},
-		[]connect.ClientOption{connect.WithInterceptors(interceptor)},
+		[]connect.ServerInterceptor{serverInterceptor},
+		[]connect.ClientInterceptor{clientInterceptor},
 	)
 }
 
@@ -45,28 +50,30 @@ func BenchmarkUnaryBase(b *testing.B) {
 }
 
 func BenchmarkUnaryWithInterceptor(b *testing.B) {
-	interceptor, err := NewInterceptor()
+	serverInterceptor, err := NewServerInterceptor()
+	if err != nil {
+		b.Fatal(err)
+	}
+	clientInterceptor, err := NewClientInterceptor()
 	if err != nil {
 		b.Fatal(err)
 	}
 	benchUnary(b,
-		[]connect.HandlerOption{connect.WithInterceptors(interceptor)},
-		[]connect.ClientOption{connect.WithInterceptors(interceptor)},
+		[]connect.ServerInterceptor{serverInterceptor},
+		[]connect.ClientInterceptor{clientInterceptor},
 	)
 }
 
-func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
+func benchUnary(b *testing.B, serverInterceptors []connect.ServerInterceptor, clientInterceptors []connect.ClientInterceptor) {
 	b.Helper()
-	svr, client := startBenchServer(handleropts, clientopts)
+	svr, client := startBenchServer(serverInterceptors, clientInterceptors)
 	b.Cleanup(svr.Close)
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		ctx := context.Background()
 		for pb.Next() {
-			_, err := client.Ping(ctx, &connect.Request[pingv1.PingRequest]{
-				Msg: &pingv1.PingRequest{Data: []byte("Hello, otel!")},
-			})
+			_, err := client.Ping(ctx, &pingv1.PingRequest{Data: []byte("Hello, otel!")})
 			if err != nil {
 				b.Log(err)
 			}
@@ -74,44 +81,47 @@ func benchUnary(b *testing.B, handleropts []connect.HandlerOption, clientopts []
 	})
 }
 
-func benchStreaming(b *testing.B, handleropts []connect.HandlerOption, clientopts []connect.ClientOption) {
+func benchStreaming(b *testing.B, serverInterceptors []connect.ServerInterceptor, clientInterceptors []connect.ClientInterceptor) {
 	b.Helper()
-	_, client := startBenchServer(handleropts, clientopts)
+	_, client := startBenchServer(serverInterceptors, clientInterceptors)
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		ctx := context.Background()
 		for pb.Next() {
-			stream := client.PingStream(ctx)
+			stream, err := client.PingStream(ctx)
+			if err != nil {
+				b.Error(err)
+				continue
+			}
 			if err := stream.Send(
 				&pingv1.PingStreamRequest{
 					Data: []byte("Hello, otel!"),
 				}); err != nil {
 				b.Error(err)
 			}
-			if err := stream.CloseRequest(); err != nil {
+			if err := stream.CloseSend(); err != nil {
 				b.Error(err)
 			}
 			if _, err := stream.Receive(); err != nil {
 				b.Error(err)
 			}
-			if err := stream.CloseResponse(); err != nil {
+			if err := stream.Close(); err != nil {
 				b.Error(err)
 			}
 		}
 	})
 }
 
-func startBenchServer(handleropts []connect.HandlerOption, clientopts []connect.ClientOption) (*httptest.Server, pingv1connect.PingServiceClient) {
+func startBenchServer(serverInterceptors []connect.ServerInterceptor, clientInterceptors []connect.ClientInterceptor) (*httptest.Server, pingv1connect.PingServiceClient) {
 	mux := http.NewServeMux()
-	mux.Handle(pingv1connect.NewPingServiceHandler(okayPingServer(), handleropts...))
+	v2server := connect.NewServer(serverInterceptors...)
+	pingv1connect.RegisterPingServiceHandler(v2server, okayPingServer())
+	connecthttp.Mount(mux, v2server)
 	server := httptest.NewUnstartedServer(mux)
 	server.EnableHTTP2 = true
 	server.StartTLS()
-	connectClient := pingv1connect.NewPingServiceClient(
-		server.Client(),
-		server.URL,
-		clientopts...,
-	)
-	return server, connectClient
+	transport := connecthttp.NewTransport(server.Client(), server.URL)
+	client := connect.NewClient(transport, clientInterceptors...)
+	return server, pingv1connect.NewPingServiceClient(client)
 }

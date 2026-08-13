@@ -21,7 +21,7 @@ import (
 	"slices"
 	"sync"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
@@ -47,7 +47,7 @@ type streamingState struct {
 func newStreamingState(
 	protocol string,
 	spec connect.Spec,
-	peer connect.Peer,
+	peerAddr string,
 	attributeFilter AttributeFilter,
 	omitTraceEvents bool,
 	receiveSize, sendSize metric.Int64Histogram,
@@ -55,7 +55,7 @@ func newStreamingState(
 ) *streamingState {
 	attributes := make([]attribute.KeyValue, 0, 6) // 5 max request attrs + status code attr
 	attributes = attributeFilter.filter(spec,
-		addRequestAttributes(protocol, attributes, spec, peer)...,
+		addRequestAttributes(protocol, attributes, spec, peerAddr)...,
 	)
 	return &streamingState{
 		spec:            spec,

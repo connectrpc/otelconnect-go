@@ -3,7 +3,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: connectrpc.com/otelconnect/internal/gen
+      value: connectrpc.com/otelconnect/v2/internal/gen
 plugins:
   - local: protoc-gen-go
     out: internal/gen

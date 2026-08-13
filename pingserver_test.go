@@ -21,28 +21,26 @@ import (
 	"io"
 	"net/http"
 
-	"connectrpc.com/connect"
-	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
-	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+	pingv1 "connectrpc.com/otelconnect/v2/internal/gen/observability/ping/v1"
+	"connectrpc.com/otelconnect/v2/internal/gen/observability/ping/v1/pingv1connect"
 )
 
 const cacheablePingEtag = "ABCDEFGH"
 
-func pingOkay(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-	return connect.NewResponse(&pingv1.PingResponse{
-		Id:   req.Msg.GetId(),
-		Data: req.Msg.GetData(),
-	}), nil
+func pingOkay(_ context.Context, req *pingv1.PingRequest) (*pingv1.PingResponse, error) {
+	return &pingv1.PingResponse{
+		Id:   req.GetId(),
+		Data: req.GetData(),
+	}, nil
 }
 
-func pingFail(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
-	return nil, connect.NewError(connect.CodeDataLoss, errors.New("Oh no"))
+func pingFail(_ context.Context, _ *pingv1.PingRequest) (*pingv1.PingResponse, error) {
+	return nil, connect.NewError(connect.CodeDataLoss, "Oh no")
 }
 
-func pingStreamOkay(
-	ctx context.Context,
-	stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse],
-) error {
+func pingStreamOkay(ctx context.Context, stream pingv1connect.PingServicePingStreamServerStream) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -62,10 +60,7 @@ func pingStreamOkay(
 	}
 }
 
-func pingStreamFail(
-	ctx context.Context,
-	stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse],
-) error {
+func pingStreamFail(ctx context.Context, stream pingv1connect.PingServicePingStreamServerStream) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -73,7 +68,7 @@ func pingStreamFail(
 	if err != nil && errors.Is(err, io.EOF) {
 		return nil
 	}
-	return connect.NewError(connect.CodeDataLoss, errors.New("Oh no"))
+	return connect.NewError(connect.CodeDataLoss, "Oh no")
 }
 
 func okayPingServer() *pluggablePingServer {
@@ -93,28 +88,24 @@ func failPingServer() *pluggablePingServer {
 type pluggablePingServer struct {
 	pingv1connect.UnimplementedPingServiceHandler
 
-	ping       func(context.Context, *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error)
-	pingStream func(context.Context, *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error
+	ping       func(context.Context, *pingv1.PingRequest) (*pingv1.PingResponse, error)
+	pingStream func(context.Context, pingv1connect.PingServicePingStreamServerStream) error
 }
 
-func (p *pluggablePingServer) Ping(
-	ctx context.Context,
-	request *connect.Request[pingv1.PingRequest],
-) (*connect.Response[pingv1.PingResponse], error) {
-	if request.HTTPMethod() == http.MethodGet && request.Header().Get("If-None-Match") == cacheablePingEtag {
-		return nil, connect.NewNotModifiedError(nil)
+func (p *pluggablePingServer) Ping(ctx context.Context, req *pingv1.PingRequest) (*pingv1.PingResponse, error) {
+	info, _ := connect.CallInfoForServerContext(ctx)
+	serverInfo, _ := connecthttp.ServerInfoForContext(ctx)
+	if serverInfo.HTTPMethod() == http.MethodGet && info.RequestHeader().Get("If-None-Match") == cacheablePingEtag {
+		return nil, connecthttp.NewNotModifiedError()
 	}
-	resp, err := p.ping(ctx, request)
+	resp, err := p.ping(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	resp.Header().Set("Etag", cacheablePingEtag)
+	info.ResponseHeader().Set("Etag", cacheablePingEtag)
 	return resp, nil
 }
 
-func (p *pluggablePingServer) PingStream(
-	ctx context.Context,
-	stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse],
-) error {
+func (p *pluggablePingServer) PingStream(ctx context.Context, stream pingv1connect.PingServicePingStreamServerStream) error {
 	return p.pingStream(ctx, stream)
 }

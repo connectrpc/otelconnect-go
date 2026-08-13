@@ -1,9 +1,9 @@
-module connectrpc.com/otelconnect
+module connectrpc.com/otelconnect/v2
 
 go 1.25.0
 
 require (
-	connectrpc.com/connect v1.19.1
+	connectrpc.com/connect/v2 v2.0.0-alpha.1
 	github.com/google/go-cmp v0.7.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.43.0
@@ -13,6 +13,9 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0
 	google.golang.org/protobuf v1.36.11
 )
+
+// TODO: remove once connectrpc.com/connect/v2 v2.0.0-alpha.1 is tagged.
+replace connectrpc.com/connect/v2 => ../connect-go
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

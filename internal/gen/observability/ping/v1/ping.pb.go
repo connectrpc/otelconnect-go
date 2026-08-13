@@ -347,8 +347,8 @@ const file_observability_ping_v1_ping_proto_rawDesc = "" +
 	"\x04Ping\x12\".observability.ping.v1.PingRequest\x1a#.observability.ping.v1.PingResponse\"\x03\x90\x02\x01\x12g\n" +
 	"\n" +
 	"PingStream\x12(.observability.ping.v1.PingStreamRequest\x1a).observability.ping.v1.PingStreamResponse\"\x00(\x010\x01\x12Q\n" +
-	"\x04Fail\x12\".observability.ping.v1.FailRequest\x1a#.observability.ping.v1.FailResponse\"\x00B\xe2\x01\n" +
-	"\x19com.observability.ping.v1B\tPingProtoP\x01ZDconnectrpc.com/otelconnect/internal/gen/observability/ping/v1;pingv1\xa2\x02\x03OPX\xaa\x02\x15Observability.Ping.V1\xca\x02\x15Observability\\Ping\\V1\xe2\x02!Observability\\Ping\\V1\\GPBMetadata\xea\x02\x17Observability::Ping::V1b\x06proto3"
+	"\x04Fail\x12\".observability.ping.v1.FailRequest\x1a#.observability.ping.v1.FailResponse\"\x00B\xe5\x01\n" +
+	"\x19com.observability.ping.v1B\tPingProtoP\x01ZGconnectrpc.com/otelconnect/v2/internal/gen/observability/ping/v1;pingv1\xa2\x02\x03OPX\xaa\x02\x15Observability.Ping.V1\xca\x02\x15Observability\\Ping\\V1\xe2\x02!Observability\\Ping\\V1\\GPBMetadata\xea\x02\x17Observability::Ping::V1b\x06proto3"
 
 var (
 	file_observability_ping_v1_ping_proto_rawDescOnce sync.Once

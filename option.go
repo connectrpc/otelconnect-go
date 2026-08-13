@@ -18,7 +18,7 @@ import (
 	"context"
 	"net/http"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
@@ -89,11 +89,11 @@ func WithAttributeFilter(filter AttributeFilter) Option {
 // follows the OpenTelemetry semantic conventions for RPC, but produces very
 // high-cardinality data; this option significantly reduces cardinality in most
 // environments.
+//
+// The option only suppresses attributes that exist on the server side; it has
+// no effect when applied to the client interceptor.
 func WithoutServerPeerAttributes() Option {
-	return WithAttributeFilter(func(spec connect.Spec, value attribute.KeyValue) bool {
-		if spec.IsClient {
-			return true
-		}
+	return WithAttributeFilter(func(_ connect.Spec, value attribute.KeyValue) bool {
 		if value.Key == semconv.NetPeerPortKey {
 			return false
 		}

@@ -2,9 +2,9 @@ otelconnect
 ===========
 
 [![Build](https://github.com/connectrpc/otelconnect-go/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/connectrpc/otelconnect-go/actions/workflows/ci.yaml)
-[![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect.svg)][godoc]
+[![GoDoc](https://pkg.go.dev/badge/connectrpc.com/otelconnect/v2.svg)][godoc]
 
-`connectrpc.com/otelconnect` adds support for [OpenTelemetry][opentelemetry.io]
+`connectrpc.com/otelconnect/v2` adds support for [OpenTelemetry][opentelemetry.io]
 tracing and metrics collection to [Connect][connect] servers and clients.
 
 For more on Connect, OpenTelemetry, and `otelconnect`, see the [Connect
@@ -22,50 +22,48 @@ import (
 	"log"
 	"net/http"
 
-	"connectrpc.com/connect"
-	"connectrpc.com/otelconnect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+	"connectrpc.com/otelconnect/v2"
 	// Generated from your protobuf schema by protoc-gen-go and
 	// protoc-gen-connect-go.
-	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
-	"connectrpc.com/otelconnect/internal/gen/observability/ping/v1/pingv1connect"
+	pingv1 "connectrpc.com/otelconnect/v2/internal/gen/observability/ping/v1"
+	"connectrpc.com/otelconnect/v2/internal/gen/observability/ping/v1/pingv1connect"
 )
 
 func main() {
-	mux := http.NewServeMux()
-	otelInterceptor, err := otelconnect.NewInterceptor()
+	otelInterceptor, err := otelconnect.NewServerInterceptor()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// otelconnect.NewInterceptor provides an interceptor that adds tracing and
-	// metrics to both clients and handlers. By default, it uses OpenTelemetry's
-	// global TracerProvider and MeterProvider, which you can configure by
-	// following the OpenTelemetry documentation. If you'd prefer to avoid
-	// globals, use otelconnect.WithTracerProvider and
-	// otelconnect.WithMeterProvider.
-	mux.Handle(pingv1connect.NewPingServiceHandler(
-		&pingv1connect.UnimplementedPingServiceHandler{},
-		connect.WithInterceptors(otelInterceptor),
-	))
+	// otelconnect.NewServerInterceptor provides an interceptor that adds
+	// tracing and metrics to handlers; otelconnect.NewClientInterceptor does
+	// the same for clients. By default, they use OpenTelemetry's global
+	// TracerProvider and MeterProvider, which you can configure by following
+	// the OpenTelemetry documentation. If you'd prefer to avoid globals, use
+	// otelconnect.WithTracerProvider and otelconnect.WithMeterProvider.
+	server := connect.NewServer(otelInterceptor)
+	pingv1connect.RegisterPingServiceHandler(server, &pingv1connect.UnimplementedPingServiceHandler{})
 
+	mux := http.NewServeMux()
+	connecthttp.Mount(mux, server)
 	http.ListenAndServe("localhost:8080", mux)
 }
 
 func makeRequest() {
-	otelInterceptor, err := otelconnect.NewInterceptor()
+	otelInterceptor, err := otelconnect.NewClientInterceptor()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	client := pingv1connect.NewPingServiceClient(
-		http.DefaultClient,
-		"http://localhost:8080",
-		connect.WithInterceptors(otelInterceptor),
+		connect.NewClient(
+			connecthttp.NewTransport(http.DefaultClient, "http://localhost:8080"),
+			otelInterceptor,
+		),
 	)
-	resp, err := client.Ping(
-		context.Background(),
-		connect.NewRequest(&pingv1.PingRequest{}),
-	)
+	resp, err := client.Ping(context.Background(), &pingv1.PingRequest{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -126,9 +124,9 @@ more customizable attribute filtering, use
 Offered under the [Apache 2 license][license].
 
 [Buf Studio]: https://buf.build/studio
-[WithFilter]: https://pkg.go.dev/connectrpc.com/otelconnect#WithFilter
-[WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect#WithTrustRemote
-[WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
+[WithFilter]: https://pkg.go.dev/connectrpc.com/otelconnect/v2#WithFilter
+[WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect/v2#WithTrustRemote
+[WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect/v2#WithoutServerPeerAttributes
 [blog]: https://buf.build/blog/connect-a-better-grpc
 [conformance]: https://github.com/connectrpc/conformance
 [connect]: https://github.com/connectrpc/connect-go
@@ -137,7 +135,7 @@ Offered under the [Apache 2 license][license].
 [connect-es]: https://github.com/connectrpc/connect-es
 [docs]: https://connectrpc.com
 [go-support-policy]: https://go.dev/doc/devel/release#policy
-[godoc]: https://pkg.go.dev/connectrpc.com/otelconnect
+[godoc]: https://pkg.go.dev/connectrpc.com/otelconnect/v2
 [license]: https://github.com/connectrpc/otelconnect-go/blob/main/LICENSE
 [opentelemetry.io]: https://opentelemetry.io/
 [otel-rpc-conventions]: https://opentelemetry.io/docs/specs/semconv/rpc/
