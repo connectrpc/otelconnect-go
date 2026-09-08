@@ -70,6 +70,8 @@ const (
 	rpcConnectErrorCode      = "rpc.connect_rpc.error_code"
 	rpcGRPCStatusCode        = "rpc.grpc.status_code"
 	rpcSystem                = "rpc.system"
+	rpcService               = "rpc.service"
+	customLabel              = "custom.label"
 )
 
 func TestStreamingMetrics(t *testing.T) {
@@ -1211,8 +1213,8 @@ func TestHeaderAttribute(t *testing.T) {
 		ServerResponseSize: true,
 		NoHeaderMetadata:   true,
 		RequiredAttrs: map[string]attribute.Value{
-			"rpc.system":  attribute.StringValue(connectProtocol),
-			"rpc.service": attribute.StringValue(pingv1connect.PingServiceName),
+			rpcSystem:  attribute.StringValue(connectProtocol),
+			rpcService: attribute.StringValue(pingv1connect.PingServiceName),
 		},
 	})
 
@@ -1221,8 +1223,8 @@ func TestHeaderAttribute(t *testing.T) {
 		ClientDuration:   true,
 		NoHeaderMetadata: true,
 		RequiredAttrs: map[string]attribute.Value{
-			"rpc.system":  attribute.StringValue(connectProtocol),
-			"rpc.service": attribute.StringValue(pingv1connect.PingServiceName),
+			rpcSystem:  attribute.StringValue(connectProtocol),
+			rpcService: attribute.StringValue(pingv1connect.PingServiceName),
 		},
 	})
 }
@@ -1243,7 +1245,7 @@ func TestInterceptors(t *testing.T) {
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	pingWithHeader := requestOfSize(1, 0)
-	pingWithHeader.Header().Set("X-Request-Id", "request-123")
+	pingWithHeader.Header().Set("X-Request-ID", "request-123")
 	if _, err := pingClient.Ping(context.Background(), pingWithHeader); err != nil {
 		t.Error(err)
 	}
@@ -1317,9 +1319,9 @@ func TestInterceptors(t *testing.T) {
 		ServerResponseSize: true,
 		NoHeaderMetadata:   true,
 		RequiredAttrs: map[string]attribute.Value{
-			"rpc.system":  attribute.StringValue(connectProtocol),
-			"rpc.service": attribute.StringValue(pingv1connect.PingServiceName),
-			"rpc.method":  attribute.StringValue(pingMethod),
+			rpcSystem:    attribute.StringValue(connectProtocol),
+			rpcService:   attribute.StringValue(pingv1connect.PingServiceName),
+			"rpc.method": attribute.StringValue(pingMethod),
 		},
 	})
 }
@@ -2677,7 +2679,7 @@ func TestLabelerUnary(t *testing.T) {
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	customAttrs := []attribute.KeyValue{
-		attribute.String("custom.label", "test-value"),
+		attribute.String(customLabel, "test-value"),
 	}
 	interceptor, err := NewInterceptor(
 		WithMeterProvider(meterProvider),
@@ -2698,13 +2700,13 @@ func TestLabelerUnary(t *testing.T) {
 		ServerDuration:    true,
 		ServerRequestSize: true,
 		RequiredAttrs: map[string]attribute.Value{
-			"custom.label": attribute.StringValue("test-value"),
+			customLabel: attribute.StringValue("test-value"),
 		},
 	})
 	// Verify custom attributes do NOT appear in spans.
 	require.Len(t, spanRecorder.Ended(), 1)
 	for _, attr := range spanRecorder.Ended()[0].Attributes() {
-		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
+		assert.NotEqual(t, attribute.Key(customLabel), attr.Key,
 			"span should not contain labeler attributes")
 	}
 }
@@ -2715,7 +2717,7 @@ func TestLabelerStreaming(t *testing.T) {
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	customAttrs := []attribute.KeyValue{
-		attribute.String("custom.label", "stream-value"),
+		attribute.String(customLabel, "stream-value"),
 	}
 	interceptor, err := NewInterceptor(
 		WithMeterProvider(meterProvider),
@@ -2745,13 +2747,13 @@ func TestLabelerStreaming(t *testing.T) {
 		ServerDuration:    true,
 		ServerRequestSize: true,
 		RequiredAttrs: map[string]attribute.Value{
-			"custom.label": attribute.StringValue("stream-value"),
+			customLabel: attribute.StringValue("stream-value"),
 		},
 	})
 	// Verify custom attributes do NOT appear in spans.
 	require.Len(t, spanRecorder.Ended(), 1)
 	for _, attr := range spanRecorder.Ended()[0].Attributes() {
-		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
+		assert.NotEqual(t, attribute.Key(customLabel), attr.Key,
 			"span should not contain labeler attributes")
 	}
 }
@@ -2762,7 +2764,7 @@ func TestLabelerUnaryClient(t *testing.T) {
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	customAttrs := []attribute.KeyValue{
-		attribute.String("custom.label", "client-value"),
+		attribute.String(customLabel, "client-value"),
 	}
 	interceptor, err := NewInterceptor(
 		WithMeterProvider(meterProvider),
@@ -2781,12 +2783,12 @@ func TestLabelerUnaryClient(t *testing.T) {
 	assertMetrics(t, metricReader, expectedMetrics{
 		ClientDuration: true,
 		RequiredAttrs: map[string]attribute.Value{
-			"custom.label": attribute.StringValue("client-value"),
+			customLabel: attribute.StringValue("client-value"),
 		},
 	})
 	require.Len(t, spanRecorder.Ended(), 1)
 	for _, attr := range spanRecorder.Ended()[0].Attributes() {
-		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
+		assert.NotEqual(t, attribute.Key(customLabel), attr.Key,
 			"span should not contain labeler attributes")
 	}
 }
@@ -2797,7 +2799,7 @@ func TestLabelerStreamingClient(t *testing.T) {
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	customAttrs := []attribute.KeyValue{
-		attribute.String("custom.label", "client-stream-value"),
+		attribute.String(customLabel, "client-stream-value"),
 	}
 	interceptor, err := NewInterceptor(
 		WithMeterProvider(meterProvider),
@@ -2822,12 +2824,12 @@ func TestLabelerStreamingClient(t *testing.T) {
 	assertMetrics(t, metricReader, expectedMetrics{
 		ClientDuration: true,
 		RequiredAttrs: map[string]attribute.Value{
-			"custom.label": attribute.StringValue("client-stream-value"),
+			customLabel: attribute.StringValue("client-stream-value"),
 		},
 	})
 	require.Len(t, spanRecorder.Ended(), 1)
 	for _, attr := range spanRecorder.Ended()[0].Attributes() {
-		assert.NotEqual(t, attribute.Key("custom.label"), attr.Key,
+		assert.NotEqual(t, attribute.Key(customLabel), attr.Key,
 			"span should not contain labeler attributes")
 	}
 }

@@ -108,7 +108,7 @@ func (p *pluggablePingServer) Ping(
 	if err != nil {
 		return nil, err
 	}
-	resp.Header().Set("Etag", cacheablePingEtag)
+	resp.Header().Set("ETag", cacheablePingEtag)
 	return resp, nil
 }
 
