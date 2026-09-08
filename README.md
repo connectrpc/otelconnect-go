@@ -88,15 +88,37 @@ trust the client's tracing information using
 [`otelconnect.WithTrustRemote`][WithTrustRemote]. With this option, servers
 will create child spans for each request.
 
-## Reducing metrics and tracing cardinality
+## Semantic conventions
 
-By default, the [OpenTelemetry RPC conventions][otel-rpc-conventions] produce
-high-cardinality server-side metric and tracing output. In particular, servers
-tag all metrics and trace data with the server's IP address and the remote port
-number. To drop these attributes, use
+`otelconnect` follows the [OpenTelemetry RPC semantic conventions][otel-rpc-conventions]
+(semconv v1.43.0). Spans and metrics carry `rpc.system.name` (`connectrpc` or
+`grpc`), the fully-qualified `rpc.method`, `rpc.response.status_code` and, on
+failure, `error.type`. Status codes are the uppercase Connect codes
+(`NOT_FOUND`, `DEADLINE_EXCEEDED`) for every RPC system, or `OK`. Client
+telemetry adds `server.address` and `server.port`; server spans add
+`network.peer.address` and `network.peer.port`.
+
+Each side records one metric, `rpc.{server,client}.call.duration`, in seconds.
+[`WithDurationHistogramOptions`][WithDurationHistogramOptions] changes its
+buckets, and a [`Labeler`][Labeler] adds attributes to metrics from a handler
+or client.
+
+## Reducing tracing cardinality
+
+By default, the [OpenTelemetry RPC conventions][otel-rpc-conventions] tag
+server spans with the remote client's address and ephemeral port. To drop these
+attributes, use
 [`otelconnect.WithoutServerPeerAttributes`][WithoutServerPeerAttributes]. For
 more customizable attribute filtering, use
-[otelconnect.WithFilter][WithFilter].
+[`otelconnect.WithAttributeFilter`][WithAttributeFilter]; to skip RPCs
+entirely, use [`otelconnect.WithFilter`][WithFilter].
+
+Interceptors run inside the Connect handler, so HTTP middleware cannot see
+their span. To trace at the HTTP layer too, wrap the mux with
+[`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp);
+the interceptor finds its span in the request context and creates the RPC span
+as a child. Note that `otelhttp` then decides whether to trust incoming trace
+headers, not [`otelconnect.WithTrustRemote`][WithTrustRemote].
 
 ## Status
 
@@ -126,6 +148,9 @@ more customizable attribute filtering, use
 Offered under the [Apache 2 license][license].
 
 [Buf Studio]: https://buf.build/studio
+[Labeler]: https://pkg.go.dev/connectrpc.com/otelconnect#Labeler
+[WithAttributeFilter]: https://pkg.go.dev/connectrpc.com/otelconnect#WithAttributeFilter
+[WithDurationHistogramOptions]: https://pkg.go.dev/connectrpc.com/otelconnect#WithDurationHistogramOptions
 [WithFilter]: https://pkg.go.dev/connectrpc.com/otelconnect#WithFilter
 [WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect#WithTrustRemote
 [WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
