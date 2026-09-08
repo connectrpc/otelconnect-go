@@ -90,13 +90,14 @@ will create child spans for each request.
 
 ## Reducing metrics and tracing cardinality
 
-By default, the [OpenTelemetry RPC conventions][otel-rpc-conventions] produce
-high-cardinality server-side metric and tracing output. In particular, servers
-tag all metrics and trace data with the server's IP address and the remote port
-number. To drop these attributes, use
-[`otelconnect.WithoutServerPeerAttributes`][WithoutServerPeerAttributes]. For
-more customizable attribute filtering, use
-[otelconnect.WithFilter][WithFilter].
+Following the [OpenTelemetry RPC conventions][otel-rpc-conventions], servers can
+tag all metrics and trace data with the remote client's host name (`net.peer.name`)
+and port (`net.peer.port`). Because these identify each individual client, they
+produce extremely high-cardinality output. For this reason, `otelconnect` **omits
+the server-side peer attributes by default**. If you need them and can accept the
+added cardinality, opt back in with
+[`otelconnect.WithServerPeerAttributes`][WithServerPeerAttributes]. For more
+customizable attribute filtering, use [otelconnect.WithFilter][WithFilter].
 
 ## Status
 
@@ -128,7 +129,7 @@ Offered under the [Apache 2 license][license].
 [Buf Studio]: https://buf.build/studio
 [WithFilter]: https://pkg.go.dev/connectrpc.com/otelconnect#WithFilter
 [WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect#WithTrustRemote
-[WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
+[WithServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithServerPeerAttributes
 [blog]: https://buf.build/blog/connect-a-better-grpc
 [conformance]: https://github.com/connectrpc/conformance
 [connect]: https://github.com/connectrpc/connect-go

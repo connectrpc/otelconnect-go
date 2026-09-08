@@ -62,9 +62,11 @@ func addProcedureAttributes(attrs []attribute.KeyValue, procedure string) []attr
 	return attrs
 }
 
-func addRequestAttributes(protocol string, attrs []attribute.KeyValue, spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
-	if addr := peer.Addr; addr != "" {
-		attrs = addAddressAttributes(attrs, addr)
+func addRequestAttributes(includePeer bool, protocol string, attrs []attribute.KeyValue, spec connect.Spec, peer connect.Peer) []attribute.KeyValue {
+	if includePeer {
+		if addr := peer.Addr; addr != "" {
+			attrs = addAddressAttributes(attrs, addr)
+		}
 	}
 	name := strings.TrimLeft(spec.Procedure, "/")
 	attrs = append(attrs, semconv.RPCSystemKey.String(protocol))

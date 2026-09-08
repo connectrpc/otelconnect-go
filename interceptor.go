@@ -99,7 +99,8 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol, i.config.rpcSystem)
 		attributes := make([]attribute.KeyValue, 0, 6+len(i.config.requestHeaderKeys)) // 5 max request attrs + status code attr + headers
-		attributes = attributeFilter(request.Spec(), addRequestAttributes(protocol, attributes, request.Spec(), request.Peer())...)
+		includePeer := isClient || i.config.serverPeerAttributes
+		attributes = attributeFilter(request.Spec(), addRequestAttributes(includePeer, protocol, attributes, request.Spec(), request.Peer())...)
 		instrumentation := i.getInstruments(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
@@ -222,6 +223,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		i.config.propagator.Inject(ctx, carrier)
 		protocol := protocolToSemConv(conn.Peer().Protocol, i.config.rpcSystem)
 		state := newStreamingState(
+			spec.IsClient || i.config.serverPeerAttributes,
 			protocol,
 			spec,
 			conn.Peer(),
@@ -304,6 +306,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		protocol := protocolToSemConv(conn.Peer().Protocol, i.config.rpcSystem)
 		state := newStreamingState(
+			conn.Spec().IsClient || i.config.serverPeerAttributes,
 			protocol,
 			conn.Spec(),
 			conn.Peer(),

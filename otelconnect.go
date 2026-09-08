@@ -49,5 +49,6 @@ type config struct {
 	responseHeaderKeys      []string
 	omitTraceEvents         bool
 	propagateResponseHeader bool
+	serverPeerAttributes    bool
 	rpcSystem               RPCSystem
 }

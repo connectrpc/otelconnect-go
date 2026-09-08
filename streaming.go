@@ -45,6 +45,7 @@ type streamingState struct {
 }
 
 func newStreamingState(
+	includePeer bool,
 	protocol string,
 	spec connect.Spec,
 	peer connect.Peer,
@@ -55,7 +56,7 @@ func newStreamingState(
 ) *streamingState {
 	attributes := make([]attribute.KeyValue, 0, 6) // 5 max request attrs + status code attr
 	attributes = attributeFilter.filter(spec,
-		addRequestAttributes(protocol, attributes, spec, peer)...,
+		addRequestAttributes(includePeer, protocol, attributes, spec, peer)...,
 	)
 	return &streamingState{
 		spec:            spec,

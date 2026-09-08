@@ -19,11 +19,9 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
@@ -84,24 +82,23 @@ func WithAttributeFilter(filter AttributeFilter) Option {
 	return &attributeFilterOption{filterAttribute: filter}
 }
 
+// WithServerPeerAttributes adds the net.peer.name and net.peer.port attributes
+// to server trace and metric output. These attributes follow the OpenTelemetry
+// semantic conventions for RPC, but because they identify the remote client they
+// produce very high-cardinality data. They are omitted by default; use this
+// option to opt back in when the cardinality is acceptable in your environment.
+func WithServerPeerAttributes() Option {
+	return &serverPeerAttributesOption{}
+}
+
 // WithoutServerPeerAttributes removes net.peer.port and net.peer.name
-// attributes from server trace and span attributes. The default behavior
-// follows the OpenTelemetry semantic conventions for RPC, but produces very
-// high-cardinality data; this option significantly reduces cardinality in most
-// environments.
+// attributes from server trace and metric output.
+//
+// Deprecated: server peer attributes are now omitted by default, so this option
+// is a no-op. Use [WithServerPeerAttributes] to opt back in to the previous
+// behavior.
 func WithoutServerPeerAttributes() Option {
-	return WithAttributeFilter(func(spec connect.Spec, value attribute.KeyValue) bool {
-		if spec.IsClient {
-			return true
-		}
-		if value.Key == semconv.NetPeerPortKey {
-			return false
-		}
-		if value.Key == semconv.NetPeerNameKey {
-			return false
-		}
-		return true
-	})
+	return &emptyOption{}
 }
 
 // WithTrustRemote sets the Interceptor to trust remote spans.
@@ -263,6 +260,17 @@ type propagateResponseHeaderOption struct{}
 func (o *propagateResponseHeaderOption) apply(c *config) {
 	c.propagateResponseHeader = true
 }
+
+type serverPeerAttributesOption struct{}
+
+func (o *serverPeerAttributesOption) apply(c *config) {
+	c.serverPeerAttributes = true
+}
+
+// emptyOption is a no-op Option
+type emptyOption struct{}
+
+func (o *emptyOption) apply(*config) {}
 
 type rpcSystemOption struct {
 	system RPCSystem
