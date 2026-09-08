@@ -15,7 +15,6 @@
 package otelconnect
 
 import (
-	"context"
 	"errors"
 	"io"
 	"slices"
@@ -23,48 +22,41 @@ import (
 
 	"connectrpc.com/connect/v2"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 type streamingState struct {
 	mu              sync.Mutex
 	spec            connect.Spec
-	protocol        string
 	attributeFilter AttributeFilter
-	omitTraceEvents bool
 	attributes      []attribute.KeyValue
+	peerAttributes  []attribute.KeyValue // spans only, never metrics
 	error           error
-	sentCounter     int64
-	receivedCounter int64
-	receiveSize     metric.Int64Histogram
-	sendSize        metric.Int64Histogram
 	labeler         *Labeler
 }
 
 func newStreamingState(
+	side string,
 	protocol string,
 	spec connect.Spec,
 	peerAddr string,
 	attributeFilter AttributeFilter,
-	omitTraceEvents bool,
-	receiveSize, sendSize metric.Int64Histogram,
 	labeler *Labeler,
 ) *streamingState {
-	attributes := make([]attribute.KeyValue, 0, 6) // 5 max request attrs + status code attr
-	attributes = attributeFilter.filter(spec,
-		addRequestAttributes(protocol, attributes, spec, peerAddr)...,
-	)
+	attributes := make([]attribute.KeyValue, 0, 6) // 4 max request attrs + 2 status attrs
+	attributes = addRequestAttributes(attributes, protocol, spec)
+	var peerAttributes []attribute.KeyValue
+	switch side {
+	case clientKey:
+		attributes = addAddressAttributes(attributes, peerAddr, semconv.ServerAddressKey, semconv.ServerPortKey)
+	case serverKey:
+		peerAttributes = addAddressAttributes(nil, peerAddr, semconv.NetworkPeerAddressKey, semconv.NetworkPeerPortKey)
+	}
 	return &streamingState{
 		spec:            spec,
-		protocol:        protocol,
 		attributeFilter: attributeFilter,
-		omitTraceEvents: omitTraceEvents,
-		attributes:      attributes,
-		receiveSize:     receiveSize,
-		sendSize:        sendSize,
+		attributes:      attributeFilter.filter(spec, attributes...),
+		peerAttributes:  attributeFilter.filter(spec, peerAttributes...),
 		labeler:         labeler,
 	}
 }
@@ -74,8 +66,18 @@ type sendReceiver interface {
 	Send(any) error
 }
 
-func (s *streamingState) addAttributes(attributes ...attribute.KeyValue) {
-	s.attributes = append(s.attributes, s.attributeFilter.filter(s.spec, attributes...)...)
+func (s *streamingState) finish(err error) {
+	s.error = err
+	s.attributes = append(s.attributes, s.attributeFilter.filter(s.spec,
+		addStatusAttributes(nil, err)...,
+	)...)
+}
+
+func (s *streamingState) spanAttributes() []attribute.KeyValue {
+	if len(s.peerAttributes) == 0 {
+		return s.attributes
+	}
+	return slices.Concat(s.attributes, s.peerAttributes)
 }
 
 func (s *streamingState) metricAttributes() []attribute.KeyValue {
@@ -89,70 +91,22 @@ func (s *streamingState) metricAttributes() []attribute.KeyValue {
 	return slices.Concat(s.attributes, labelerAttrs)
 }
 
-func (s *streamingState) receive(ctx context.Context, msg any, conn sendReceiver) error {
+func (s *streamingState) receive(msg any, conn sendReceiver) error {
 	err := conn.Receive(msg)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if errors.Is(err, io.EOF) {
-		return err
-	}
-	s.receivedCounter++
-	if err != nil {
+	if err != nil && !errors.Is(err, io.EOF) {
+		s.mu.Lock()
 		s.error = err
-		// If error add it to the attributes because the stream is about to terminate.
-		// If no error don't add anything because status only exists at end of stream.
-		if statusCode, ok := statusCodeAttribute(s.protocol, err); ok {
-			s.addAttributes(statusCode)
-		}
+		s.mu.Unlock()
 	}
-	protomsg, ok := msg.(proto.Message)
-	size := proto.Size(protomsg)
-	if !s.omitTraceEvents {
-		s.emitEvent(ctx, semconv.MessageTypeReceived, s.receivedCounter, size, ok)
-	}
-	s.receiveSize.Record(ctx, int64(size), metric.WithAttributes(s.metricAttributes()...))
 	return err
 }
 
-func (s *streamingState) send(ctx context.Context, msg any, conn sendReceiver) error {
+func (s *streamingState) send(msg any, conn sendReceiver) error {
 	err := conn.Send(msg)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if errors.Is(err, io.EOF) {
-		return err
-	}
-	s.sentCounter++
-	if err != nil {
+	if err != nil && !errors.Is(err, io.EOF) {
+		s.mu.Lock()
 		s.error = err
-		// If error add it to the attributes because the stream is about to terminate.
-		// If no error don't add anything because status only exists at end of stream.
-		if statusCode, ok := statusCodeAttribute(s.protocol, err); ok {
-			s.addAttributes(statusCode)
-		}
+		s.mu.Unlock()
 	}
-	protomsg, ok := msg.(proto.Message)
-	size := proto.Size(protomsg)
-	if !s.omitTraceEvents {
-		s.emitEvent(ctx, semconv.MessageTypeSent, s.sentCounter, size, ok)
-	}
-	s.sendSize.Record(ctx, int64(size), metric.WithAttributes(s.metricAttributes()...))
 	return err
-}
-
-func (s *streamingState) emitEvent(ctx context.Context, msgType attribute.KeyValue, msgID int64, msgSize int, hasSize bool) {
-	span := trace.SpanFromContext(ctx)
-	if !span.IsRecording() {
-		return
-	}
-	attrs := make([]attribute.KeyValue, 0, 3)
-	attrs = append(attrs,
-		msgType,
-		semconv.MessageIDKey.Int64(msgID),
-	)
-	if hasSize {
-		attrs = append(attrs, semconv.MessageUncompressedSizeKey.Int(msgSize))
-	}
-	span.AddEvent(messageKey, trace.WithAttributes(
-		s.attributeFilter.filter(s.spec, attrs...)...,
-	))
 }
