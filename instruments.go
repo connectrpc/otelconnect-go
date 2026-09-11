@@ -51,43 +51,53 @@ type instruments struct {
 }
 
 // createInstruments creates the metrics for the interceptor.
-func createInstruments(meter metric.Meter, interceptorType string) (instruments, error) {
+func createInstruments(meter metric.Meter, config InstrumentsConfig, interceptorType string) (instruments, error) {
 	duration, err := meter.Int64Histogram(
 		formatkeys(interceptorType, durationKey),
-		metric.WithUnit(unitMilliseconds),
-		metric.WithDescription(durationDesc),
+		append([]metric.Int64HistogramOption{
+			metric.WithUnit(unitMilliseconds),
+			metric.WithDescription(durationDesc),
+		}, config.DurationOptions...)...,
 	)
 	if err != nil {
 		return instruments{}, err
 	}
 	requestSize, err := meter.Int64Histogram(
 		formatkeys(interceptorType, requestSizeKey),
-		metric.WithUnit(unitBytes),
-		metric.WithDescription(requestSizeDesc),
+		append([]metric.Int64HistogramOption{
+			metric.WithUnit(unitBytes),
+			metric.WithDescription(requestSizeDesc),
+		}, config.RequestSizeOptions...)...,
 	)
 	if err != nil {
 		return instruments{}, err
 	}
 	responseSize, err := meter.Int64Histogram(
 		formatkeys(interceptorType, responseSizeKey),
-		metric.WithUnit(unitBytes),
-		metric.WithDescription(responseSizeDesc),
+		append([]metric.Int64HistogramOption{
+			metric.WithUnit(unitBytes),
+			metric.WithDescription(responseSizeDesc),
+		}, config.ResponseSizeOptions...)...,
 	)
 	if err != nil {
 		return instruments{}, err
 	}
 	requestsPerRPC, err := meter.Int64Histogram(
 		formatkeys(interceptorType, requestsPerRPCKey),
-		metric.WithUnit(unitDimensionless),
-		metric.WithDescription(requestsPerRPCDesc),
+		append([]metric.Int64HistogramOption{
+			metric.WithUnit(unitDimensionless),
+			metric.WithDescription(requestsPerRPCDesc),
+		}, config.RequestsPerRPCOptions...)...,
 	)
 	if err != nil {
 		return instruments{}, err
 	}
 	responsesPerRPC, err := meter.Int64Histogram(
 		formatkeys(interceptorType, responsesPerRPCKey),
-		metric.WithUnit(unitDimensionless),
-		metric.WithDescription(responsesPerRPCDesc),
+		append([]metric.Int64HistogramOption{
+			metric.WithUnit(unitDimensionless),
+			metric.WithDescription(responsesPerRPCDesc),
+		}, config.ResponsesPerRPCOptions...)...,
 	)
 	if err != nil {
 		return instruments{}, err

@@ -50,4 +50,14 @@ type config struct {
 	omitTraceEvents         bool
 	propagateResponseHeader bool
 	rpcSystem               RPCSystem
+	serverInstrumentsConfig InstrumentsConfig
+	clientInstrumentsConfig InstrumentsConfig
+}
+
+type InstrumentsConfig struct {
+	DurationOptions        []metric.Int64HistogramOption
+	RequestSizeOptions     []metric.Int64HistogramOption
+	ResponseSizeOptions    []metric.Int64HistogramOption
+	RequestsPerRPCOptions  []metric.Int64HistogramOption
+	ResponsesPerRPCOptions []metric.Int64HistogramOption
 }

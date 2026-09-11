@@ -66,11 +66,11 @@ func NewInterceptor(options ...Option) (*Interceptor, error) {
 	for _, opt := range options {
 		opt.apply(&cfg)
 	}
-	clientInstruments, err := createInstruments(cfg.meter, clientKey)
+	clientInstruments, err := createInstruments(cfg.meter, cfg.clientInstrumentsConfig, clientKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client instruments: %w", err)
 	}
-	serverInstruments, err := createInstruments(cfg.meter, serverKey)
+	serverInstruments, err := createInstruments(cfg.meter, cfg.serverInstrumentsConfig, serverKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create server instruments: %w", err)
 	}

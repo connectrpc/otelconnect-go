@@ -161,6 +161,16 @@ func WithRPCSystem(system RPCSystem) Option {
 	return &rpcSystemOption{system: system}
 }
 
+// WithServerInstrumentsConfig allows for custom options to be passed to server instruments.
+func WithServerInstrumentsConfig(c InstrumentsConfig) Option {
+	return &serverInstrumentsConfigOption{c: c}
+}
+
+// WithClientInstrumentsConfig allows for custom options to be passed to client instruments.
+func WithClientInstrumentsConfig(c InstrumentsConfig) Option {
+	return &clientInstrumentsConfigOption{c: c}
+}
+
 // RPCSystem represents an RPC system, like ConnectRPC or gRPC. Different
 // systems have different semantic conventions for how metrics and spans are
 // defined.
@@ -279,3 +289,19 @@ func (connectRPCSystem) protocol() string { return connectProtocol }
 type gRPCSystem struct{}
 
 func (gRPCSystem) protocol() string { return grpcProtocol }
+
+type serverInstrumentsConfigOption struct {
+	c InstrumentsConfig
+}
+
+func (o *serverInstrumentsConfigOption) apply(c *config) {
+	c.serverInstrumentsConfig = o.c
+}
+
+type clientInstrumentsConfigOption struct {
+	c InstrumentsConfig
+}
+
+func (o *clientInstrumentsConfigOption) apply(c *config) {
+	c.clientInstrumentsConfig = o.c
+}

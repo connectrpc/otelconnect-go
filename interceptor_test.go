@@ -39,6 +39,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
@@ -2614,7 +2615,56 @@ func TestPropagateResponseHeaderStreaming(t *testing.T) {
 	assertUsableTraceparent(t, stream.ResponseHeader())
 }
 
-// assertUsableTraceparent validates that a traceparent header can be used fromthe response.
+func TestInstrumentsConfig(t *testing.T) {
+	t.Parallel()
+
+	metricReader, meterProvider := setupMetrics()
+
+	serverInterceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithClientInstrumentsConfig(InstrumentsConfig{
+			DurationOptions: []metric.Int64HistogramOption{
+				metric.WithExplicitBucketBoundaries(0, 10),
+			},
+		}),
+		WithServerInstrumentsConfig(InstrumentsConfig{
+			DurationOptions: []metric.Int64HistogramOption{
+				metric.WithExplicitBucketBoundaries(20, 30),
+			},
+		}),
+	)
+	require.NoError(t, err)
+
+	serverInterceptor.clientInstruments.duration.Record(t.Context(), 5)
+	serverInterceptor.serverInstruments.duration.Record(t.Context(), 5)
+
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+
+	var foundClientDuration, foundServerDuration bool
+	for _, m := range metrics.ScopeMetrics {
+		for _, metric := range m.Metrics {
+			if metric.Name == rpcClientDuration {
+				data, ok := metric.Data.(metricdata.Histogram[int64])
+				require.True(t, ok, rpcClientDuration)
+				require.Len(t, data.DataPoints, 1)
+				assert.Equal(t, []float64{0, 10}, data.DataPoints[0].Bounds)
+				foundClientDuration = true
+			}
+			if metric.Name == rpcServerDuration {
+				data, ok := metric.Data.(metricdata.Histogram[int64])
+				require.True(t, ok, rpcServerDuration)
+				require.Len(t, data.DataPoints, 1)
+				assert.Equal(t, []float64{20, 30}, data.DataPoints[0].Bounds)
+				foundServerDuration = true
+			}
+		}
+	}
+	assert.True(t, foundClientDuration, "client duration metric should be found")
+	assert.True(t, foundServerDuration, "server duration metric should be found")
+}
+
+// assertUsableTraceparent validates that a traceparent header can be used from the response.
 func assertUsableTraceparent(t *testing.T, header http.Header) {
 	t.Helper()
 
