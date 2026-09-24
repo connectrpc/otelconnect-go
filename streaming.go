@@ -40,6 +40,7 @@ func newStreamingState(
 	protocol string,
 	spec connect.Spec,
 	peerAddr string,
+	serverPeerAttributes bool,
 	attributeFilter AttributeFilter,
 	labeler *Labeler,
 ) *streamingState {
@@ -50,7 +51,9 @@ func newStreamingState(
 	case clientKey:
 		attributes = addAddressAttributes(attributes, peerAddr, semconv.ServerAddressKey, semconv.ServerPortKey)
 	case serverKey:
-		peerAttributes = addAddressAttributes(nil, peerAddr, semconv.NetworkPeerAddressKey, semconv.NetworkPeerPortKey)
+		if serverPeerAttributes {
+			peerAttributes = addAddressAttributes(nil, peerAddr, semconv.NetworkPeerAddressKey, semconv.NetworkPeerPortKey)
+		}
 	}
 	return &streamingState{
 		spec:            spec,

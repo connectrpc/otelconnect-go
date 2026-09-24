@@ -127,6 +127,7 @@ func (i *interceptor) serveServer(ctx context.Context, spec connect.Spec, stream
 		protocol,
 		spec,
 		callInfo.PeerAddr,
+		i.config.serverPeerAttributes,
 		i.config.filterAttribute,
 		labeler,
 	)
@@ -219,6 +220,7 @@ func (i *interceptor) serveClient(ctx context.Context, spec connect.Spec, next c
 		protocol,
 		spec,
 		callInfo.PeerAddr,
+		i.config.serverPeerAttributes,
 		i.config.filterAttribute,
 		labeler,
 	)

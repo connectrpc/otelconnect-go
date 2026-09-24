@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	version             = "0.10.0-dev"
+	version             = "0.11.0-dev"
 	semanticVersion     = "semver:" + version
 	instrumentationName = "connectrpc.com/otelconnect"
 
@@ -44,6 +44,7 @@ type config struct {
 	requestHeaderKeys        []string
 	responseHeaderKeys       []string
 	propagateResponseHeader  bool
+	serverPeerAttributes     bool
 	rpcSystem                RPCSystem
 	durationHistogramOptions []metric.Float64HistogramOption
 }

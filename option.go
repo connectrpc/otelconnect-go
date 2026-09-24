@@ -19,11 +19,9 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect/v2"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
 	tracenoop "go.opentelemetry.io/otel/trace/noop"
 )
@@ -84,24 +82,10 @@ func WithAttributeFilter(filter AttributeFilter) Option {
 	return &attributeFilterOption{filterAttribute: filter}
 }
 
-// WithoutServerPeerAttributes removes network.peer.address and
-// network.peer.port attributes from server spans. The default behavior
-// follows the OpenTelemetry semantic conventions for RPC, but produces very
-// high-cardinality data; this option significantly reduces cardinality in most
-// environments.
-//
-// The option only suppresses attributes that exist on the server side; it has
-// no effect when applied to the client interceptor.
-func WithoutServerPeerAttributes() Option {
-	return WithAttributeFilter(func(_ connect.Spec, value attribute.KeyValue) bool {
-		if value.Key == semconv.NetworkPeerPortKey {
-			return false
-		}
-		if value.Key == semconv.NetworkPeerAddressKey {
-			return false
-		}
-		return true
-	})
+// WithServerPeerAttributes adds the network.peer.address and network.peer.port
+// attributes to server spans. Omitted by default: they are high-cardinality.
+func WithServerPeerAttributes() Option {
+	return &serverPeerAttributesOption{}
 }
 
 // WithTrustRemote sets the Interceptor to trust remote spans.
@@ -262,6 +246,12 @@ type propagateResponseHeaderOption struct{}
 
 func (o *propagateResponseHeaderOption) apply(c *config) {
 	c.propagateResponseHeader = true
+}
+
+type serverPeerAttributesOption struct{}
+
+func (o *serverPeerAttributesOption) apply(c *config) {
+	c.serverPeerAttributes = true
 }
 
 type rpcSystemOption struct {

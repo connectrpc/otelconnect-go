@@ -93,8 +93,8 @@ will create child spans for each request.
 `grpc`), the fully-qualified `rpc.method`, `rpc.response.status_code` and, on
 failure, `error.type`. Status codes are the uppercase Connect codes
 (`NOT_FOUND`, `DEADLINE_EXCEEDED`) for every RPC system, or `OK`. Client
-telemetry adds `server.address` and `server.port`; server spans add
-`network.peer.address` and `network.peer.port`.
+telemetry adds `server.address` and `server.port`; server spans can add
+`network.peer.address` and `network.peer.port` (see below).
 
 Each side records one metric, `rpc.{server,client}.call.duration`, in seconds.
 [`WithDurationHistogramOptions`][WithDurationHistogramOptions] changes its
@@ -103,10 +103,10 @@ or client.
 
 ## Reducing tracing cardinality
 
-By default, the [OpenTelemetry RPC conventions][otel-rpc-conventions] tag
-server spans with the remote client's address and ephemeral port. To drop these
-attributes, use
-[`otelconnect.WithoutServerPeerAttributes`][WithoutServerPeerAttributes]. For
+The [OpenTelemetry RPC conventions][otel-rpc-conventions] tag server spans with
+the remote client's address and ephemeral port. These are high-cardinality, so
+`otelconnect` omits them by default; opt back in with
+[`otelconnect.WithServerPeerAttributes`][WithServerPeerAttributes]. For
 more customizable attribute filtering, use
 [`otelconnect.WithAttributeFilter`][WithAttributeFilter]; to skip RPCs
 entirely, use [`otelconnect.WithFilter`][WithFilter].
@@ -150,8 +150,8 @@ Offered under the [Apache 2 license][license].
 [WithAttributeFilter]: https://pkg.go.dev/connectrpc.com/otelconnect#WithAttributeFilter
 [WithDurationHistogramOptions]: https://pkg.go.dev/connectrpc.com/otelconnect#WithDurationHistogramOptions
 [WithFilter]: https://pkg.go.dev/connectrpc.com/otelconnect#WithFilter
+[WithServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithServerPeerAttributes
 [WithTrustRemote]: https://pkg.go.dev/connectrpc.com/otelconnect#WithTrustRemote
-[WithoutServerPeerAttributes]: https://pkg.go.dev/connectrpc.com/otelconnect#WithoutServerPeerAttributes
 [blog]: https://buf.build/blog/connect-a-better-grpc
 [conformance]: https://github.com/connectrpc/conformance
 [connect]: https://github.com/connectrpc/connect-go
