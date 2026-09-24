@@ -48,6 +48,7 @@ type config struct {
 	requestHeaderKeys        []string
 	responseHeaderKeys       []string
 	propagateResponseHeader  bool
+	serverPeerAttributes     bool
 	rpcSystem                RPCSystem
 	durationHistogramOptions []metric.Float64HistogramOption
 }

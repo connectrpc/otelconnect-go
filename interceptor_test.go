@@ -598,7 +598,7 @@ func TestInterceptors(t *testing.T) {
 		WithTraceRequestHeader("X-Request-Id"),
 	)
 	require.NoError(t, err)
-	pingClient, host, port := startServer(t, []connect.HandlerOption{
+	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
 	}, nil, okayPingServer())
 	pingWithHeader := requestOfSize(1, 0)
@@ -616,8 +616,6 @@ func TestInterceptors(t *testing.T) {
 				semconv.RPCSystemNameKey.String(connectProtocol),
 				semconv.RPCMethodKey.String(pingProcedure),
 				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
-				semconv.NetworkPeerAddressKey.String(host),
-				semconv.NetworkPeerPortKey.Int(port),
 				attribute.StringSlice("rpc.request.metadata.x-request-id", []string{"request-123"}),
 			},
 		},
@@ -627,8 +625,6 @@ func TestInterceptors(t *testing.T) {
 				semconv.RPCSystemNameKey.String(connectProtocol),
 				semconv.RPCMethodKey.String(pingProcedure),
 				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
-				semconv.NetworkPeerAddressKey.String(host),
-				semconv.NetworkPeerPortKey.Int(port),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1037,7 +1033,7 @@ func TestStreamingHandlerTracing(t *testing.T) {
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
 	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
-	pingClient, host, port := startServer(t, []connect.HandlerOption{
+	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor, assertSpanInterceptor{t: t}),
 	}, nil, okayPingServer())
 	stream := pingClient.PingStream(context.Background())
@@ -1061,8 +1057,6 @@ func TestStreamingHandlerTracing(t *testing.T) {
 				semconv.RPCSystemNameKey.String(connectProtocol),
 				semconv.RPCMethodKey.String(pingStreamProcedure),
 				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
-				semconv.NetworkPeerAddressKey.String(host),
-				semconv.NetworkPeerPortKey.Int(port),
 			},
 		},
 	}, spanRecorder.Ended())
@@ -1137,14 +1131,11 @@ func TestWithAttributeFilter(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
-func TestWithoutServerPeerAttributes(t *testing.T) {
+func TestServerPeerAttributesOmittedByDefault(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
 	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
-	serverInterceptor, err := NewInterceptor(
-		WithTracerProvider(traceProvider),
-		WithoutServerPeerAttributes(),
-	)
+	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
 	require.NoError(t, err)
 	pingClient, _, _ := startServer(t, []connect.HandlerOption{
 		connect.WithInterceptors(serverInterceptor),
@@ -1165,6 +1156,41 @@ func TestWithoutServerPeerAttributes(t *testing.T) {
 				semconv.RPCSystemNameKey.String(connectProtocol),
 				semconv.RPCMethodKey.String(pingStreamProcedure),
 				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestWithServerPeerAttributes(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	serverInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithServerPeerAttributes(),
+	)
+	require.NoError(t, err)
+	pingClient, host, port := startServer(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, okayPingServer())
+	stream := pingClient.PingStream(context.Background())
+	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
+	require.NoError(t, stream.Send(msg))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, stream.CloseResponse())
+	assertSpans(t, []wantSpans{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethod,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingStreamProcedure),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+				semconv.NetworkPeerAddressKey.String(host),
+				semconv.NetworkPeerPortKey.Int(port),
 			},
 		},
 	}, spanRecorder.Ended())

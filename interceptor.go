@@ -94,7 +94,7 @@ func (i *Interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		isClient := request.Spec().IsClient
 		name := strings.TrimLeft(request.Spec().Procedure, "/")
 		protocol := protocolToSemConv(request.Peer().Protocol, i.config.rpcSystem)
-		state := newStreamingState(protocol, request.Spec(), request.Peer(), i.config.filterAttribute, labeler)
+		state := newStreamingState(protocol, request.Spec(), request.Peer(), i.config.serverPeerAttributes, i.config.filterAttribute, labeler)
 		instrumentation := i.getInstruments(isClient)
 		carrier := propagation.HeaderCarrier(request.Header())
 		spanKind := trace.SpanKindClient
@@ -177,7 +177,7 @@ func (i *Interceptor) WrapStreamingClient(next connect.StreamingClientFunc) conn
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		i.config.propagator.Inject(ctx, carrier)
 		protocol := protocolToSemConv(conn.Peer().Protocol, i.config.rpcSystem)
-		state := newStreamingState(protocol, spec, conn.Peer(), i.config.filterAttribute, labeler)
+		state := newStreamingState(protocol, spec, conn.Peer(), i.config.serverPeerAttributes, i.config.filterAttribute, labeler)
 		var requestOnce sync.Once
 		setRequestAttributes := func() {
 			if span.IsRecording() {
@@ -244,7 +244,7 @@ func (i *Interceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) co
 		}
 		name := strings.TrimLeft(conn.Spec().Procedure, "/")
 		protocol := protocolToSemConv(conn.Peer().Protocol, i.config.rpcSystem)
-		state := newStreamingState(protocol, conn.Spec(), conn.Peer(), i.config.filterAttribute, labeler)
+		state := newStreamingState(protocol, conn.Spec(), conn.Peer(), i.config.serverPeerAttributes, i.config.filterAttribute, labeler)
 		// extract any request headers into the context
 		carrier := propagation.HeaderCarrier(conn.RequestHeader())
 		traceOpts := make([]trace.SpanStartOption, 0, 5)
