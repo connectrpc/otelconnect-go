@@ -39,12 +39,8 @@ type interceptor struct {
 }
 
 // NewServerInterceptor returns a [connect.ServerInterceptor] that adds
-// OpenTelemetry metrics and tracing to connect handlers. Use options to
-// configure the interceptor. Any invalid options will cause an error to be
-// returned. The interceptor will use the default tracer and meter providers.
-// To use a custom tracer or meter provider pass in the [WithTracerProvider]
-// or [WithMeterProvider] options. To disable metrics or tracing pass in the
-// [WithoutMetrics] or [WithoutTracing] options.
+// OpenTelemetry metrics and tracing to connect handlers. The interceptor uses
+// the OTel global tracer and meter providers by default.
 func NewServerInterceptor(options ...Option) (connect.ServerInterceptor, error) {
 	intercept, err := newInterceptor(serverKey, options...)
 	if err != nil {
@@ -58,12 +54,8 @@ func NewServerInterceptor(options ...Option) (connect.ServerInterceptor, error) 
 }
 
 // NewClientInterceptor returns a [connect.ClientInterceptor] that adds
-// OpenTelemetry metrics and tracing to connect clients. Use options to
-// configure the interceptor. Any invalid options will cause an error to be
-// returned. The interceptor will use the default tracer and meter providers.
-// To use a custom tracer or meter provider pass in the [WithTracerProvider]
-// or [WithMeterProvider] options. To disable metrics or tracing pass in the
-// [WithoutMetrics] or [WithoutTracing] options.
+// OpenTelemetry metrics and tracing to connect clients. The interceptor uses
+// the OTel global tracer and meter providers by default.
 func NewClientInterceptor(options ...Option) (connect.ClientInterceptor, error) {
 	intercept, err := newInterceptor(clientKey, options...)
 	if err != nil {
