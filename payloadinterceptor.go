@@ -15,42 +15,42 @@
 package otelconnect
 
 import (
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 )
 
 type streamingClientInterceptor struct {
-	connect.StreamingClientConn
+	connect.ClientStream
 
-	receive func(any, connect.StreamingClientConn) error
-	send    func(any, connect.StreamingClientConn) error
+	receive func(any, connect.ClientStream) error
+	send    func(any, connect.ClientStream) error
 	onClose func()
 }
 
 func (s *streamingClientInterceptor) Receive(msg any) error {
-	return s.receive(msg, s.StreamingClientConn)
+	return s.receive(msg, s.ClientStream)
 }
 
 func (s *streamingClientInterceptor) Send(msg any) error {
-	return s.send(msg, s.StreamingClientConn)
+	return s.send(msg, s.ClientStream)
 }
 
-func (s *streamingClientInterceptor) CloseResponse() error {
-	err := s.StreamingClientConn.CloseResponse()
+func (s *streamingClientInterceptor) Close() error {
+	err := s.ClientStream.Close()
 	s.onClose()
 	return err
 }
 
 type streamingHandlerInterceptor struct {
-	connect.StreamingHandlerConn
+	connect.ServerStream
 
-	receive func(any, connect.StreamingHandlerConn) error
-	send    func(any, connect.StreamingHandlerConn) error
+	receive func(any, connect.ServerStream) error
+	send    func(any, connect.ServerStream) error
 }
 
 func (p *streamingHandlerInterceptor) Receive(msg any) error {
-	return p.receive(msg, p.StreamingHandlerConn)
+	return p.receive(msg, p.ServerStream)
 }
 
 func (p *streamingHandlerInterceptor) Send(msg any) error {
-	return p.send(msg, p.StreamingHandlerConn)
+	return p.send(msg, p.ServerStream)
 }

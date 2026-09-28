@@ -20,7 +20,7 @@ import (
 	"slices"
 	"sync"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
@@ -36,9 +36,10 @@ type streamingState struct {
 }
 
 func newStreamingState(
+	side string,
 	protocol string,
 	spec connect.Spec,
-	peer connect.Peer,
+	peerAddr string,
 	serverPeerAttributes bool,
 	attributeFilter AttributeFilter,
 	labeler *Labeler,
@@ -46,10 +47,13 @@ func newStreamingState(
 	attributes := make([]attribute.KeyValue, 0, 6) // 4 max request attrs + 2 status attrs
 	attributes = addRequestAttributes(protocol, attributes, spec)
 	var peerAttributes []attribute.KeyValue
-	if spec.IsClient {
-		attributes = addAddressAttributes(attributes, peer.Addr, semconv.ServerAddressKey, semconv.ServerPortKey)
-	} else if serverPeerAttributes {
-		peerAttributes = addAddressAttributes(nil, peer.Addr, semconv.NetworkPeerAddressKey, semconv.NetworkPeerPortKey)
+	switch side {
+	case clientKey:
+		attributes = addAddressAttributes(attributes, peerAddr, semconv.ServerAddressKey, semconv.ServerPortKey)
+	case serverKey:
+		if serverPeerAttributes {
+			peerAttributes = addAddressAttributes(nil, peerAddr, semconv.NetworkPeerAddressKey, semconv.NetworkPeerPortKey)
+		}
 	}
 	return &streamingState{
 		spec:            spec,

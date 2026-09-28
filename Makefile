@@ -80,7 +80,7 @@ checkgenerate:
 $(BIN)/protoc-gen-connect-go: go.mod
 	@mkdir -p $(@D)
 	@# The version of protoc-gen-connect-go is determined by the version in go.mod
-	GOBIN=$(abspath $(@D)) $(GO) install connectrpc.com/connect/cmd/protoc-gen-connect-go
+	GOBIN=$(abspath $(@D)) $(GO) install connectrpc.com/connect/v2/cmd/protoc-gen-connect-go
 
 $(BIN)/buf: Makefile
 	@mkdir -p $(@D)

@@ -20,7 +20,8 @@ import (
 	"strconv"
 	"strings"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
@@ -71,7 +72,7 @@ func addStatusAttributes(attrs []attribute.KeyValue, err error) []attribute.KeyV
 	switch {
 	case err == nil:
 		return append(attrs, semconv.RPCResponseStatusCodeKey.String(statusCodeOK))
-	case connect.IsNotModifiedError(err):
+	case connecthttp.IsNotModifiedError(err):
 		// A "not modified" error is special: it's code is technically "unknown" but
 		// it would be misleading to label it as an unknown error since it's not really
 		// an error, but rather a sentinel to trigger a "304 Not Modified" HTTP status.
@@ -89,22 +90,22 @@ func addStatusAttributes(attrs []attribute.KeyValue, err error) []attribute.KeyV
 	}
 }
 
-func headerAttributes(eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
+func headerAttributes(eventType string, metadata *connect.Header, allowedKeys []string) []attribute.KeyValue {
 	attributes := make([]attribute.KeyValue, 0, len(allowedKeys))
 	return addHeaderAttributes(attributes, eventType, metadata, allowedKeys)
 }
 
-func addHeaderAttributes(attributes []attribute.KeyValue, eventType string, metadata http.Header, allowedKeys []string) []attribute.KeyValue {
+func addHeaderAttributes(attributes []attribute.KeyValue, eventType string, metadata *connect.Header, allowedKeys []string) []attribute.KeyValue {
 	for _, allowedKey := range allowedKeys {
-		val, ok := metadata[allowedKey]
-		if !ok {
+		values := metadata.Values(allowedKey)
+		if len(values) == 0 {
 			continue
 		}
 		key := strings.ToLower(allowedKey)
 		if eventType == requestKey {
-			attributes = append(attributes, semconv.RPCRequestMetadata(key, val...))
+			attributes = append(attributes, semconv.RPCRequestMetadata(key, values...))
 		} else {
-			attributes = append(attributes, semconv.RPCResponseMetadata(key, val...))
+			attributes = append(attributes, semconv.RPCResponseMetadata(key, values...))
 		}
 	}
 	return attributes
