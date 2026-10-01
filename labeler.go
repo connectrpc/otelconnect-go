@@ -64,3 +64,10 @@ func LabelerFromContext(ctx context.Context) (*Labeler, bool) {
 	}
 	return l, ok
 }
+
+// appendAttributes appends the Labeler's attributes to attrs.
+func (l *Labeler) appendAttributes(attrs []attribute.KeyValue) []attribute.KeyValue {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append(attrs, l.attributes...)
+}
