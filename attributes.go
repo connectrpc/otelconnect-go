@@ -49,6 +49,11 @@ func (filter AttributeFilter) filter(spec connect.Spec, values ...attribute.KeyV
 	return filteredValues
 }
 
+// filterFrom filters values from start onward, in place.
+func (filter AttributeFilter) filterFrom(spec connect.Spec, values []attribute.KeyValue, start int) []attribute.KeyValue {
+	return values[:start+len(filter.filter(spec, values[start:]...))]
+}
+
 func addRequestAttributes(protocol string, attrs []attribute.KeyValue, spec connect.Spec) []attribute.KeyValue {
 	return append(attrs,
 		semconv.RPCSystemNameKey.String(protocol),

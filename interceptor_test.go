@@ -1095,6 +1095,26 @@ func TestStreamingClientTracing(t *testing.T) {
 	}, spanRecorder.Ended())
 }
 
+func TestStreamingClientTracingEndsAtEOF(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	clientInterceptor, err := NewClientInterceptor(WithTracerProvider(traceProvider))
+	require.NoError(t, err)
+	pingClient, _, _ := startServer(t, nil, []connect.ClientInterceptor{clientInterceptor}, okayPingServer())
+	stream, err := pingClient.PingStream(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
+	require.NoError(t, stream.CloseSend())
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
+	// Reading to io.EOF ends the span, without Close or cancellation.
+	require.Len(t, spanRecorder.Ended(), 1)
+	assert.Equal(t, codes.Unset, spanRecorder.Ended()[0].Status().Code)
+}
+
 func TestWithAttributeFilter(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
