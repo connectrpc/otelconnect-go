@@ -140,6 +140,11 @@ headers, not [`otelconnect.WithTrustRemote`][WithTrustRemote].
 
 * The [two most recent major releases][go-support-policy] of Go.
 * v1 of the `go.opentelemetry.io/otel` tracing and metrics SDK.
+* v2 of `connectrpc.com/connect`.
+
+`otelconnect` v0.10.x is the last release series compatible with
+`connectrpc.com/connect` v1. If you're still on connect v1, pin
+`connectrpc.com/otelconnect@v0.10`.
 
 ## Legal
 
