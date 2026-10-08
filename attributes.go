@@ -20,20 +20,27 @@ import (
 	"strconv"
 	"strings"
 
+	connectv1 "connectrpc.com/connect"
 	"connectrpc.com/connect/v2"
-	"connectrpc.com/connect/v2/connecthttp"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 const statusCodeOK = "OK" // success
 
-// AttributeFilter is used to filter attributes out based on the [connect.Spec]
-// and [attribute.KeyValue]. If the filter returns true the attribute will be
-// kept else it will be removed. AttributeFilter must be safe to call concurrently.
-type AttributeFilter func(connect.Spec, attribute.KeyValue) bool
+// AttributeFilter is used to filter attributes out based on the
+// [connectv1.Spec] and [attribute.KeyValue]. If the filter returns true the
+// attribute will be kept else it will be removed. AttributeFilter must be safe
+// to call concurrently.
+//
+// AttributeFilter takes a connect-go v1 spec. [WithAttributeFilter] also
+// accepts a filter that takes a connect-go v2 spec.
+type AttributeFilter func(connectv1.Spec, attribute.KeyValue) bool
 
-func (filter AttributeFilter) filter(spec connect.Spec, values ...attribute.KeyValue) []attribute.KeyValue {
+// attributeFilter is an attribute filter bound to one side of an RPC.
+type attributeFilter func(connect.Spec, attribute.KeyValue) bool
+
+func (filter attributeFilter) filter(spec connect.Spec, values ...attribute.KeyValue) []attribute.KeyValue {
 	if filter == nil {
 		return values
 	}
@@ -50,7 +57,7 @@ func (filter AttributeFilter) filter(spec connect.Spec, values ...attribute.KeyV
 }
 
 // filterFrom filters values from start onward, in place.
-func (filter AttributeFilter) filterFrom(spec connect.Spec, values []attribute.KeyValue, start int) []attribute.KeyValue {
+func (filter attributeFilter) filterFrom(spec connect.Spec, values []attribute.KeyValue, start int) []attribute.KeyValue {
 	return values[:start+len(filter.filter(spec, values[start:]...))]
 }
 
@@ -73,11 +80,11 @@ func addAddressAttributes(attrs []attribute.KeyValue, address string, addressKey
 	return append(attrs, addressKey.String(address))
 }
 
-func addStatusAttributes(attrs []attribute.KeyValue, err error) []attribute.KeyValue {
+func addStatusAttributes(attrs []attribute.KeyValue, status rpcStatus) []attribute.KeyValue {
 	switch {
-	case err == nil:
+	case status.err == nil:
 		return append(attrs, semconv.RPCResponseStatusCodeKey.String(statusCodeOK))
-	case connecthttp.IsNotModifiedError(err):
+	case status.notModified:
 		// A "not modified" error is special: it's code is technically "unknown" but
 		// it would be misleading to label it as an unknown error since it's not really
 		// an error, but rather a sentinel to trigger a "304 Not Modified" HTTP status.
@@ -87,7 +94,7 @@ func addStatusAttributes(attrs []attribute.KeyValue, err error) []attribute.KeyV
 		)
 	default:
 		// Mirror gRPC's canonical names, e.g. DEADLINE_EXCEEDED.
-		code := strings.ToUpper(connect.CodeOf(err).String())
+		code := strings.ToUpper(status.code.String())
 		return append(attrs,
 			semconv.RPCResponseStatusCodeKey.String(code),
 			semconv.ErrorTypeKey.String(code),
@@ -95,12 +102,17 @@ func addStatusAttributes(attrs []attribute.KeyValue, err error) []attribute.KeyV
 	}
 }
 
-func headerAttributes(eventType string, metadata *connect.Header, allowedKeys []string) []attribute.KeyValue {
+// headerValues is a [*connect.Header] or an [http.Header].
+type headerValues interface {
+	Values(key string) []string
+}
+
+func headerAttributes(eventType string, metadata headerValues, allowedKeys []string) []attribute.KeyValue {
 	attributes := make([]attribute.KeyValue, 0, len(allowedKeys))
 	return addHeaderAttributes(attributes, eventType, metadata, allowedKeys)
 }
 
-func addHeaderAttributes(attributes []attribute.KeyValue, eventType string, metadata *connect.Header, allowedKeys []string) []attribute.KeyValue {
+func addHeaderAttributes(attributes []attribute.KeyValue, eventType string, metadata headerValues, allowedKeys []string) []attribute.KeyValue {
 	for _, allowedKey := range allowedKeys {
 		values := metadata.Values(allowedKey)
 		if len(values) == 0 {

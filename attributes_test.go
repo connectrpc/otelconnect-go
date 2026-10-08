@@ -24,7 +24,7 @@ import (
 
 func TestAttributeFilter(t *testing.T) {
 	t.Parallel()
-	filterOdd := AttributeFilter(func(_ connect.Spec, kv attribute.KeyValue) bool {
+	filterOdd := attributeFilter(func(_ connect.Spec, kv attribute.KeyValue) bool {
 		return kv.Value.AsInt64()%2 != 0
 	})
 	assert.Equal(t,

@@ -11,3 +11,6 @@ plugins:
   - local: protoc-gen-connect-go
     out: internal/gen
     opt: paths=source_relative
+  - local: protoc-gen-connect-go-v1
+    out: internal/gen/connectv1
+    opt: paths=source_relative

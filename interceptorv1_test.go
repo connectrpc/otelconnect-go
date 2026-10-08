@@ -1,0 +1,2005 @@
+// Copyright 2022-2025 The Connect Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package otelconnect
+
+import (
+	"context"
+	"errors"
+	"io"
+	"math/rand"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect/internal/gen/connectv1/observability/ping/v1/pingv1connect"
+	pingv1 "connectrpc.com/otelconnect/internal/gen/observability/ping/v1"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/instrumentation"
+	metricsdk "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+	"go.opentelemetry.io/otel/semconv/v1.43.0/rpcconv"
+	traceapi "go.opentelemetry.io/otel/trace"
+)
+
+const (
+	pingMethodV1          = "Ping"
+	failMethodV1          = "Fail"
+	pingStreamMethodV1    = "PingStream"
+	unimplementedStringV1 = "UNIMPLEMENTED"
+	dataLossStringV1      = "DATA_LOSS"
+	traceParentKeyV1      = "Traceparent"
+	rpcClientDurationV1   = "rpc.client.call.duration"
+	rpcServerDurationV1   = "rpc.server.call.duration"
+	rpcSystemNameV1       = "rpc.system.name"
+	rpcMethodV1           = "rpc.method"
+	rpcStatusCodeV1       = "rpc.response.status_code"
+	errorTypeV1           = "error.type"
+	customLabelV1         = "custom.label"
+)
+
+// rpc.method is the generated procedure without its leading slash.
+//
+//nolint:gochecknoglobals
+var (
+	pingProcedureV1       = pingv1connect.PingServicePingProcedure[1:]
+	failProcedureV1       = pingv1connect.PingServiceFailProcedure[1:]
+	pingStreamProcedureV1 = pingv1connect.PingServicePingStreamProcedure[1:]
+)
+
+func TestStreamingMetricsV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	var now time.Time
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider), optionFuncV1(func(c *config) {
+			c.now = func() time.Time {
+				now = now.Add(time.Second)
+				return now
+			}
+		}),
+	)
+	require.NoError(t, err)
+	connectClient, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(interceptor),
+		}, []connect.ClientOption{}, okayPingServerV1())
+	stream := connectClient.PingStream(context.Background())
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}
+	require.NoError(t, stream.Send(msg))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, stream.CloseResponse())
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+	diff := cmp.Diff(expectedDurationMetricsV1(serverKey,
+		semconv.RPCSystemNameKey.String(connectProtocol),
+		semconv.RPCMethodKey.String(pingStreamProcedureV1),
+		semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+	), metrics, cmpOptsV1()...)
+	assert.Empty(t, diff)
+}
+
+func TestStreamingMetricsClientV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	var now time.Time
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider), optionFuncV1(func(c *config) {
+			c.now = func() time.Time {
+				now = now.Add(time.Second)
+				return now
+			}
+		}),
+	)
+	require.NoError(t, err)
+	connectClient, host, port := startServerV1(t,
+		[]connect.HandlerOption{},
+		[]connect.ClientOption{
+			connect.WithInterceptors(interceptor),
+		}, okayPingServerV1())
+	stream := connectClient.PingStream(context.Background())
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}
+	require.NoError(t, stream.Send(msg))
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseResponse())
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+	diff := cmp.Diff(expectedDurationMetricsV1(clientKey,
+		semconv.RPCSystemNameKey.String(connectProtocol),
+		semconv.RPCMethodKey.String(pingStreamProcedureV1),
+		semconv.ServerAddressKey.String(host),
+		semconv.ServerPortKey.Int(port),
+		semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+	), metrics, cmpOptsV1()...)
+	if diff != "" {
+		t.Error(diff)
+	}
+}
+
+func TestStreamingMetricsClientFailV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	var now time.Time
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider), optionFuncV1(func(c *config) {
+			c.now = func() time.Time {
+				now = now.Add(time.Second)
+				return now
+			}
+		}),
+	)
+	require.NoError(t, err)
+	connectClient, host, port := startServerV1(t,
+		[]connect.HandlerOption{},
+		[]connect.ClientOption{
+			connect.WithInterceptors(interceptor),
+		}, failPingServerV1())
+	stream := connectClient.PingStream(context.Background())
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}
+	require.NoError(t, stream.Send(msg))
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.Error(t, err)
+	require.NoError(t, stream.CloseResponse())
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+	diff := cmp.Diff(expectedDurationMetricsV1(clientKey,
+		semconv.RPCSystemNameKey.String(connectProtocol),
+		semconv.RPCMethodKey.String(pingStreamProcedureV1),
+		semconv.ServerAddressKey.String(host),
+		semconv.ServerPortKey.Int(port),
+		semconv.RPCResponseStatusCodeKey.String(dataLossStringV1),
+		semconv.ErrorTypeKey.String(dataLossStringV1),
+	), metrics, cmpOptsV1()...)
+	if diff != "" {
+		t.Error(diff)
+	}
+}
+
+func TestStreamingMetricsFailV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	var now time.Time
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider), optionFuncV1(func(c *config) {
+			c.now = func() time.Time {
+				now = now.Add(time.Second)
+				return now
+			}
+		}),
+	)
+	require.NoError(t, err)
+	connectClient, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(interceptor),
+		}, []connect.ClientOption{}, failPingServerV1())
+	stream := connectClient.PingStream(context.Background())
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}
+	err = stream.Send(msg)
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.Error(t, err)
+	require.NoError(t, stream.CloseResponse())
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+	diff := cmp.Diff(expectedDurationMetricsV1(serverKey,
+		semconv.RPCSystemNameKey.String(connectProtocol),
+		semconv.RPCMethodKey.String(pingStreamProcedureV1),
+		semconv.RPCResponseStatusCodeKey.String(dataLossStringV1),
+		semconv.ErrorTypeKey.String(dataLossStringV1),
+	), metrics, cmpOptsV1()...)
+	if diff != "" {
+		t.Error(diff)
+	}
+}
+
+func TestMetricsV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	var now time.Time
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		optionFuncV1(func(c *config) {
+			c.now = func() time.Time {
+				now = now.Add(time.Second)
+				return now
+			}
+		}),
+	)
+	require.NoError(t, err)
+	pingClient, host, port := startServerV1(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(interceptor),
+	}, okayPingServerV1())
+	if _, err := pingClient.Ping(context.Background(), requestOfSizeV1(1, 12)); err != nil {
+		t.Error(err)
+	}
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+	diff := cmp.Diff(expectedDurationMetricsV1(clientKey,
+		semconv.RPCSystemNameKey.String(connectProtocol),
+		semconv.RPCMethodKey.String(pingProcedureV1),
+		semconv.ServerAddressKey.String(host),
+		semconv.ServerPortKey.Int(port),
+		semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+	), metrics, cmpOptsV1()...)
+	if diff != "" {
+		t.Error(diff)
+	}
+}
+
+func TestDurationHistogramOptionsV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithDurationHistogramOptions(metric.WithExplicitBucketBoundaries(1, 2, 3)),
+	)
+	require.NoError(t, err)
+	pingClient, _, _ := startServerV1(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(interceptor),
+	}, okayPingServerV1())
+	_, err = pingClient.Ping(context.Background(), requestOfSizeV1(1, 0))
+	require.NoError(t, err)
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+	require.Len(t, metrics.ScopeMetrics, 1)
+	require.Len(t, metrics.ScopeMetrics[0].Metrics, 1)
+	histogram, ok := metrics.ScopeMetrics[0].Metrics[0].Data.(metricdata.Histogram[float64])
+	require.True(t, ok)
+	require.Len(t, histogram.DataPoints, 1)
+	assert.Equal(t, []float64{1, 2, 3}, histogram.DataPoints[0].Bounds)
+}
+
+func TestWithoutMetricsV1(t *testing.T) {
+	t.Parallel()
+	metricReader := metricsdk.NewManualReader()
+	meterProvider := metricsdk.NewMeterProvider(
+		metricsdk.WithReader(
+			metricReader,
+		),
+	)
+	interceptor, err := NewInterceptor(WithMeterProvider(meterProvider), WithoutMetrics())
+	require.NoError(t, err)
+	pingClient, _, _ := startServerV1(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(interceptor),
+	}, okayPingServerV1())
+	if _, err := pingClient.Ping(context.Background(), requestOfSizeV1(1, 12)); err != nil {
+		t.Error(err)
+	}
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+	if len(metrics.ScopeMetrics) != 0 {
+		t.Error("metrics unexpectedly recorded")
+	}
+}
+
+func TestWithoutTracingV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	interceptor, err := NewInterceptor(WithTracerProvider(traceProvider), WithoutTracing())
+	require.NoError(t, err)
+	pingClient, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(interceptor),
+	}, nil, okayPingServerV1())
+	if _, err := pingClient.Ping(context.Background(), requestOfSizeV1(1, 0)); err != nil {
+		t.Error(err)
+	}
+	if len(spanRecorder.Ended()) != 0 {
+		t.Error("unexpected spans recorded")
+	}
+}
+
+func TestClientSimpleV1(t *testing.T) {
+	t.Parallel()
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	interceptor, err := NewInterceptor(WithTracerProvider(clientTraceProvider))
+	require.NoError(t, err)
+	pingClient, host, port := startServerV1(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(interceptor),
+	}, okayPingServerV1())
+	if _, err := pingClient.Ping(context.Background(), requestOfSizeV1(1, 0)); err != nil {
+		t.Error(err)
+	}
+	require.Len(t, clientSpanRecorder.Ended(), 1)
+	require.Equal(t, codes.Unset, clientSpanRecorder.Ended()[0].Status().Code)
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingProcedureV1),
+				semconv.ServerAddressKey.String(host),
+				semconv.ServerPortKey.Int(port),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+			},
+		},
+	}, clientSpanRecorder.Ended())
+}
+
+func TestHandlerFailCallV1(t *testing.T) {
+	t.Parallel()
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	interceptor, err := NewInterceptor(WithTracerProvider(clientTraceProvider))
+	require.NoError(t, err)
+	pingClient, host, port := startServerV1(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(interceptor),
+	}, okayPingServerV1())
+	_, err = pingClient.Fail(
+		context.Background(),
+		connect.NewRequest(&pingv1.FailRequest{Code: int32(connect.CodeInternal)}),
+	)
+	require.Error(t, err)
+	require.Len(t, clientSpanRecorder.Ended(), 1)
+	require.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + failMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(failProcedureV1),
+				semconv.ServerAddressKey.String(host),
+				semconv.ServerPortKey.Int(port),
+				semconv.RPCResponseStatusCodeKey.String(unimplementedStringV1),
+				semconv.ErrorTypeKey.String(unimplementedStringV1),
+			},
+		},
+	}, clientSpanRecorder.Ended())
+}
+
+func TestClientHandlerOptsV1(t *testing.T) {
+	t.Parallel()
+	serverSpanRecorder := tracetest.NewSpanRecorder()
+	serverTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(serverSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	serverInterceptor, err := NewInterceptor(
+		WithTracerProvider(serverTraceProvider),
+		WithFilter(func(_ context.Context, _ connect.Spec) bool {
+			return false
+		}),
+	)
+	require.NoError(t, err)
+	clientInterceptor, err := NewInterceptor(
+		WithTracerProvider(clientTraceProvider),
+	)
+	require.NoError(t, err)
+	pingClient, host, port := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, []connect.ClientOption{
+		connect.WithInterceptors(clientInterceptor),
+	}, okayPingServerV1())
+	if _, err := pingClient.Ping(context.Background(), requestOfSizeV1(1, 0)); err != nil {
+		t.Error(err)
+	}
+	assertSpansV1(t, []wantSpansV1{}, serverSpanRecorder.Ended())
+	require.Len(t, clientSpanRecorder.Ended(), 1)
+	require.Equal(t, codes.Unset, clientSpanRecorder.Ended()[0].Status().Code)
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingProcedureV1),
+				semconv.ServerAddressKey.String(host),
+				semconv.ServerPortKey.Int(port),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+			},
+		},
+	}, clientSpanRecorder.Ended())
+}
+
+func TestBasicFilterV1(t *testing.T) {
+	t.Parallel()
+	headerKey, headerVal := "Some-Header", "foobar"
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	metricReader, meterProvider := setupMetricsV1()
+	serverInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithMeterProvider(meterProvider),
+		WithFilter(func(_ context.Context, _ connect.Spec) bool {
+			return false
+		}))
+	require.NoError(t, err)
+	pingClient, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, okayPingServerV1())
+	req := requestOfSizeV1(1, 0)
+	req.Header().Set(headerKey, headerVal)
+	if _, err := pingClient.Ping(context.Background(), req); err != nil {
+		t.Error(err)
+	}
+	if len(spanRecorder.Ended()) != 0 {
+		t.Error("unexpected spans recorded")
+	}
+	assertSpansV1(t, []wantSpansV1{}, spanRecorder.Ended())
+
+	// Verify no metrics are recorded when filtered out
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+
+	// Should have no scope metrics when filtered out
+	assert.Empty(t, metrics.ScopeMetrics, "No metrics should be recorded when filtered out")
+}
+
+func TestHeaderAttributeV1(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	pingReq, pingRes, cumsumReq, cumsumRes := "pingReq", "pingRes", "cumsumReq", "cumsumRes"
+	pingReqKey := "rpc.request.metadata.pingreq"
+	pingResKey := "rpc.response.metadata.pingres"
+	cumsumReqKey := "rpc.request.metadata.cumsumreq"
+	cumsumResKey := "rpc.response.metadata.cumsumres"
+	value := "value"
+	attributeValue := []string{value}
+	attributeValueLong := []string{value, value}
+	attributePingReq := attribute.StringSlice(pingReqKey, attributeValue)
+	attributeCumsumReq := attribute.StringSlice(cumsumReqKey, attributeValue)
+	attributePingRes := attribute.StringSlice(pingResKey, attributeValueLong)
+	attributeCumsumRes := attribute.StringSlice(cumsumResKey, attributeValue)
+	requestHeaderOption := WithTraceRequestHeader(pingReq, cumsumReq)
+	responseHeaderOption := WithTraceResponseHeader(pingRes, cumsumRes)
+
+	// Setup metrics for both server and client
+	serverMetricReader, serverMeterProvider := setupMetricsV1()
+	clientMetricReader, clientMeterProvider := setupMetricsV1()
+
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(handlerTraceProvider),
+		WithMeterProvider(serverMeterProvider),
+		requestHeaderOption,
+		responseHeaderOption,
+	)
+	require.NoError(t, err)
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(clientTraceProvider),
+		WithMeterProvider(clientMeterProvider),
+		requestHeaderOption,
+		responseHeaderOption,
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		},
+		[]connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+		}, &pluggablePingServerV1{
+			ping: func(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+				response := connect.NewResponse(&pingv1.PingResponse{})
+				response.Header().Set(pingRes, value)
+				response.Header().Add(pingRes, value) // Add two values to test formatting
+				return response, nil
+			},
+			pingStream: func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+				stream.ResponseHeader().Set(cumsumRes, value)
+				_, _ = stream.Receive()
+				return stream.Send(&pingv1.PingStreamResponse{})
+			},
+		})
+	pingRequest := connect.NewRequest(&pingv1.PingRequest{Id: 1})
+	// Set request metadata for unary ping request
+	pingRequest.Header().Set(pingReq, value)
+	_, err = client.Ping(context.Background(), pingRequest)
+	require.NoError(t, err)
+	stream := client.PingStream(context.Background())
+	// Set request metadata for streaming cumsum
+	stream.RequestHeader().Set(cumsumReq, value)
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, stream.CloseResponse())
+	require.Len(t, handlerSpanRecorder.Ended(), 2)
+	require.Len(t, clientSpanRecorder.Ended(), 2)
+	handlerSpans := handlerSpanRecorder.Ended()
+	handlerPingSpan := handlerSpans[0]
+	handlerCumsumSpan := handlerSpans[1]
+	clientSpans := clientSpanRecorder.Ended()
+	clientPingSpan := clientSpans[0]
+	clientCumsumSpan := clientSpans[1]
+	// Request spans from handler
+	require.Contains(t, handlerPingSpan.Attributes(), attributePingReq)
+	require.Contains(t, handlerCumsumSpan.Attributes(), attributeCumsumReq)
+	// Response spans from handler
+	require.Contains(t, handlerPingSpan.Attributes(), attributePingRes)
+	require.Contains(t, handlerCumsumSpan.Attributes(), attributeCumsumRes)
+	// Request spans from client
+	require.Contains(t, clientPingSpan.Attributes(), attributePingReq)
+	require.Contains(t, clientCumsumSpan.Attributes(), attributeCumsumReq)
+	// Response spans from client
+	require.Contains(t, clientPingSpan.Attributes(), attributePingRes)
+	require.Contains(t, clientCumsumSpan.Attributes(), attributeCumsumRes)
+
+	// Assert server metrics - should NOT contain header metadata
+	assertMetricsV1(t, serverMetricReader, expectedMetricsV1{
+		ServerDuration:   true,
+		NoHeaderMetadata: true,
+		RequiredAttrs: map[string]attribute.Value{
+			rpcSystemNameV1: attribute.StringValue(connectProtocol),
+		},
+	})
+
+	// Assert client metrics - should NOT contain header metadata
+	assertMetricsV1(t, clientMetricReader, expectedMetricsV1{
+		ClientDuration:   true,
+		NoHeaderMetadata: true,
+		RequiredAttrs: map[string]attribute.Value{
+			rpcSystemNameV1: attribute.StringValue(connectProtocol),
+		},
+	})
+}
+
+func TestInterceptorsV1(t *testing.T) {
+	t.Parallel()
+	const largeMessageSize = 1000
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	metricReader, meterProvider := setupMetricsV1()
+	serverInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithMeterProvider(meterProvider),
+		WithTraceRequestHeader("X-Request-Id"),
+	)
+	require.NoError(t, err)
+	pingClient, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, okayPingServerV1())
+	pingWithHeader := requestOfSizeV1(1, 0)
+	pingWithHeader.Header().Set("X-Request-ID", "request-123")
+	if _, err := pingClient.Ping(context.Background(), pingWithHeader); err != nil {
+		t.Error(err)
+	}
+	if _, err := pingClient.Ping(context.Background(), requestOfSizeV1(2, largeMessageSize)); err != nil {
+		t.Error(err)
+	}
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingProcedureV1),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+				attribute.StringSlice("rpc.request.metadata.x-request-id", []string{"request-123"}),
+			},
+		},
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingProcedureV1),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+			},
+		},
+	}, spanRecorder.Ended())
+
+	// Assert metrics - should NOT contain header metadata but should have standard RPC attributes
+	assertMetricsV1(t, metricReader, expectedMetricsV1{
+		ServerDuration:   true,
+		NoHeaderMetadata: true,
+		RequiredAttrs: map[string]attribute.Value{
+			rpcSystemNameV1: attribute.StringValue(connectProtocol),
+			rpcMethodV1:     attribute.StringValue(pingProcedureV1),
+		},
+	})
+}
+
+func TestUnaryHandlerNoTraceParentV1(t *testing.T) {
+	t.Parallel()
+	assertTraceParent := func(_ context.Context, req *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+		assert.Empty(t, req.Header().Get(traceParentKeyV1))
+		return connect.NewResponse(&pingv1.PingResponse{Id: req.Msg.GetId()}), nil
+	}
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagation.TraceContext{}),
+		WithTracerProvider(trace.NewTracerProvider()),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, &pluggablePingServerV1{ping: assertTraceParent})
+	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Msg.GetId())
+}
+
+func TestStreamingHandlerNoTraceParentV1(t *testing.T) {
+	t.Parallel()
+	msg := &pingv1.PingStreamResponse{
+		Data: []byte("Hello, otel!"),
+	}
+	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+		assert.Empty(t, stream.RequestHeader().Get(traceParentKeyV1))
+		return stream.Send(msg)
+	}
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagation.TraceContext{}),
+		WithTracerProvider(trace.NewTracerProvider()),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, &pluggablePingServerV1{pingStream: assertTraceParent},
+	)
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseResponse())
+	assert.Equal(t, msg.GetData(), resp.GetData())
+}
+
+func TestPropagationBaggageV1(t *testing.T) {
+	t.Parallel()
+	propagator := propagation.NewCompositeTextMapPropagator(propagation.Baggage{}, propagation.TraceContext{})
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	assertBaggage := connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+			assert.Equal(t, "foo=bar", request.Header().Get("Baggage"))
+			return next(ctx, request)
+		}
+	}))
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(traceProvider),
+		WithTrustRemote())
+	require.NoError(t, err)
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+			assertBaggage,
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+			assertBaggage,
+		}, okayPingServerV1())
+	bag, _ := baggage.Parse("foo=bar")
+	ctx := baggage.ContextWithBaggage(context.Background(), bag)
+	_, err = client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	require.NoError(t, err)
+}
+
+func TestUnaryPropagationV1(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(handlerTraceProvider),
+		WithTrustRemote(),
+	)
+	require.NoError(t, err)
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(clientTraceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor, assertSpanInterceptorV1{t: t}),
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor, assertSpanInterceptorV1{t: t}),
+		}, okayPingServerV1())
+	_, err = client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	require.NoError(t, err)
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
+	assertSpanParentV1(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestUnaryInterceptorPropagationV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	var span traceapi.Span
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagation.TraceContext{}),
+		WithTracerProvider(traceProvider),
+		WithTrustRemote(),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
+			return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+				ctx, span = trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
+				return unaryFunc(ctx, request)
+			}
+		})),
+		connect.WithInterceptors(clientInterceptor),
+	}, nil, okayPingServerV1())
+	resp, err := client.Ping(context.Background(), connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), resp.Msg.GetId())
+	assert.Len(t, spanRecorder.Ended(), 1)
+	recordedSpan := spanRecorder.Ended()[0]
+	assert.True(t, recordedSpan.Parent().IsValid())
+	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
+}
+
+func TestUnaryInterceptorNotModifiedErrorV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagation.TraceContext{}),
+		WithTracerProvider(traceProvider),
+		WithTrustRemote(),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(connect.UnaryInterceptorFunc(func(unaryFunc connect.UnaryFunc) connect.UnaryFunc {
+				return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+					ctx, span := trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
+					defer span.End()
+					return unaryFunc(ctx, request)
+				}
+			})),
+			connect.WithInterceptors(serverInterceptor),
+		},
+		[]connect.ClientOption{
+			connect.WithHTTPGet(),
+		},
+		okayPingServerV1(),
+	)
+	req := connect.NewRequest(&pingv1.PingRequest{Id: 1})
+	req.Header().Set("If-None-Match", cacheablePingEtagV1)
+	_, err = client.Ping(context.Background(), req)
+	require.ErrorContains(t, err, "not modified")
+	assert.True(t, connect.IsNotModifiedError(err))
+	assert.Len(t, spanRecorder.Ended(), 1)
+	recordedSpan := spanRecorder.Ended()[0]
+	assert.Equal(t, codes.Unset, recordedSpan.Status().Code)
+	var codeAttributes []attribute.KeyValue
+	for _, attr := range recordedSpan.Attributes() {
+		switch {
+		case attr.Key == semconv.HTTPResponseStatusCodeKey,
+			attr.Key == semconv.ErrorTypeKey,
+			strings.HasPrefix(string(attr.Key), "rpc") && strings.HasSuffix(string(attr.Key), "code"):
+			codeAttributes = append(codeAttributes, attr)
+		}
+	}
+	// A not-modified response is a successful RPC that carries the HTTP
+	// status as an extension attribute; it must not be reported as an error.
+	expectedCodeAttributes := []attribute.KeyValue{
+		semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+		semconv.HTTPResponseStatusCodeKey.Int(304),
+	}
+	assert.Equal(t, expectedCodeAttributes, codeAttributes)
+}
+
+func TestWithUntrustedRemoteUnaryV1(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(handlerTraceProvider),
+	)
+	require.NoError(t, err)
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(clientTraceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+		}, okayPingServerV1())
+	_, err = client.Ping(ctx, connect.NewRequest(&pingv1.PingRequest{Id: 1}))
+	require.NoError(t, err)
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
+	assertSpanLinkV1(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestStreamingHandlerInterceptorPropagationV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	var span traceapi.Span
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagation.TraceContext{}),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(streamingHandlerInterceptorFunc(func(handlerFunc connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+			return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+				ctx, span = trace.NewTracerProvider().Tracer("test").Start(ctx, "test")
+				return handlerFunc(ctx, conn)
+			}
+		})),
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, okayPingServerV1(),
+	)
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, spanRecorder.Ended(), 1)
+	recordedSpan := spanRecorder.Ended()[0]
+	assert.True(t, recordedSpan.Parent().IsValid())
+	assert.True(t, recordedSpan.Parent().Equal(span.SpanContext()))
+}
+
+func TestStreamingPropagationV1(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(handlerTraceProvider),
+		WithTrustRemote(),
+	)
+	require.NoError(t, err)
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(clientTraceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+		}, okayPingServerV1())
+	stream := client.PingStream(ctx)
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
+	assertSpanParentV1(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestWithUntrustedRemoteStreamingV1(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	ctx, rootSpan := trace.NewTracerProvider().Tracer("test").Start(context.Background(), "test")
+	defer rootSpan.End()
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(handlerTraceProvider),
+	)
+	require.NoError(t, err)
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(clientTraceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+		}, okayPingServerV1())
+	stream := client.PingStream(ctx)
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
+	assertSpanLinkV1(t, rootSpan, clientSpanRecorder.Ended()[0], handlerSpanRecorder.Ended()[0])
+}
+
+func TestStreamingClientPropagationV1(t *testing.T) {
+	t.Parallel()
+	msg := &pingv1.PingStreamResponse{
+		Data: []byte("Hello, otel!"),
+	}
+	assertTraceParent := func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+		assert.NotEmpty(t, stream.RequestHeader().Get(traceParentKeyV1))
+		require.NoError(t, stream.Send(msg))
+		return nil
+	}
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagation.TraceContext{}),
+		WithTracerProvider(trace.NewTracerProvider()),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(clientInterceptor, assertSpanInterceptorV1{t: t}),
+	}, &pluggablePingServerV1{pingStream: assertTraceParent},
+	)
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	require.NoError(t, stream.CloseResponse())
+	require.NoError(t, err)
+	assert.Equal(t, msg.GetData(), resp.GetData())
+}
+
+func TestStreamingClientContextCancellationV1(t *testing.T) {
+	t.Parallel()
+	msg := &pingv1.PingStreamResponse{
+		Data: []byte("Hello, otel!"),
+	}
+	server := &pluggablePingServerV1{
+		pingStream: func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+			require.NoError(t, stream.Send(msg))
+			return errors.New("stream closed") // Simulate error in stream.
+		},
+	}
+	clientInterceptor, err := NewInterceptor()
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		nil,
+		[]connect.ClientOption{connect.WithInterceptors(clientInterceptor)},
+		server,
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := client.PingStream(ctx)
+	require.NoError(t, stream.Send(nil))
+	require.NoError(t, stream.CloseRequest())
+	resp, err := stream.Receive()
+	require.NoError(t, err)
+	assert.Equal(t, msg.GetData(), resp.GetData())
+	// Cancel context in parallel with response receive. Either the context will
+	// fail the stream or the error is received. This test is to ensure that the
+	// context cancellation does not race with the stream response.
+	go cancel()
+	runtime.Gosched()
+	_, err = stream.Receive()
+	require.Error(t, err)
+	assert.NoError(t, stream.CloseResponse())
+}
+
+func TestStreamingHandlerTracingV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
+	require.NoError(t, err)
+	pingClient, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor, assertSpanInterceptorV1{t: t}),
+	}, nil, okayPingServerV1())
+	stream := pingClient.PingStream(context.Background())
+
+	msg := &pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}
+	require.NoError(t, stream.Send(msg))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, stream.CloseResponse())
+	require.Len(t, spanRecorder.Ended(), 1)
+	require.Equal(t, codes.Unset, spanRecorder.Ended()[0].Status().Code)
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingStreamProcedureV1),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestStreamingClientTracingV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	clientInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
+	require.NoError(t, err)
+	pingClient, host, port := startServerV1(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(clientInterceptor),
+	}, okayPingServerV1())
+	stream := pingClient.PingStream(context.Background())
+
+	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
+	require.NoError(t, stream.Send(msg))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	require.Len(t, spanRecorder.Ended(), 1)
+	require.Equal(t, codes.Unset, spanRecorder.Ended()[0].Status().Code)
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingStreamProcedureV1),
+				semconv.ServerAddressKey.String(host),
+				semconv.ServerPortKey.Int(port),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestWithAttributeFilterV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	clientInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithAttributeFilter(func(_ connect.Spec, value attribute.KeyValue) bool {
+			return value.Key != semconv.ServerPortKey
+		},
+		),
+	)
+	require.NoError(t, err)
+	pingClient, host, _ := startServerV1(t, nil, []connect.ClientOption{
+		connect.WithInterceptors(clientInterceptor),
+	}, okayPingServerV1())
+	stream := pingClient.PingStream(context.Background())
+
+	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
+	require.NoError(t, stream.Send(msg))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingStreamProcedureV1),
+				semconv.ServerAddressKey.String(host),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestServerPeerAttributesOmittedByDefaultV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	serverInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
+	require.NoError(t, err)
+	pingClient, _, _ := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, okayPingServerV1())
+	stream := pingClient.PingStream(context.Background())
+	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
+	require.NoError(t, stream.Send(msg))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, stream.CloseResponse())
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingStreamProcedureV1),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestWithServerPeerAttributesV1(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	serverInterceptor, err := NewInterceptor(
+		WithTracerProvider(traceProvider),
+		WithServerPeerAttributes(),
+	)
+	require.NoError(t, err)
+	pingClient, host, port := startServerV1(t, []connect.HandlerOption{
+		connect.WithInterceptors(serverInterceptor),
+	}, nil, okayPingServerV1())
+	stream := pingClient.PingStream(context.Background())
+	msg := &pingv1.PingStreamRequest{Data: []byte("Hello, otel!")}
+	require.NoError(t, stream.Send(msg))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, stream.CloseResponse())
+	assertSpansV1(t, []wantSpansV1{
+		{
+			spanName: pingv1connect.PingServiceName + "/" + pingStreamMethodV1,
+			attrs: []attribute.KeyValue{
+				semconv.RPCSystemNameKey.String(connectProtocol),
+				semconv.RPCMethodKey.String(pingStreamProcedureV1),
+				semconv.RPCResponseStatusCodeKey.String(statusCodeOK),
+				semconv.NetworkPeerAddressKey.String(host),
+				semconv.NetworkPeerPortKey.Int(port),
+			},
+		},
+	}, spanRecorder.Ended())
+}
+
+func TestStreamingSpanStatusV1(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	handlerSpanRecorder := tracetest.NewSpanRecorder()
+	handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+	clientSpanRecorder := tracetest.NewSpanRecorder()
+	clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+	serverInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(handlerTraceProvider),
+	)
+	require.NoError(t, err)
+	clientInterceptor, err := NewInterceptor(
+		WithPropagator(propagator),
+		WithTracerProvider(clientTraceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+		}, failPingServerV1())
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}))
+	_, err = stream.Receive()
+	require.Error(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assert.Len(t, handlerSpanRecorder.Ended(), 1)
+	assert.Len(t, clientSpanRecorder.Ended(), 1)
+	assert.Equal(t, codes.Error, handlerSpanRecorder.Ended()[0].Status().Code)
+	assert.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+}
+
+func TestServerSpanStatusV1(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	for _, testcase := range serverSpanStatusTestCases() {
+		spanRecorder := tracetest.NewSpanRecorder()
+		traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+		clientSpanRecorder := tracetest.NewSpanRecorder()
+		clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+		serverInterceptor, err := NewInterceptor(
+			WithTracerProvider(traceProvider),
+		)
+		require.NoError(t, err)
+		clientInterceptor, err := NewInterceptor(
+			WithPropagator(propagator),
+			WithTracerProvider(clientTraceProvider),
+		)
+		require.NoError(t, err)
+		pingClient, _, _ := startServerV1(t, []connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		}, []connect.ClientOption{
+			connect.WithInterceptors(clientInterceptor),
+		}, &pluggablePingServerV1{
+			ping: func(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+				return nil, connect.NewError(connect.Code(testcase.connectCode), errors.New(testcase.connectCode.String()))
+			},
+		})
+		_, err = pingClient.Ping(context.Background(), requestOfSizeV1(1, 0))
+		require.Error(t, err)
+		require.Len(t, spanRecorder.Ended(), 1)
+		require.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+		require.Equal(t, testcase.wantServerSpanCode, spanRecorder.Ended()[0].Status().Code)
+		require.Equal(t, testcase.wantServerSpanDescription, spanRecorder.Ended()[0].Status().Description)
+	}
+}
+
+func TestStreamingServerSpanStatusV1(t *testing.T) {
+	t.Parallel()
+	var propagator propagation.TraceContext
+	for _, testcase := range serverSpanStatusTestCases() {
+		handlerSpanRecorder := tracetest.NewSpanRecorder()
+		handlerTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(handlerSpanRecorder))
+		clientSpanRecorder := tracetest.NewSpanRecorder()
+		clientTraceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(clientSpanRecorder))
+		serverInterceptor, err := NewInterceptor(
+			WithTracerProvider(handlerTraceProvider),
+		)
+		require.NoError(t, err)
+		clientInterceptor, err := NewInterceptor(
+			WithPropagator(propagator),
+			WithTracerProvider(clientTraceProvider),
+		)
+		require.NoError(t, err)
+		client, _, _ := startServerV1(t,
+			[]connect.HandlerOption{
+				connect.WithInterceptors(serverInterceptor),
+			}, []connect.ClientOption{
+				connect.WithInterceptors(clientInterceptor),
+			}, &pluggablePingServerV1{
+				pingStream: func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+					_, _ = stream.Receive()
+					return connect.NewError(connect.Code(testcase.connectCode), errors.New(testcase.connectCode.String()))
+				},
+			})
+		stream := client.PingStream(t.Context())
+		require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+			Data: []byte("Hello, otel!"),
+		}))
+		_, err = stream.Receive()
+		require.Error(t, err)
+		require.NoError(t, stream.CloseRequest())
+		require.NoError(t, stream.CloseResponse())
+		assert.Len(t, handlerSpanRecorder.Ended(), 1)
+		assert.Len(t, clientSpanRecorder.Ended(), 1)
+		assert.Equal(t, testcase.wantServerSpanCode, handlerSpanRecorder.Ended()[0].Status().Code)
+		assert.Equal(t, testcase.wantServerSpanDescription, handlerSpanRecorder.Ended()[0].Status().Description)
+		assert.Equal(t, codes.Error, clientSpanRecorder.Ended()[0].Status().Code)
+	}
+}
+
+func TestWithRPCSystemV1(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		system         RPCSystem
+		expectProtocol string
+	}{
+		{
+			system:         nil,
+			expectProtocol: "", // depends on request
+		},
+		{
+			system:         ConnectRPCSystem,
+			expectProtocol: connectProtocol,
+		},
+		{
+			system:         GRPCSystem,
+			expectProtocol: grpcProtocol,
+		},
+	}
+	clients := []struct {
+		protocol     string
+		expectSystem RPCSystem
+		opt          connect.ClientOption
+	}{
+		{
+			protocol:     connect.ProtocolConnect,
+			expectSystem: ConnectRPCSystem,
+		},
+		{
+			protocol:     connect.ProtocolGRPC,
+			expectSystem: GRPCSystem,
+			opt:          connect.WithGRPC(),
+		},
+		{
+			protocol:     connect.ProtocolGRPCWeb,
+			expectSystem: GRPCSystem,
+			opt:          connect.WithGRPCWeb(),
+		},
+	}
+	for _, testCase := range testCases {
+		name := "based-on-wire-request"
+		if testCase.system != nil {
+			name = testCase.system.protocol()
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, clientCase := range clients {
+				t.Run("client="+clientCase.protocol, func(t *testing.T) {
+					t.Parallel()
+					var opts []connect.ClientOption
+					if clientCase.opt != nil {
+						opts = []connect.ClientOption{clientCase.opt}
+					}
+					metricReader := metricsdk.NewManualReader()
+					meterProvider := metricsdk.NewMeterProvider(
+						metricsdk.WithReader(
+							metricReader,
+						),
+					)
+					interceptor, err := NewInterceptor(
+						WithMeterProvider(meterProvider),
+						WithRPCSystem(testCase.system),
+					)
+					require.NoError(t, err)
+					handlerOpts := []connect.HandlerOption{connect.WithInterceptors(interceptor)}
+					// Use separate servers for unary and streaming calls.
+					// A failed gRPC unary call can leave the HTTP/2
+					// connection in a state where new streams fail.
+					unaryClient, _, _ := startServerV1(t, handlerOpts, opts, failPingServerV1())
+					_, err = unaryClient.Ping(t.Context(), connect.NewRequest(&pingv1.PingRequest{}))
+					require.Equal(t, connect.CodeDataLoss, connect.CodeOf(err))
+					streamClient, _, _ := startServerV1(t, handlerOpts, opts, failPingServerV1())
+					bidiStream := streamClient.PingStream(t.Context())
+					defer func() {
+						_ = bidiStream.CloseResponse()
+					}()
+					// Send may fail if the server terminates the stream first;
+					// the real error is surfaced by Receive.
+					_ = bidiStream.Send(&pingv1.PingStreamRequest{})
+					require.NoError(t, bidiStream.CloseRequest())
+					_, err = bidiStream.Receive()
+					require.Equal(t, connect.CodeDataLoss, connect.CodeOf(err))
+
+					expectedMetricsConventions := testCase.system
+					if expectedMetricsConventions == nil {
+						expectedMetricsConventions = clientCase.expectSystem
+					}
+					metrics := &metricdata.ResourceMetrics{}
+					require.NoError(t, metricReader.Collect(context.Background(), metrics))
+
+					// Only rpc.system.name varies by RPC system; the status
+					// code is the uppercase connect code for every system.
+					require.Len(t, metrics.ScopeMetrics, 1)
+					require.NotEmpty(t, metrics.ScopeMetrics[0].Metrics)
+					for _, metric := range metrics.ScopeMetrics[0].Metrics {
+						histo, ok := metric.Data.(metricdata.Histogram[float64])
+						require.True(t, ok)
+						require.NotEmpty(t, histo.DataPoints)
+						for _, dataPoint := range histo.DataPoints {
+							systemName, found := dataPoint.Attributes.Value(rpcSystemNameV1)
+							require.True(t, found)
+							require.Equal(t, expectedMetricsConventions.protocol(), systemName.AsString())
+							statusCode, found := dataPoint.Attributes.Value(rpcStatusCodeV1)
+							require.True(t, found)
+							require.Equal(t, dataLossStringV1, statusCode.AsString())
+							errType, found := dataPoint.Attributes.Value(errorTypeV1)
+							require.True(t, found)
+							require.Equal(t, dataLossStringV1, errType.AsString())
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+// streamingHandlerInterceptorFunc is a simple Interceptor implementation that only
+// wraps streaming handler RPCs. It has no effect on unary or streaming client RPCs.
+type streamingHandlerInterceptorFunc func(connect.StreamingHandlerFunc) connect.StreamingHandlerFunc
+
+// WrapUnary implements [Interceptor] with a no-op.
+func (f streamingHandlerInterceptorFunc) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return next
+}
+
+// WrapStreamingClient implements [Interceptor] with a no-op.
+func (f streamingHandlerInterceptorFunc) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+// WrapStreamingHandler implements [Interceptor] by applying the interceptor function.
+func (f streamingHandlerInterceptorFunc) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return f(next)
+}
+
+type wantSpansV1 struct {
+	spanName string
+	attrs    []attribute.KeyValue
+}
+
+func assertSpansV1(t *testing.T, want []wantSpansV1, got []trace.ReadOnlySpan) {
+	t.Helper()
+	require.Len(t, got, len(want), "unexpected spans length")
+	for i, span := range got {
+		wantSpan := want[i] //nolint: gosec // index bounds asserted above
+		wantAttributes := wantSpan.attrs
+		assert.False(t, span.StartTime().IsZero(), "span start time is nil")
+		assert.Equal(t, wantSpan.spanName, span.Name(), "unexpected span name")
+		assert.Empty(t, span.Events(), "unexpected span events")
+		// Attribute order is not significant. The server's view of the
+		// peer port is the client's ephemeral port, so only its presence is
+		// checked.
+		diff := cmp.Diff(wantAttributes, span.Attributes(),
+			cmpopts.IgnoreUnexported(attribute.Value{}),
+			cmpopts.SortSlices(func(x, y attribute.KeyValue) bool {
+				return x.Key < y.Key
+			}),
+			cmp.Comparer(func(x, y attribute.KeyValue) bool {
+				if x.Key == semconv.NetworkPeerPortKey && y.Key == semconv.NetworkPeerPortKey {
+					return true
+				}
+				return x.Key == y.Key && x.Value == y.Value
+			},
+			))
+		assert.Empty(t, diff)
+	}
+}
+
+func assertSpanParentV1(t *testing.T, rootSpan traceapi.Span, clientSpan trace.ReadOnlySpan, handlerSpan trace.ReadOnlySpan) {
+	t.Helper()
+	assert.True(t, handlerSpan.Parent().IsRemote())
+	assert.False(t, clientSpan.SpanContext().IsRemote())
+	assert.True(t, clientSpan.SpanContext().IsValid())
+	assert.True(t, clientSpan.SpanContext().IsValid())
+	assert.True(t, clientSpan.Parent().Equal(rootSpan.SpanContext()))
+	assert.Equal(t, clientSpan.SpanContext().TraceID(), handlerSpan.SpanContext().TraceID())
+}
+
+func assertSpanLinkV1(t *testing.T, rootSpan traceapi.Span, clientSpan trace.ReadOnlySpan, handlerSpan trace.ReadOnlySpan) {
+	t.Helper()
+	assert.False(t, handlerSpan.Parent().IsValid())
+	assert.False(t, clientSpan.SpanContext().IsRemote())
+	assert.True(t, clientSpan.SpanContext().IsValid())
+	assert.True(t, clientSpan.Parent().Equal(rootSpan.SpanContext()))
+	// The client was the invoker, so the root TraceID and the client TraceID should be the same.
+	assert.Equal(t, rootSpan.SpanContext().TraceID(), clientSpan.SpanContext().TraceID())
+	assert.NotEqual(t, clientSpan.SpanContext().TraceID(), handlerSpan.SpanContext().TraceID())
+	assert.Len(t, handlerSpan.Links(), 1)
+	assert.Equal(t, handlerSpan.Links()[0].SpanContext.TraceID(), clientSpan.SpanContext().TraceID())
+	assert.Equal(t, handlerSpan.Links()[0].SpanContext.SpanID(), clientSpan.SpanContext().SpanID())
+}
+
+func startServerV1(t *testing.T, handlerOpts []connect.HandlerOption, clientOpts []connect.ClientOption, svc pingv1connect.PingServiceHandler) (pingv1connect.PingServiceClient, string, int) {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.Handle(pingv1connect.NewPingServiceHandler(svc, handlerOpts...))
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	pingClient := pingv1connect.NewPingServiceClient(server.Client(), server.URL, clientOpts...)
+	host, port, err := net.SplitHostPort(strings.ReplaceAll(server.URL, "https://", ""))
+	require.NoError(t, err)
+	portint, err := strconv.Atoi(port)
+	require.NoError(t, err)
+	return pingClient, host, portint
+}
+
+func requestOfSizeV1(id, dataSize int64) *connect.Request[pingv1.PingRequest] {
+	body := make([]byte, dataSize)
+	for i := range body {
+		body[i] = byte(rand.Intn(128)) //nolint: gosec
+	}
+	return connect.NewRequest(&pingv1.PingRequest{Id: id, Data: body})
+}
+
+type optionFuncV1 func(*config)
+
+func (o optionFuncV1) apply(c *config) {
+	o(c)
+}
+
+func cmpOptsV1() []cmp.Option {
+	return []cmp.Option{
+		cmp.Comparer(func(setx, sety attribute.Set) bool {
+			return setx.Equals(&sety)
+		}),
+		cmp.Comparer(func(extx, exty metricdata.Extrema[float64]) bool {
+			valx, definedx := extx.Value()
+			valy, definedy := exty.Value()
+			return valx == valy && definedx == definedy
+		}),
+		cmpopts.EquateEmpty(),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[float64]{}, "StartTime"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[float64]{}, "Time"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[float64]{}, "Bounds"),
+		cmpopts.IgnoreFields(metricdata.HistogramDataPoint[float64]{}, "BucketCounts"),
+	}
+}
+
+// expectedDurationMetricsV1 builds the metrics expected for a single RPC whose
+// clock advanced one second: one call duration histogram, named and described
+// by the semantic conventions, with a single data point carrying attrs.
+func expectedDurationMetricsV1(side string, attrs ...attribute.KeyValue) *metricdata.ResourceMetrics {
+	name, description := rpcconv.ClientCallDuration{}.Name(), rpcconv.ClientCallDuration{}.Description()
+	if side == serverKey {
+		name, description = rpcconv.ServerCallDuration{}.Name(), rpcconv.ServerCallDuration{}.Description()
+	}
+	return &metricdata.ResourceMetrics{
+		Resource: metricResourceV1(),
+		ScopeMetrics: []metricdata.ScopeMetrics{
+			{
+				Scope: instrumentation.Scope{
+					Name:    instrumentationName,
+					Version: semanticVersion,
+				},
+				Metrics: []metricdata.Metrics{
+					{
+						Name:        name,
+						Description: description,
+						Unit:        "s",
+						Data: metricdata.Histogram[float64]{
+							DataPoints: []metricdata.HistogramDataPoint[float64]{
+								{
+									Attributes: attribute.NewSet(attrs...),
+									Count:      1,
+									Sum:        1,
+									Min:        metricdata.NewExtrema(1.0),
+									Max:        metricdata.NewExtrema(1.0),
+								},
+							},
+							Temporality: metricdata.CumulativeTemporality,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func setupMetricsV1() (metricsdk.Reader, *metricsdk.MeterProvider) {
+	metricReader := metricsdk.NewManualReader()
+	meterProvider := metricsdk.NewMeterProvider(
+		metricsdk.WithReader(metricReader),
+		metricsdk.WithResource(metricResourceV1()),
+	)
+	return metricReader, meterProvider
+}
+
+type expectedMetricsV1 struct {
+	ServerDuration   bool
+	ClientDuration   bool
+	NoHeaderMetadata bool
+	RequiredAttrs    map[string]attribute.Value
+}
+
+// assertMetricsV1 verifies that metrics are collected with expected attributes.
+func assertMetricsV1(t *testing.T, metricReader metricsdk.Reader, expected expectedMetricsV1) {
+	t.Helper()
+	metrics := &metricdata.ResourceMetrics{}
+	require.NoError(t, metricReader.Collect(context.Background(), metrics))
+
+	foundMetrics := make(map[string]bool)
+
+	for _, scopeMetric := range metrics.ScopeMetrics {
+		for _, metric := range scopeMetric.Metrics {
+			switch {
+			case expected.ServerDuration && metric.Name == rpcServerDurationV1:
+				foundMetrics[rpcServerDurationV1] = true
+				assertMetricAttributesV1(t, metric, expected.NoHeaderMetadata, expected.RequiredAttrs)
+			case expected.ClientDuration && metric.Name == rpcClientDurationV1:
+				foundMetrics[rpcClientDurationV1] = true
+				assertMetricAttributesV1(t, metric, expected.NoHeaderMetadata, expected.RequiredAttrs)
+			}
+		}
+	}
+
+	if expected.ServerDuration {
+		assert.True(t, foundMetrics[rpcServerDurationV1], "Should find server duration metrics")
+	}
+	if expected.ClientDuration {
+		assert.True(t, foundMetrics[rpcClientDurationV1], "Should find client duration metrics")
+	}
+}
+
+func assertMetricAttributesV1(t *testing.T, metric metricdata.Metrics, noHeaderMetadata bool, requiredAttrs map[string]attribute.Value) {
+	t.Helper()
+	if histogram, ok := metric.Data.(metricdata.Histogram[float64]); ok {
+		for _, dataPoint := range histogram.DataPoints {
+			attrs := dataPoint.Attributes.ToSlice()
+
+			if noHeaderMetadata {
+				// Verify that header metadata is NOT present in metrics
+				for _, attr := range attrs {
+					assert.NotContains(t, string(attr.Key), "rpc.request.metadata",
+						"Metric attributes should not contain request header metadata")
+					assert.NotContains(t, string(attr.Key), "rpc.response.metadata",
+						"Metric attributes should not contain response header metadata")
+				}
+			}
+
+			// Verify required attributes are present
+			if len(requiredAttrs) > 0 {
+				attrMap := make(map[string]attribute.Value)
+				for _, attr := range attrs {
+					attrMap[string(attr.Key)] = attr.Value
+				}
+				for key, expectedValue := range requiredAttrs {
+					actualValue, exists := attrMap[key]
+					assert.True(t, exists, "Required attribute %s should be present", key)
+					if exists {
+						assert.Equal(t, expectedValue, actualValue, "Attribute %s should have expected value", key)
+					}
+				}
+			}
+		}
+	}
+}
+
+func metricResourceV1() *resource.Resource {
+	return resource.NewWithAttributes("https://opentelemetry.io/schemas/1.12.0",
+		attribute.String("service.name", "test"),
+		attribute.String("telemetry.sdk.language", "go"),
+		attribute.String("telemetry.sdk.name", "opentelemetry"),
+		attribute.String("telemetry.sdk.version", otel.Version()),
+	)
+}
+
+type assertSpanInterceptorV1 struct{ t testing.TB }
+
+func (i assertSpanInterceptorV1) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+		i.assertSpanContext(ctx)
+		return next(ctx, request)
+	}
+}
+
+func (i assertSpanInterceptorV1) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		i.assertSpanContext(ctx)
+		return next(ctx, spec)
+	}
+}
+
+func (i assertSpanInterceptorV1) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		i.assertSpanContext(ctx)
+		return next(ctx, conn)
+	}
+}
+
+func (i assertSpanInterceptorV1) assertSpanContext(ctx context.Context) {
+	if !traceapi.SpanContextFromContext(ctx).IsValid() {
+		i.t.Error("invalid span context")
+	}
+}
+
+func TestPropagateResponseHeaderV1(t *testing.T) {
+	t.Parallel()
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	serverInterceptor, err := NewInterceptor(
+		WithPropagateResponseHeader(),
+		WithTracerProvider(traceProvider),
+		WithPropagator(propagation.TraceContext{}),
+	)
+	require.NoError(t, err)
+
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		},
+		[]connect.ClientOption{},
+		&pluggablePingServerV1{
+			ping: func(_ context.Context, _ *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+				return connect.NewResponse(&pingv1.PingResponse{}), nil
+			},
+		})
+
+	pingRequest := connect.NewRequest(&pingv1.PingRequest{Id: 1})
+	response, err := client.Ping(context.Background(), pingRequest)
+	require.NoError(t, err)
+
+	// Check that the traceparent header is present in the response
+	traceparent := response.Header().Get("Traceparent")
+	assert.NotEmpty(t, traceparent, "traceparent header should be present in response")
+
+	// Validate traceparent
+	assertUsableTraceparentV1(t, response.Header())
+}
+
+func TestPropagateResponseHeaderStreamingV1(t *testing.T) {
+	t.Parallel()
+
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+
+	serverInterceptor, err := NewInterceptor(
+		WithPropagateResponseHeader(),
+		WithTracerProvider(traceProvider),
+		WithPropagator(propagation.TraceContext{}),
+	)
+	require.NoError(t, err)
+
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(serverInterceptor),
+		},
+		[]connect.ClientOption{},
+		&pluggablePingServerV1{
+			pingStream: func(_ context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+				_, _ = stream.Receive()
+				return stream.Send(&pingv1.PingStreamResponse{})
+			},
+		})
+
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
+	require.NoError(t, stream.CloseRequest())
+
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseResponse())
+
+	// Check that the traceparent header is present in the response headers
+	traceparent := stream.ResponseHeader().Get("Traceparent")
+	assert.NotEmpty(t, traceparent, "traceparent header should be present in streaming response")
+
+	// Validate traceparent
+	assertUsableTraceparentV1(t, stream.ResponseHeader())
+}
+
+// assertUsableTraceparentV1 validates that a traceparent header can be used fromthe response.
+func assertUsableTraceparentV1(t *testing.T, header http.Header) {
+	t.Helper()
+
+	// Use the same propagator that was configured in the test
+	tc := propagation.TraceContext{}
+	ctx := tc.Extract(context.Background(), propagation.HeaderCarrier(header))
+	// Ensure the span context is valid
+	spanContext := traceapi.SpanContextFromContext(ctx)
+	assert.True(t, spanContext.IsValid(), "span context should be valid after extracting traceparent")
+	// Ensure the trace ID and span ID are not empty
+	assert.NotEmpty(t, spanContext.SpanID(), "span ID should not be empty")
+	assert.NotEmpty(t, spanContext.TraceID(), "trace ID should not be empty")
+}
+
+// labelerInterceptorV1 is a test interceptor that retrieves the Labeler from
+// context and adds custom attributes. Used to test that labeler attributes
+// appear in metrics but not in spans.
+type labelerInterceptorV1 struct {
+	attrs []attribute.KeyValue
+}
+
+func (l labelerInterceptorV1) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		labeler, _ := LabelerFromContext(ctx)
+		labeler.Add(l.attrs...)
+		return next(ctx, req)
+	}
+}
+
+func (l labelerInterceptorV1) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		labeler, _ := LabelerFromContext(ctx)
+		labeler.Add(l.attrs...)
+		return next(ctx, spec)
+	}
+}
+
+func (l labelerInterceptorV1) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		labeler, _ := LabelerFromContext(ctx)
+		labeler.Add(l.attrs...)
+		return next(ctx, conn)
+	}
+}
+
+func TestLabelerFromContextV1(t *testing.T) {
+	t.Parallel()
+	// LabelerFromContext on empty context returns a new Labeler and false.
+	labeler, ok := LabelerFromContext(context.Background())
+	assert.False(t, ok)
+	require.NotNil(t, labeler)
+	// Add and Get should not panic even though the labeler is not in a context.
+	labeler.Add(attribute.String("key", "value"))
+	got := labeler.Get()
+	assert.Len(t, got, 1)
+	assert.Equal(t, attribute.String("key", "value"), got[0])
+}
+
+func TestLabelerUnaryV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	customAttrs := []attribute.KeyValue{
+		attribute.String(customLabelV1, "test-value"),
+	}
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(interceptor, labelerInterceptorV1{attrs: customAttrs}),
+		},
+		nil,
+		okayPingServerV1(),
+	)
+	_, err = client.Ping(context.Background(), requestOfSizeV1(1, 12))
+	require.NoError(t, err)
+	// Verify custom attributes appear in metrics.
+	assertMetricsV1(t, metricReader, expectedMetricsV1{
+		ServerDuration: true,
+		RequiredAttrs: map[string]attribute.Value{
+			customLabelV1: attribute.StringValue("test-value"),
+		},
+	})
+	// Verify custom attributes do NOT appear in spans.
+	require.Len(t, spanRecorder.Ended(), 1)
+	for _, attr := range spanRecorder.Ended()[0].Attributes() {
+		assert.NotEqual(t, attribute.Key(customLabelV1), attr.Key,
+			"span should not contain labeler attributes")
+	}
+}
+
+func TestLabelerStreamingV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	customAttrs := []attribute.KeyValue{
+		attribute.String(customLabelV1, "stream-value"),
+	}
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		[]connect.HandlerOption{
+			connect.WithInterceptors(interceptor, labelerInterceptorV1{attrs: customAttrs}),
+		},
+		nil,
+		okayPingServerV1(),
+	)
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	// Read until EOF so the server has recorded its metrics and span.
+	_, err = stream.Receive()
+	require.ErrorIs(t, err, io.EOF)
+	require.NoError(t, stream.CloseResponse())
+	// Verify custom attributes appear in metrics (including per-message and final).
+	assertMetricsV1(t, metricReader, expectedMetricsV1{
+		ServerDuration: true,
+		RequiredAttrs: map[string]attribute.Value{
+			customLabelV1: attribute.StringValue("stream-value"),
+		},
+	})
+	// Verify custom attributes do NOT appear in spans.
+	require.Len(t, spanRecorder.Ended(), 1)
+	for _, attr := range spanRecorder.Ended()[0].Attributes() {
+		assert.NotEqual(t, attribute.Key(customLabelV1), attr.Key,
+			"span should not contain labeler attributes")
+	}
+}
+
+func TestLabelerUnaryClientV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	customAttrs := []attribute.KeyValue{
+		attribute.String(customLabelV1, "client-value"),
+	}
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		nil,
+		[]connect.ClientOption{
+			connect.WithInterceptors(interceptor, labelerInterceptorV1{attrs: customAttrs}),
+		},
+		okayPingServerV1(),
+	)
+	_, err = client.Ping(context.Background(), requestOfSizeV1(1, 12))
+	require.NoError(t, err)
+	assertMetricsV1(t, metricReader, expectedMetricsV1{
+		ClientDuration: true,
+		RequiredAttrs: map[string]attribute.Value{
+			customLabelV1: attribute.StringValue("client-value"),
+		},
+	})
+	require.Len(t, spanRecorder.Ended(), 1)
+	for _, attr := range spanRecorder.Ended()[0].Attributes() {
+		assert.NotEqual(t, attribute.Key(customLabelV1), attr.Key,
+			"span should not contain labeler attributes")
+	}
+}
+
+func TestLabelerStreamingClientV1(t *testing.T) {
+	t.Parallel()
+	metricReader, meterProvider := setupMetricsV1()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	customAttrs := []attribute.KeyValue{
+		attribute.String(customLabelV1, "client-stream-value"),
+	}
+	interceptor, err := NewInterceptor(
+		WithMeterProvider(meterProvider),
+		WithTracerProvider(traceProvider),
+	)
+	require.NoError(t, err)
+	client, _, _ := startServerV1(t,
+		nil,
+		[]connect.ClientOption{
+			connect.WithInterceptors(interceptor, labelerInterceptorV1{attrs: customAttrs}),
+		},
+		okayPingServerV1(),
+	)
+	stream := client.PingStream(context.Background())
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{
+		Data: []byte("Hello, otel!"),
+	}))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	require.NoError(t, stream.CloseRequest())
+	require.NoError(t, stream.CloseResponse())
+	assertMetricsV1(t, metricReader, expectedMetricsV1{
+		ClientDuration: true,
+		RequiredAttrs: map[string]attribute.Value{
+			customLabelV1: attribute.StringValue("client-stream-value"),
+		},
+	})
+	require.Len(t, spanRecorder.Ended(), 1)
+	for _, attr := range spanRecorder.Ended()[0].Attributes() {
+		assert.NotEqual(t, attribute.Key(customLabelV1), attr.Key,
+			"span should not contain labeler attributes")
+	}
+}

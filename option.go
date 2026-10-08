@@ -18,7 +18,9 @@ import (
 	"context"
 	"net/http"
 
+	connectv1 "connectrpc.com/connect"
 	"connectrpc.com/connect/v2"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
@@ -63,8 +65,20 @@ func WithTracerProvider(provider trace.TracerProvider) Option {
 
 // WithFilter configures the instrumentation to emit traces and metrics only
 // when the filter function returns true. Filter functions must be safe to call concurrently.
-func WithFilter(filter func(context.Context, connect.Spec) bool) Option {
-	return &filterOption{filter}
+//
+// The filter may take a connect-go v1 or v2 spec, and works with interceptors
+// for either version. A v1 spec converted from a v2 RPC sets IsClient from
+// the interceptor's side.
+func WithFilter[F func(context.Context, connectv1.Spec) bool | func(context.Context, connect.Spec) bool](
+	filter F,
+) Option {
+	switch filter := any(filter).(type) {
+	case func(context.Context, connectv1.Spec) bool:
+		return &filterOption{filterV1: filter}
+	case func(context.Context, connect.Spec) bool:
+		return &filterOption{filterV2: filter}
+	}
+	return &filterOption{}
 }
 
 // WithoutTracing disables tracing.
@@ -78,8 +92,22 @@ func WithoutMetrics() Option {
 }
 
 // WithAttributeFilter sets the attribute filter for all metrics and trace attributes.
-func WithAttributeFilter(filter AttributeFilter) Option {
-	return &attributeFilterOption{filterAttribute: filter}
+//
+// The filter may take a connect-go v1 or v2 spec, and works with interceptors
+// for either version. A v1 spec converted from a v2 RPC sets IsClient from
+// the interceptor's side.
+func WithAttributeFilter[F AttributeFilter | func(connectv1.Spec, attribute.KeyValue) bool | func(connect.Spec, attribute.KeyValue) bool](
+	filter F,
+) Option {
+	switch filter := any(filter).(type) {
+	case AttributeFilter:
+		return &attributeFilterOption{filterV1: filter}
+	case func(connectv1.Spec, attribute.KeyValue) bool:
+		return &attributeFilterOption{filterV1: filter}
+	case func(connect.Spec, attribute.KeyValue) bool:
+		return &attributeFilterOption{filterV2: filter}
+	}
+	return &attributeFilterOption{}
 }
 
 // WithServerPeerAttributes adds the network.peer.address and network.peer.port
@@ -155,12 +183,19 @@ type RPCSystem interface {
 }
 
 type attributeFilterOption struct {
-	filterAttribute AttributeFilter
+	filterV1 AttributeFilter
+	filterV2 func(connect.Spec, attribute.KeyValue) bool
 }
 
-func (o *attributeFilterOption) apply(c *config) {
-	if o.filterAttribute != nil {
-		c.filterAttribute = o.filterAttribute
+func (o *attributeFilterOption) apply(cfg *config) {
+	switch {
+	case o.filterV1 != nil:
+		filter, isClient := o.filterV1, cfg.isClient
+		cfg.filterAttribute = func(spec connect.Spec, attr attribute.KeyValue) bool {
+			return filter(specToV1(spec, isClient), attr)
+		}
+	case o.filterV2 != nil:
+		cfg.filterAttribute = o.filterV2
 	}
 }
 
@@ -188,12 +223,19 @@ func (o *tracerProviderOption) apply(c *config) {
 }
 
 type filterOption struct {
-	filter func(context.Context, connect.Spec) bool
+	filterV1 func(context.Context, connectv1.Spec) bool
+	filterV2 func(context.Context, connect.Spec) bool
 }
 
-func (o *filterOption) apply(c *config) {
-	if o.filter != nil {
-		c.filter = o.filter
+func (o *filterOption) apply(cfg *config) {
+	switch {
+	case o.filterV1 != nil:
+		filter, isClient := o.filterV1, cfg.isClient
+		cfg.filter = func(ctx context.Context, spec connect.Spec) bool {
+			return filter(ctx, specToV1(spec, isClient))
+		}
+	case o.filterV2 != nil:
+		cfg.filter = o.filterV2
 	}
 }
 
