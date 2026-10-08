@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	connectv1 "connectrpc.com/connect"
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 	"go.opentelemetry.io/otel"
@@ -93,6 +94,7 @@ func newInterceptor(side string, options ...Option) (*interceptor, error) {
 		meter: otel.GetMeterProvider().Meter(
 			instrumentationName,
 			metric.WithInstrumentationVersion(semanticVersion)),
+		isClient: side == clientKey,
 	}
 	for _, opt := range options {
 		opt.apply(&cfg)
@@ -133,7 +135,6 @@ func (i *interceptor) serveServer(ctx context.Context, spec connect.Spec, stream
 		config:   &i.config,
 		duration: i.instruments.duration,
 		spec:     spec,
-		callInfo: callInfo,
 		start:    requestStartTime,
 	}}
 	ctx = call.withLabeler(ctx)
@@ -183,9 +184,10 @@ func (i *interceptor) serveServer(ctx context.Context, spec connect.Spec, stream
 	}
 
 	err := next(ctx, spec, stream)
-	call.span.SetStatus(serverSpanStatus(err))
+	status := statusOf(err)
+	call.span.SetStatus(serverSpanStatus(status))
 	// The span already has the RPC attributes.
-	call.record(ctx, attributes, len(attributes), err)
+	call.record(ctx, attributes, len(attributes), status, callInfo.ResponseHeader())
 	return err
 }
 
@@ -243,11 +245,12 @@ type clientCall struct {
 	connect.ClientStream
 	rpcCall
 
-	ctx  context.Context //nolint:containedctx // used by end
-	stop func() bool     // stops watching ctx, or nil
-	once sync.Once
-	mu   sync.Mutex
-	err  error // last Send or Receive error, excluding io.EOF
+	callInfo *connect.CallInfo
+	ctx      context.Context //nolint:containedctx // used by end
+	stop     func() bool     // stops watching ctx, or nil
+	once     sync.Once
+	mu       sync.Mutex
+	err      error // last Send or Receive error, excluding io.EOF
 }
 
 func (c *clientCall) Send(msg any) error {
@@ -305,8 +308,9 @@ func (c *clientCall) end() {
 	if c.span.IsRecording() {
 		c.span.SetAttributes(headerAttributes(requestKey, c.callInfo.RequestHeader(), c.config.requestHeaderKeys)...)
 	}
-	c.span.SetStatus(clientSpanStatus(err))
-	c.record(c.ctx, attributes, 0, err)
+	status := statusOf(err)
+	c.span.SetStatus(clientSpanStatus(status))
+	c.record(c.ctx, attributes, 0, status, c.callInfo.ResponseHeader())
 	c.span.End()
 }
 
@@ -316,7 +320,6 @@ type rpcCall struct {
 	config   *config
 	duration metric.Float64Histogram
 	spec     connect.Spec
-	callInfo *connect.CallInfo
 	span     trace.Span
 	start    time.Time
 	labeler  *Labeler // the context's Labeler, or ownLabeler
@@ -339,12 +342,12 @@ func (c *rpcCall) withLabeler(ctx context.Context) context.Context {
 // record records the outcome of the RPC on its span and duration metric.
 // The span already has the first spanFrom attributes. The attributes need
 // spare capacity for the status attributes. It does not end the span.
-func (c *rpcCall) record(ctx context.Context, attributes []attribute.KeyValue, spanFrom int, err error) {
-	attributes = c.config.filterAttribute.filterFrom(c.spec, addStatusAttributes(attributes, err), len(attributes))
+func (c *rpcCall) record(ctx context.Context, attributes []attribute.KeyValue, spanFrom int, status rpcStatus, responseHeader headerValues) {
+	attributes = c.config.filterAttribute.filterFrom(c.spec, addStatusAttributes(attributes, status), len(attributes))
 	if c.span.IsRecording() {
 		// Set once, as the SDK grows the span's attributes on every call.
 		c.span.SetAttributes(attributes[spanFrom:]...)
-		c.span.SetAttributes(headerAttributes(responseKey, c.callInfo.ResponseHeader(), c.config.responseHeaderKeys)...)
+		c.span.SetAttributes(headerAttributes(responseKey, responseHeader, c.config.responseHeaderKeys)...)
 	}
 	// NewSet sorts attributes in place, so call it after SetAttributes.
 	attributes = c.labeler.appendAttributes(attributes)
@@ -369,53 +372,72 @@ func protocolToSemConv(protocol string, system RPCSystem) string {
 	}
 }
 
-func clientSpanStatus(err error) (codes.Code, string) {
-	if err == nil {
-		return codes.Unset, ""
-	}
-	if connecthttp.IsNotModifiedError(err) {
-		return codes.Unset, ""
-	}
-	if connectErr := new(connect.Error); errors.As(err, &connectErr) {
-		return codes.Error, connectErr.Message()
-	}
-	return codes.Error, err.Error()
+// rpcStatus is the outcome of an RPC, independent of the connect-go version.
+type rpcStatus struct {
+	err         error        // nil on success
+	code        connect.Code // CodeUnknown if err is not a connect error
+	message     string       // the connect error message, or err.Error()
+	notModified bool         // err is a "not modified" sentinel
 }
 
-func serverSpanStatus(err error) (codes.Code, string) {
-	if err == nil {
-		return codes.Unset, ""
+// statusOf returns the outcome of a connect-go v2 RPC.
+func statusOf(err error) rpcStatus {
+	switch {
+	case err == nil:
+		return rpcStatus{}
+	case connecthttp.IsNotModifiedError(err):
+		return rpcStatus{err: err, notModified: true}
 	}
-	if connecthttp.IsNotModifiedError(err) {
-		return codes.Unset, ""
-	}
-
 	if connectErr := new(connect.Error); errors.As(err, &connectErr) {
-		switch connectErr.Code() {
-		case connect.CodeUnknown,
-			connect.CodeDeadlineExceeded,
-			connect.CodeUnimplemented,
-			connect.CodeInternal,
-			connect.CodeUnavailable,
-			connect.CodeDataLoss:
-			return codes.Error, connectErr.Message()
-		case connect.CodeCanceled,
-			connect.CodeInvalidArgument,
-			connect.CodeNotFound,
-			connect.CodeAlreadyExists,
-			connect.CodePermissionDenied,
-			connect.CodeResourceExhausted,
-			connect.CodeFailedPrecondition,
-			connect.CodeAborted,
-			connect.CodeOutOfRange,
-			connect.CodeUnauthenticated:
-			return codes.Unset, ""
-		default:
-			return codes.Unset, ""
-		}
+		return rpcStatus{err: err, code: connectErr.Code(), message: connectErr.Message()}
 	}
+	return rpcStatus{err: err, code: connect.CodeUnknown, message: err.Error()}
+}
 
-	return codes.Error, err.Error()
+func clientSpanStatus(status rpcStatus) (codes.Code, string) {
+	if status.err == nil || status.notModified {
+		return codes.Unset, ""
+	}
+	return codes.Error, status.message
+}
+
+func serverSpanStatus(status rpcStatus) (codes.Code, string) {
+	if status.err == nil || status.notModified {
+		return codes.Unset, ""
+	}
+	switch status.code {
+	case connect.CodeUnknown,
+		connect.CodeDeadlineExceeded,
+		connect.CodeUnimplemented,
+		connect.CodeInternal,
+		connect.CodeUnavailable,
+		connect.CodeDataLoss:
+		return codes.Error, status.message
+	case connect.CodeCanceled,
+		connect.CodeInvalidArgument,
+		connect.CodeNotFound,
+		connect.CodeAlreadyExists,
+		connect.CodePermissionDenied,
+		connect.CodeResourceExhausted,
+		connect.CodeFailedPrecondition,
+		connect.CodeAborted,
+		connect.CodeOutOfRange,
+		connect.CodeUnauthenticated:
+		return codes.Unset, ""
+	default:
+		return codes.Unset, ""
+	}
+}
+
+// specToV1 converts a connect-go v2 spec to a connect-go v1 spec.
+func specToV1(spec connect.Spec, isClient bool) connectv1.Spec {
+	return connectv1.Spec{
+		StreamType:       connectv1.StreamType(spec.StreamType),
+		Schema:           spec.Schema,
+		Procedure:        spec.Procedure,
+		IsClient:         isClient,
+		IdempotencyLevel: connectv1.IdempotencyLevel(spec.IdempotencyLevel),
+	}
 }
 
 // metadataCarrier adapts a [*connect.Header] to OpenTelemetry's

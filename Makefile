@@ -51,7 +51,7 @@ lintfix: $(BIN)/golangci-lint $(BIN)/buf ## Automatically fix some lint errors
 	$(BIN)/buf format -w .
 
 .PHONY: generate
-generate: $(BIN)/buf $(BIN)/protoc-gen-go $(BIN)/protoc-gen-connect-go $(BIN)/license-header ## Regenerate code and licenses
+generate: $(BIN)/buf $(BIN)/protoc-gen-go $(BIN)/protoc-gen-connect-go $(BIN)/protoc-gen-connect-go-v1 $(BIN)/license-header ## Regenerate code and licenses
 	rm -rf internal/gen
 	PATH=$(BIN) $(BIN)/buf generate
 	@# We want to operate on a list of modified and new files, excluding
@@ -81,6 +81,11 @@ $(BIN)/protoc-gen-connect-go: go.mod
 	@mkdir -p $(@D)
 	@# The version of protoc-gen-connect-go is determined by the version in go.mod
 	GOBIN=$(abspath $(@D)) $(GO) install connectrpc.com/connect/v2/cmd/protoc-gen-connect-go
+
+$(BIN)/protoc-gen-connect-go-v1: go.mod
+	@mkdir -p $(@D)
+	@# The version of protoc-gen-connect-go-v1 is determined by the version in go.mod
+	$(GO) build -o $@ connectrpc.com/connect/cmd/protoc-gen-connect-go
 
 $(BIN)/buf: Makefile
 	@mkdir -p $(@D)
