@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -250,7 +251,7 @@ type clientCall struct {
 	stop     func() bool     // stops watching ctx, or nil
 	once     sync.Once
 	mu       sync.Mutex
-	err      error // last Send or Receive error, excluding io.EOF
+	err      error // last Send or Receive error excluding io.EOF, else ctx.Err() from cancel
 }
 
 func (c *clientCall) Send(msg any) error {
@@ -290,8 +291,14 @@ func (c *clientCall) finish() {
 	c.once.Do(c.end)
 }
 
-// cancel ends the RPC when its context is done.
+// cancel ends the RPC when its context is done. Unless a Send or Receive has
+// already failed, the RPC is recorded as canceled or past its deadline.
 func (c *clientCall) cancel() {
+	c.mu.Lock()
+	if c.err == nil {
+		c.err = c.ctx.Err()
+	}
+	c.mu.Unlock()
 	c.once.Do(c.end)
 }
 
@@ -391,7 +398,21 @@ func statusOf(err error) rpcStatus {
 	if connectErr := new(connect.Error); errors.As(err, &connectErr) {
 		return rpcStatus{err: err, code: connectErr.Code(), message: connectErr.Message()}
 	}
-	return rpcStatus{err: err, code: connect.CodeUnknown, message: err.Error()}
+	return rpcStatus{err: err, code: uncodedErrorCode(err), message: err.Error()}
+}
+
+// uncodedErrorCode returns the code connect-go sends for an error that isn't a
+// [connect.Error]: [connect.CodeCanceled] or [connect.CodeDeadlineExceeded]
+// for a context or deadline error, and [connect.CodeUnknown] otherwise.
+func uncodedErrorCode(err error) connect.Code {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return connect.CodeCanceled
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, os.ErrDeadlineExceeded):
+		return connect.CodeDeadlineExceeded
+	default:
+		return connect.CodeUnknown
+	}
 }
 
 func clientSpanStatus(status rpcStatus) (codes.Code, string) {

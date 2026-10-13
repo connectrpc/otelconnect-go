@@ -184,6 +184,11 @@ func (i *Interceptor) WrapStreamingClient(next connectv1.StreamingClientFunc) co
 			requestOnce.Do(setRequestAttributes)
 			state.mu.Lock()
 			defer state.mu.Unlock()
+			// A stream that ends with its context, before failing or reaching
+			// io.EOF, was canceled or ran past its deadline.
+			if state.error == nil && !state.eof {
+				state.error = ctx.Err()
+			}
 			// state.error holds the final error, if any: the status attributes
 			// for a stream only exist once it has finished.
 			status := statusOfV1(state.error)
@@ -321,7 +326,7 @@ func statusOfV1(err error) rpcStatus {
 	if connectErr := new(connectv1.Error); errors.As(err, &connectErr) {
 		return rpcStatus{err: err, code: connect.Code(connectErr.Code()), message: connectErr.Message()}
 	}
-	return rpcStatus{err: err, code: connect.CodeUnknown, message: err.Error()}
+	return rpcStatus{err: err, code: uncodedErrorCode(err), message: err.Error()}
 }
 
 type streamingStateV1 struct {
@@ -331,6 +336,7 @@ type streamingStateV1 struct {
 	attributes      []attribute.KeyValue
 	peerAttributes  []attribute.KeyValue // spans only, never metrics
 	error           error
+	eof             bool // Receive returned io.EOF
 	labeler         *Labeler
 }
 
@@ -391,9 +397,13 @@ func (s *streamingStateV1) metricAttributes() []attribute.KeyValue {
 
 func (s *streamingStateV1) receive(msg any, conn sendReceiver) error {
 	err := conn.Receive(msg)
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil {
 		s.mu.Lock()
-		s.error = err
+		if errors.Is(err, io.EOF) {
+			s.eof = true
+		} else {
+			s.error = err
+		}
 		s.mu.Unlock()
 	}
 	return err
