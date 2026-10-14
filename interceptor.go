@@ -404,6 +404,8 @@ func statusOf(err error) rpcStatus {
 // uncodedErrorCode returns the code connect-go sends for an error that isn't a
 // [connect.Error]: [connect.CodeCanceled] or [connect.CodeDeadlineExceeded]
 // for a context or deadline error, and [connect.CodeUnknown] otherwise.
+//
+// It mirrors connect-go's scrubHandlerError (connecthttp/error.go).
 func uncodedErrorCode(err error) connect.Code {
 	switch {
 	case errors.Is(err, context.Canceled):
