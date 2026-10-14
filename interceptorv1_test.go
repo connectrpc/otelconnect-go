@@ -53,19 +53,21 @@ import (
 )
 
 const (
-	pingMethodV1          = "Ping"
-	failMethodV1          = "Fail"
-	pingStreamMethodV1    = "PingStream"
-	unimplementedStringV1 = "UNIMPLEMENTED"
-	dataLossStringV1      = "DATA_LOSS"
-	traceParentKeyV1      = "Traceparent"
-	rpcClientDurationV1   = "rpc.client.call.duration"
-	rpcServerDurationV1   = "rpc.server.call.duration"
-	rpcSystemNameV1       = "rpc.system.name"
-	rpcMethodV1           = "rpc.method"
-	rpcStatusCodeV1       = "rpc.response.status_code"
-	errorTypeV1           = "error.type"
-	customLabelV1         = "custom.label"
+	pingMethodV1             = "Ping"
+	failMethodV1             = "Fail"
+	pingStreamMethodV1       = "PingStream"
+	unimplementedStringV1    = "UNIMPLEMENTED"
+	dataLossStringV1         = "DATA_LOSS"
+	canceledStringV1         = "CANCELED"
+	deadlineExceededStringV1 = "DEADLINE_EXCEEDED"
+	traceParentKeyV1         = "Traceparent"
+	rpcClientDurationV1      = "rpc.client.call.duration"
+	rpcServerDurationV1      = "rpc.server.call.duration"
+	rpcSystemNameV1          = "rpc.system.name"
+	rpcMethodV1              = "rpc.method"
+	rpcStatusCodeV1          = "rpc.response.status_code"
+	errorTypeV1              = "error.type"
+	customLabelV1            = "custom.label"
 )
 
 // rpc.method is the generated procedure without its leading slash.
@@ -1025,6 +1027,87 @@ func TestStreamingClientContextCancellationV1(t *testing.T) {
 	_, err = stream.Receive()
 	require.Error(t, err)
 	assert.NoError(t, stream.CloseResponse())
+}
+
+func TestStreamingClientContextCancellationStatusV1(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name       string
+		drain      bool
+		wantStatus string
+	}{
+		{name: "canceled", wantStatus: canceledStringV1},
+		{name: "canceledAfterEOF", drain: true, wantStatus: statusCodeOK},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			spanRecorder := tracetest.NewSpanRecorder()
+			traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+			clientInterceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
+			require.NoError(t, err)
+			server := &pluggablePingServerV1{
+				pingStream: func(ctx context.Context, stream *connect.BidiStream[pingv1.PingStreamRequest, pingv1.PingStreamResponse]) error {
+					require.NoError(t, stream.Send(&pingv1.PingStreamResponse{}))
+					if test.drain {
+						return nil
+					}
+					<-ctx.Done()
+					return ctx.Err()
+				},
+			}
+			client, _, _ := startServerV1(t,
+				nil,
+				[]connect.ClientOption{connect.WithInterceptors(clientInterceptor)},
+				server,
+			)
+			ctx, cancel := context.WithCancel(context.Background())
+			stream := client.PingStream(ctx)
+			require.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
+			_, err = stream.Receive()
+			require.NoError(t, err)
+			if test.drain {
+				_, err = stream.Receive()
+				require.ErrorIs(t, err, io.EOF)
+			}
+			cancel()
+			require.Eventually(t, func() bool { return len(spanRecorder.Ended()) == 1 }, time.Second, time.Millisecond)
+			span := spanRecorder.Ended()[0]
+			assert.Contains(t, span.Attributes(), semconv.RPCResponseStatusCodeKey.String(test.wantStatus))
+			_ = stream.CloseResponse()
+		})
+	}
+}
+
+func TestServerContextErrorStatusV1(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		err            error
+		wantStatus     string
+		wantSpanStatus codes.Code
+	}{
+		{err: context.Canceled, wantStatus: canceledStringV1, wantSpanStatus: codes.Unset},
+		{err: context.DeadlineExceeded, wantStatus: deadlineExceededStringV1, wantSpanStatus: codes.Error},
+	} {
+		t.Run(test.wantStatus, func(t *testing.T) {
+			t.Parallel()
+			spanRecorder := tracetest.NewSpanRecorder()
+			traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+			interceptor, err := NewInterceptor(WithTracerProvider(traceProvider))
+			require.NoError(t, err)
+			server := &pluggablePingServerV1{
+				ping: func(context.Context, *connect.Request[pingv1.PingRequest]) (*connect.Response[pingv1.PingResponse], error) {
+					return nil, test.err
+				},
+			}
+			client, _, _ := startServerV1(t, []connect.HandlerOption{connect.WithInterceptors(interceptor)}, nil, server)
+			_, err = client.Ping(context.Background(), requestOfSizeV1(1, 0))
+			require.Error(t, err)
+			require.Len(t, spanRecorder.Ended(), 1)
+			span := spanRecorder.Ended()[0]
+			assert.Equal(t, test.wantSpanStatus, span.Status().Code)
+			assert.Contains(t, span.Attributes(), semconv.RPCResponseStatusCodeKey.String(test.wantStatus))
+		})
+	}
 }
 
 func TestStreamingHandlerTracingV1(t *testing.T) {

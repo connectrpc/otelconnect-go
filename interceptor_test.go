@@ -17,11 +17,13 @@ package otelconnect
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -54,19 +56,21 @@ import (
 )
 
 const (
-	pingMethod          = "Ping"
-	failMethod          = "Fail"
-	pingStreamMethod    = "PingStream"
-	unimplementedString = "UNIMPLEMENTED"
-	dataLossString      = "DATA_LOSS"
-	traceParentKey      = "Traceparent"
-	rpcClientDuration   = "rpc.client.call.duration"
-	rpcServerDuration   = "rpc.server.call.duration"
-	rpcSystemName       = "rpc.system.name"
-	rpcMethod           = "rpc.method"
-	rpcStatusCode       = "rpc.response.status_code"
-	errorType           = "error.type"
-	customLabel         = "custom.label"
+	pingMethod             = "Ping"
+	failMethod             = "Fail"
+	pingStreamMethod       = "PingStream"
+	unimplementedString    = "UNIMPLEMENTED"
+	dataLossString         = "DATA_LOSS"
+	canceledString         = "CANCELED"
+	deadlineExceededString = "DEADLINE_EXCEEDED"
+	traceParentKey         = "Traceparent"
+	rpcClientDuration      = "rpc.client.call.duration"
+	rpcServerDuration      = "rpc.server.call.duration"
+	rpcSystemName          = "rpc.system.name"
+	rpcMethod              = "rpc.method"
+	rpcStatusCode          = "rpc.response.status_code"
+	errorType              = "error.type"
+	customLabel            = "custom.label"
 )
 
 // rpc.method is the generated procedure without its leading slash.
@@ -1052,6 +1056,83 @@ func TestServerRemoteErrorStatus(t *testing.T) {
 	span := spanRecorder.Ended()[0]
 	assert.Equal(t, codes.Error, span.Status().Code)
 	assert.Contains(t, span.Attributes(), semconv.RPCResponseStatusCodeKey.String("INTERNAL"))
+}
+
+func TestStatusOfUncodedErrors(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		err  error
+		want connect.Code
+	}{
+		{err: context.Canceled, want: connect.CodeCanceled},
+		{err: fmt.Errorf("read: %w", context.Canceled), want: connect.CodeCanceled},
+		{err: context.DeadlineExceeded, want: connect.CodeDeadlineExceeded},
+		{err: os.ErrDeadlineExceeded, want: connect.CodeDeadlineExceeded},
+		{err: errors.New("boom"), want: connect.CodeUnknown},
+	} {
+		assert.Equal(t, test.want, statusOf(test.err).code, test.err)
+		assert.Equal(t, test.want, statusOfV1(test.err).code, test.err)
+	}
+}
+
+func TestStreamingClientContextCancellationStatus(t *testing.T) {
+	t.Parallel()
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	clientInterceptor, err := NewClientInterceptor(WithTracerProvider(traceProvider))
+	require.NoError(t, err)
+	server := &pluggablePingServer{
+		pingStream: func(ctx context.Context, stream pingv1connect.PingServicePingStreamServerStream) error {
+			require.NoError(t, stream.Send(&pingv1.PingStreamResponse{}))
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	client, _, _ := startServer(t, nil, []connect.ClientInterceptor{clientInterceptor}, server)
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := client.PingStream(ctx)
+	require.NoError(t, err)
+	require.NoError(t, stream.Send(&pingv1.PingStreamRequest{}))
+	_, err = stream.Receive()
+	require.NoError(t, err)
+	cancel()
+	require.Eventually(t, func() bool { return len(spanRecorder.Ended()) == 1 }, time.Second, time.Millisecond)
+	span := spanRecorder.Ended()[0]
+	assert.Equal(t, codes.Error, span.Status().Code)
+	assert.Contains(t, span.Attributes(), semconv.RPCResponseStatusCodeKey.String(canceledString))
+	_ = stream.Close()
+}
+
+func TestServerContextErrorStatus(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		err            error
+		wantStatus     string
+		wantSpanStatus codes.Code
+	}{
+		{err: context.Canceled, wantStatus: canceledString, wantSpanStatus: codes.Unset},
+		{err: context.DeadlineExceeded, wantStatus: deadlineExceededString, wantSpanStatus: codes.Error},
+	} {
+		t.Run(test.wantStatus, func(t *testing.T) {
+			t.Parallel()
+			spanRecorder := tracetest.NewSpanRecorder()
+			traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+			serverInterceptor, err := NewServerInterceptor(WithTracerProvider(traceProvider))
+			require.NoError(t, err)
+			server := &pluggablePingServer{
+				ping: func(context.Context, *pingv1.PingRequest) (*pingv1.PingResponse, error) {
+					return nil, test.err
+				},
+			}
+			client, _, _ := startServer(t, []connect.ServerInterceptor{serverInterceptor}, nil, server)
+			_, err = client.Ping(context.Background(), requestOfSize(1, 0))
+			require.Error(t, err)
+			require.Len(t, spanRecorder.Ended(), 1)
+			span := spanRecorder.Ended()[0]
+			assert.Equal(t, test.wantSpanStatus, span.Status().Code)
+			assert.Contains(t, span.Attributes(), semconv.RPCResponseStatusCodeKey.String(test.wantStatus))
+		})
+	}
 }
 
 func TestStreamingHandlerTracing(t *testing.T) {
