@@ -56,20 +56,21 @@ import (
 )
 
 const (
-	pingMethod          = "Ping"
-	failMethod          = "Fail"
-	pingStreamMethod    = "PingStream"
-	unimplementedString = "UNIMPLEMENTED"
-	dataLossString      = "DATA_LOSS"
-	canceledString      = "CANCELED"
-	traceParentKey      = "Traceparent"
-	rpcClientDuration   = "rpc.client.call.duration"
-	rpcServerDuration   = "rpc.server.call.duration"
-	rpcSystemName       = "rpc.system.name"
-	rpcMethod           = "rpc.method"
-	rpcStatusCode       = "rpc.response.status_code"
-	errorType           = "error.type"
-	customLabel         = "custom.label"
+	pingMethod             = "Ping"
+	failMethod             = "Fail"
+	pingStreamMethod       = "PingStream"
+	unimplementedString    = "UNIMPLEMENTED"
+	dataLossString         = "DATA_LOSS"
+	canceledString         = "CANCELED"
+	deadlineExceededString = "DEADLINE_EXCEEDED"
+	traceParentKey         = "Traceparent"
+	rpcClientDuration      = "rpc.client.call.duration"
+	rpcServerDuration      = "rpc.server.call.duration"
+	rpcSystemName          = "rpc.system.name"
+	rpcMethod              = "rpc.method"
+	rpcStatusCode          = "rpc.response.status_code"
+	errorType              = "error.type"
+	customLabel            = "custom.label"
 )
 
 // rpc.method is the generated procedure without its leading slash.
@@ -1083,7 +1084,7 @@ func TestServerContextErrorStatus(t *testing.T) {
 		wantSpanStatus codes.Code
 	}{
 		{err: context.Canceled, wantStatus: canceledString, wantSpanStatus: codes.Unset},
-		{err: context.DeadlineExceeded, wantStatus: "DEADLINE_EXCEEDED", wantSpanStatus: codes.Error},
+		{err: context.DeadlineExceeded, wantStatus: deadlineExceededString, wantSpanStatus: codes.Error},
 	} {
 		t.Run(test.wantStatus, func(t *testing.T) {
 			t.Parallel()
