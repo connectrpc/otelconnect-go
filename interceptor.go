@@ -184,7 +184,7 @@ func (i *interceptor) serveServer(ctx context.Context, spec connect.Spec, stream
 	}
 
 	err := next(ctx, spec, stream)
-	status := statusOf(err)
+	status := handlerStatusOf(err)
 	call.span.SetStatus(serverSpanStatus(status))
 	// The span already has the RPC attributes.
 	call.record(ctx, attributes, len(attributes), status, callInfo.ResponseHeader())
@@ -392,6 +392,17 @@ func statusOf(err error) rpcStatus {
 		return rpcStatus{err: err, code: connectErr.Code(), message: connectErr.Message()}
 	}
 	return rpcStatus{err: err, code: connect.CodeUnknown, message: err.Error()}
+}
+
+// handlerStatusOf returns the outcome of a connect-go v2 handler. connect-go
+// sends a remote [connect.Error], one the handler received from another RPC,
+// as [connect.CodeInternal], so it is recorded that way.
+func handlerStatusOf(err error) rpcStatus {
+	status := statusOf(err)
+	if connectErr := new(connect.Error); errors.As(err, &connectErr) && connectErr.IsRemote() {
+		status.code = connect.CodeInternal
+	}
+	return status
 }
 
 func clientSpanStatus(status rpcStatus) (codes.Code, string) {

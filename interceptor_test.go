@@ -1027,6 +1027,33 @@ func TestStreamingClientContextCancellation(t *testing.T) {
 	_ = stream.Close()
 }
 
+func TestServerRemoteErrorStatus(t *testing.T) {
+	t.Parallel()
+	upstream, _, _ := startServer(t, nil, nil, &pluggablePingServer{
+		ping: func(context.Context, *pingv1.PingRequest) (*pingv1.PingResponse, error) {
+			return nil, connect.NewError(connect.CodeNotFound, "upstream not found")
+		},
+	})
+	spanRecorder := tracetest.NewSpanRecorder()
+	traceProvider := trace.NewTracerProvider(trace.WithSpanProcessor(spanRecorder))
+	serverInterceptor, err := NewServerInterceptor(WithTracerProvider(traceProvider))
+	require.NoError(t, err)
+	// The handler returns the upstream client's error unchanged, which
+	// connect-go sends to the client as internal.
+	client, _, _ := startServer(t, []connect.ServerInterceptor{serverInterceptor}, nil, &pluggablePingServer{
+		ping: func(ctx context.Context, req *pingv1.PingRequest) (*pingv1.PingResponse, error) {
+			return upstream.Ping(ctx, req)
+		},
+	})
+	_, err = client.Ping(context.Background(), requestOfSize(1, 0))
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
+	require.Len(t, spanRecorder.Ended(), 1)
+	span := spanRecorder.Ended()[0]
+	assert.Equal(t, codes.Error, span.Status().Code)
+	assert.Contains(t, span.Attributes(), semconv.RPCResponseStatusCodeKey.String("INTERNAL"))
+}
+
 func TestStreamingHandlerTracing(t *testing.T) {
 	t.Parallel()
 	spanRecorder := tracetest.NewSpanRecorder()
